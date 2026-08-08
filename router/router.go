@@ -372,20 +372,42 @@ func (r Router) determineAutoMode(input ClassifierOutput, availableModes map[str
 // explicit requestedMode) and by the hard filters -- so every survivor
 // here has already been judged good enough for the request; scoreAndPick's
 // only job is "не самая дешёвая, а самая дешёвая из тех, что не теряют в
-// качестве": minimize cost among the already-qualified set. Ties are
-// broken by catalog order (first model at the minimum cost wins).
+// качестве": minimize cost among the already-qualified set.
+//
+// Exact cost ties (e.g. claude-sonnet-5 and kimi-k3, both $18/Mtok blended
+// in the thinking tier) are broken deterministically by capabilityScore --
+// more supported tools/modalities/output formats wins -- and, if that is
+// also tied, by ID lexicographic order. Falling back to catalog order here
+// would make the winner depend on unrelated edits to models.json.
 func (r Router) scoreAndPick(candidates []Model) (Model, string) {
 	best := candidates[0]
 	bestCost := best.CostInputPerMTok + best.CostOutputPerMTok
+	bestCapability := capabilityScore(best)
 
 	for _, m := range candidates[1:] {
 		cost := m.CostInputPerMTok + m.CostOutputPerMTok
-		if cost < bestCost {
-			best = m
-			bestCost = cost
+		capability := capabilityScore(m)
+
+		switch {
+		case cost < bestCost:
+			best, bestCost, bestCapability = m, cost, capability
+		case cost == bestCost && capability > bestCapability:
+			best, bestCost, bestCapability = m, cost, capability
+		case cost == bestCost && capability == bestCapability && m.ID < best.ID:
+			best, bestCost, bestCapability = m, cost, capability
 		}
 	}
 
-	log := fmt.Sprintf("cheapest in tier: winner=%s (cost=%.2f)", best.ID, bestCost)
+	log := fmt.Sprintf("cheapest in tier: winner=%s (cost=%.2f, capability_score=%d)", best.ID, bestCost, bestCapability)
 	return best, log
+}
+
+// capabilityScore is the tie-break metric for scoreAndPick: the total count
+// of tools, modalities, and output formats a model declares support for.
+// It only ever runs as a tiebreaker between models already at the same
+// price, so a coarse count is enough to prefer the strictly more capable
+// side of a tie (e.g. a model with web_search support over an otherwise
+// identical one without it) without needing a weighted quality model.
+func capabilityScore(m Model) int {
+	return len(m.SupportsTools) + len(m.SupportsModality) + len(m.SupportsOutputFormats)
 }
