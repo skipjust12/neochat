@@ -14,8 +14,8 @@ var modeTiers = []string{"instant", "thinking", "max"}
 // complexity_score и creativity_level в один числовой "запрос на мощность"
 // и режем его порогами ниже.
 const (
-	autoScoreInstantCeiling  = 1.0 // score < this  -> "instant"
-	autoScoreThinkingCeiling = 2.5 // score < this  -> "thinking"; else -> "max"
+	autoScoreInstantCeiling  = 1.0 // score <= this -> "instant"
+	autoScoreThinkingCeiling = 2.5 // score <= this -> "thinking"; else -> "max"
 )
 
 // defaultThreeLevelEnum is the fallback used everywhere a "low"/"moderate"/
@@ -255,11 +255,16 @@ func escalateMode(mode string) (string, bool) {
 func (r Router) determineAutoMode(input ClassifierOutput) (string, string) {
 	score := enumScore(input.ReasoningDepth) + 2*input.ComplexityScore + 0.5*enumScore(input.CreativityLevel)
 
+	// Ceilings are inclusive: a score landing exactly on a boundary buys the
+	// cheaper tier, not the pricier one. This matters for neutral or
+	// unrecognized enum inputs (which fall back to "moderate" -- see
+	// defaultThreeLevelEnum) landing exactly on autoScoreThinkingCeiling;
+	// they should not silently escalate all the way to "max".
 	var mode string
 	switch {
-	case score < autoScoreInstantCeiling:
+	case score <= autoScoreInstantCeiling:
 		mode = "instant"
-	case score < autoScoreThinkingCeiling:
+	case score <= autoScoreThinkingCeiling:
 		mode = "thinking"
 	default:
 		mode = "max"
