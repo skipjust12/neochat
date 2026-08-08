@@ -1,0 +1,10 @@
+{
+  "reasoning_depth_weight": {
+    "low": 0.2,
+    "moderate": 0.6,
+    "high": 1.2
+  },
+  "complexity_weight": 1.0,
+  "cost_weight": 0.5,
+  "confidence_escalation_threshold": 0.5
+}
