@@ -18,8 +18,17 @@ const (
 	autoScoreThinkingCeiling = 2.5 // score < this  -> "thinking"; else -> "max"
 )
 
-// reasoningDepthScore/creativityScore map the classifier's enum strings
-// ("low"/"moderate"/"high") onto a 0..2 scale for the auto-mode heuristic.
+// defaultThreeLevelEnum is the fallback used everywhere a "low"/"moderate"/
+// "high" classifier field (reasoning_depth, creativity_level) is looked up
+// but the classifier sent something outside that enum. Keeping a single
+// named fallback -- instead of letting each lookup site default to its own
+// zero value -- is what keeps the auto-mode heuristic and the cost-scoring
+// formula in agreement about what an unrecognized value means.
+const defaultThreeLevelEnum = "moderate"
+
+// enumScore maps the classifier's enum strings ("low"/"moderate"/"high")
+// onto a 0..2 scale for the auto-mode heuristic. Used for both
+// reasoning_depth and creativity_level.
 func enumScore(v string) float64 {
 	switch strings.ToLower(v) {
 	case "low":
@@ -29,7 +38,7 @@ func enumScore(v string) float64 {
 	case "high":
 		return 2
 	default:
-		return 1 // unknown value: assume moderate rather than fail routing
+		return enumScore(defaultThreeLevelEnum)
 	}
 }
 
@@ -63,6 +72,10 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		}, nil
 	}
 
+	if err := validateInput(input); err != nil {
+		return RouteResult{}, err
+	}
+
 	commonCandidates, filterLog := r.applyHardFilters(input, estimatedContextTokens)
 	if len(commonCandidates) == 0 {
 		return RouteResult{}, fmt.Errorf("router: no candidate models survive hard filters (%s)", filterLog)
@@ -74,9 +87,15 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		baseMode, autoReason = r.determineAutoMode(input)
 	}
 
+	// confidenceBelowThreshold records the actual comparison against the
+	// threshold, independent of whether escalation could take effect. Do
+	// not conflate this with "escalated": "max" is already the ceiling
+	// tier, so low confidence there triggers the condition but never
+	// changes effectiveMode.
+	confidenceBelowThreshold := input.Confidence < r.Weights.ConfidenceEscalationThreshold
 	effectiveMode := baseMode
 	escalated := false
-	if input.Confidence < r.Weights.ConfidenceEscalationThreshold {
+	if confidenceBelowThreshold {
 		if escalatedMode, ok := escalateMode(baseMode); ok {
 			effectiveMode = escalatedMode
 			escalated = true
@@ -99,10 +118,14 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 	} else {
 		fmt.Fprintf(&reason, "requested_mode=%s used as base_mode. ", requestedMode)
 	}
-	if escalated {
+	switch {
+	case escalated:
 		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalated %s -> %s. ",
 			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode, effectiveMode)
-	} else {
+	case confidenceBelowThreshold:
+		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalation triggered but base_mode=%s has no higher tier. ",
+			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode)
+	default:
 		fmt.Fprintf(&reason, "confidence %.2f >= threshold %.2f: no escalation. ",
 			input.Confidence, r.Weights.ConfidenceEscalationThreshold)
 	}
@@ -113,6 +136,20 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		SelectedMode:    effectiveMode,
 		Reason:          reason.String(),
 	}, nil
+}
+
+// validateInput rejects classifier output with numeric fields outside their
+// documented [0,1] range. This runs only on the scored path (requestedMode
+// != "manual"): manual routing never reads these fields, so a malformed
+// classifier payload should not be able to block an explicit manual choice.
+func validateInput(input ClassifierOutput) error {
+	if input.ComplexityScore < 0 || input.ComplexityScore > 1 {
+		return fmt.Errorf("router: complexity_score %.4f out of range [0,1]", input.ComplexityScore)
+	}
+	if input.Confidence < 0 || input.Confidence > 1 {
+		return fmt.Errorf("router: confidence %.4f out of range [0,1]", input.Confidence)
+	}
+	return nil
 }
 
 // applyHardFilters removes models that cannot serve the request at all,
@@ -175,6 +212,19 @@ func modalitiesList(m map[string]bool) []string {
 	return out
 }
 
+// reasoningDepthWeight looks up the configured cost-scoring weight for a
+// reasoning_depth value. An unrecognized value falls back to the weight for
+// defaultThreeLevelEnum ("moderate"), matching enumScore's fallback used by
+// the auto-mode heuristic -- without this, the same unrecognized input would
+// silently score as 0 here (weaker than even "low") while being treated as
+// "moderate" for auto-mode tier selection.
+func (r Router) reasoningDepthWeight(depth string) float64 {
+	if w, ok := r.Weights.ReasoningDepthWeight[depth]; ok {
+		return w
+	}
+	return r.Weights.ReasoningDepthWeight[defaultThreeLevelEnum]
+}
+
 func filterByMode(models []Model, mode string) []Model {
 	var kept []Model
 	for _, m := range models {
@@ -234,7 +284,7 @@ func (r Router) determineAutoMode(input ClassifierOutput) (string, string) {
 // effectiveBias means, all else equal within the tier, prefer the cheapest
 // model. Ties are broken by lowest total cost.
 func (r Router) scoreAndPick(input ClassifierOutput, candidates []Model) (Model, string) {
-	qualityPull := r.Weights.ReasoningDepthWeight[input.ReasoningDepth] + r.Weights.ComplexityWeight*input.ComplexityScore
+	qualityPull := r.reasoningDepthWeight(input.ReasoningDepth) + r.Weights.ComplexityWeight*input.ComplexityScore
 	effectiveBias := qualityPull - r.Weights.CostWeight
 
 	best := candidates[0]
