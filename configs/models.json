@@ -43,6 +43,72 @@
       "supports_modality": ["text", "code", "image"],
       "supports_web_search": true,
       "supports_code_execution": true
+    },
+    {
+      "id": "claude-fable-5",
+      "provider": "anthropic",
+      "modes": ["instant", "thinking"],
+      "cost_input_per_mtok": 2.0,
+      "cost_output_per_mtok": 10.0,
+      "context_window": 200000,
+      "supports_modality": ["text", "code", "image"],
+      "supports_web_search": true,
+      "supports_code_execution": false
+    },
+    {
+      "id": "gpt-5.6-instant",
+      "provider": "openai",
+      "modes": ["instant"],
+      "cost_input_per_mtok": 0.5,
+      "cost_output_per_mtok": 2.0,
+      "context_window": 300000,
+      "supports_modality": ["text", "code"],
+      "supports_web_search": true,
+      "supports_code_execution": true
+    },
+    {
+      "id": "gpt-5.6-thinking",
+      "provider": "openai",
+      "modes": ["instant", "thinking"],
+      "cost_input_per_mtok": 4.0,
+      "cost_output_per_mtok": 16.0,
+      "context_window": 400000,
+      "supports_modality": ["text", "code", "image"],
+      "supports_web_search": true,
+      "supports_code_execution": true
+    },
+    {
+      "id": "gpt-5.6-pro",
+      "provider": "openai",
+      "modes": ["thinking", "max"],
+      "cost_input_per_mtok": 12.0,
+      "cost_output_per_mtok": 60.0,
+      "context_window": 400000,
+      "supports_modality": ["text", "code", "image"],
+      "supports_web_search": true,
+      "supports_code_execution": true
+    },
+    {
+      "id": "kimi-k3",
+      "provider": "moonshot",
+      "modes": ["thinking"],
+      "cost_input_per_mtok": 0.6,
+      "cost_output_per_mtok": 2.5,
+      "context_window": 1000000,
+      "supports_modality": ["text", "code"],
+      "supports_web_search": false,
+      "supports_code_execution": false
+    },
+    {
+      "id": "gpt-oss-120b",
+      "provider": "openai",
+      "modes": ["instant", "thinking"],
+      "cost_input_per_mtok": 0.3,
+      "cost_output_per_mtok": 1.2,
+      "context_window": 128000,
+      "supports_modality": ["text", "code"],
+      "supports_web_search": false,
+      "supports_code_execution": false
     }
   ]
 }
