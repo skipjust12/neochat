@@ -14,12 +14,21 @@ var modeTiers = []string{"instant", "thinking", "max"}
 // complexity_score и creativity_level в один числовой "запрос на мощность"
 // и режем его порогами ниже.
 const (
-	autoScoreInstantCeiling  = 1.0 // score < this  -> "instant"
-	autoScoreThinkingCeiling = 2.5 // score < this  -> "thinking"; else -> "max"
+	autoScoreInstantCeiling  = 1.0 // score <= this -> "instant"
+	autoScoreThinkingCeiling = 2.5 // score <= this -> "thinking"; else -> "max"
 )
 
-// reasoningDepthScore/creativityScore map the classifier's enum strings
-// ("low"/"moderate"/"high") onto a 0..2 scale for the auto-mode heuristic.
+// defaultThreeLevelEnum is the fallback used everywhere a "low"/"moderate"/
+// "high" classifier field (reasoning_depth, creativity_level) is looked up
+// but the classifier sent something outside that enum. Keeping a single
+// named fallback -- instead of letting each lookup site default to its own
+// zero value -- is what keeps the auto-mode heuristic and the cost-scoring
+// formula in agreement about what an unrecognized value means.
+const defaultThreeLevelEnum = "moderate"
+
+// enumScore maps the classifier's enum strings ("low"/"moderate"/"high")
+// onto a 0..2 scale for the auto-mode heuristic. Used for both
+// reasoning_depth and creativity_level.
 func enumScore(v string) float64 {
 	switch strings.ToLower(v) {
 	case "low":
@@ -29,7 +38,7 @@ func enumScore(v string) float64 {
 	case "high":
 		return 2
 	default:
-		return 1 // unknown value: assume moderate rather than fail routing
+		return enumScore(defaultThreeLevelEnum)
 	}
 }
 
@@ -63,23 +72,56 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		}, nil
 	}
 
+	if err := validateInput(input); err != nil {
+		return RouteResult{}, err
+	}
+
 	commonCandidates, filterLog := r.applyHardFilters(input, estimatedContextTokens)
 	if len(commonCandidates) == 0 {
 		return RouteResult{}, fmt.Errorf("router: no candidate models survive hard filters (%s)", filterLog)
 	}
 
+	// availableModes are the mode tiers actually reachable given the models
+	// that survived the hard filters -- e.g. a request that (via
+	// output_format/required_tools/modality) only an image-only,
+	// instant-only model can serve has availableModes == {"instant"}, even
+	// though the catalog as a whole spans all three tiers.
+	availableModes := modeSet(commonCandidates)
+
 	baseMode := requestedMode
 	autoReason := ""
 	if requestedMode == "auto" {
-		baseMode, autoReason = r.determineAutoMode(input)
+		baseMode, autoReason = r.determineAutoMode(input, availableModes)
 	}
 
+	// confidenceBelowThreshold records the actual comparison against the
+	// threshold, independent of whether escalation could take effect. Do
+	// not conflate this with "escalated": "max" is already the ceiling
+	// tier, so low confidence there triggers the condition but never
+	// changes effectiveMode.
+	confidenceBelowThreshold := input.Confidence < r.Weights.ConfidenceEscalationThreshold
 	effectiveMode := baseMode
 	escalated := false
-	if input.Confidence < r.Weights.ConfidenceEscalationThreshold {
+	escalationTarget := "" // the tier escalation aimed for, before any snap; used only in the reason text
+	escalationSnapNote := ""
+	if confidenceBelowThreshold {
 		if escalatedMode, ok := escalateMode(baseMode); ok {
+			escalationTarget = escalatedMode
 			effectiveMode = escalatedMode
 			escalated = true
+			// The escalation target itself might not be servable by any
+			// hard-filter survivor (same class of gap as the auto-mode
+			// snap above). Since escalation is already a system decision
+			// overriding the nominal mode, snapping it to the nearest
+			// tier that is actually available keeps the same "when
+			// unsure, prefer capable over absent" philosophy instead of
+			// erroring out on a tier nothing can serve.
+			if !availableModes[effectiveMode] {
+				if snapped, ok := nearestAvailableMode(effectiveMode, availableModes); ok {
+					escalationSnapNote = fmt.Sprintf(" (no hard-filter survivors at %s; snapped to %s)", escalationTarget, snapped)
+					effectiveMode = snapped
+				}
+			}
 		}
 	}
 
@@ -99,10 +141,14 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 	} else {
 		fmt.Fprintf(&reason, "requested_mode=%s used as base_mode. ", requestedMode)
 	}
-	if escalated {
-		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalated %s -> %s. ",
-			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode, effectiveMode)
-	} else {
+	switch {
+	case escalated:
+		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalated %s -> %s%s. ",
+			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode, escalationTarget, escalationSnapNote)
+	case confidenceBelowThreshold:
+		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalation triggered but base_mode=%s has no higher tier. ",
+			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode)
+	default:
 		fmt.Fprintf(&reason, "confidence %.2f >= threshold %.2f: no escalation. ",
 			input.Confidence, r.Weights.ConfidenceEscalationThreshold)
 	}
@@ -115,10 +161,25 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 	}, nil
 }
 
+// validateInput rejects classifier output with numeric fields outside their
+// documented [0,1] range. This runs only on the scored path (requestedMode
+// != "manual"): manual routing never reads these fields, so a malformed
+// classifier payload should not be able to block an explicit manual choice.
+func validateInput(input ClassifierOutput) error {
+	if input.ComplexityScore < 0 || input.ComplexityScore > 1 {
+		return fmt.Errorf("router: complexity_score %.4f out of range [0,1]", input.ComplexityScore)
+	}
+	if input.Confidence < 0 || input.Confidence > 1 {
+		return fmt.Errorf("router: confidence %.4f out of range [0,1]", input.Confidence)
+	}
+	return nil
+}
+
 // applyHardFilters removes models that cannot serve the request at all,
 // independent of which mode tier is ultimately chosen: insufficient context
-// window, missing web-search/code-execution support, or missing modality
-// support. It returns the surviving models plus a short human-readable log
+// window, a missing required tool, missing modality support, an output
+// budget below the estimated response length, or an unsupported output
+// format. It returns the surviving models plus a short human-readable log
 // of what was checked, for inclusion in RouteResult.Reason.
 func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens int) ([]Model, string) {
 	requiredModalities := map[string]bool{}
@@ -134,24 +195,49 @@ func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens 
 		if m.ContextWindow < estimatedContextTokens {
 			continue
 		}
-		if input.NeedsWebSearch && !m.SupportsWebSearch {
-			continue
-		}
-		if input.NeedsCodeExecution && !m.SupportsCodeExecution {
+		if !supportsAllTools(m, input.RequiredTools) {
 			continue
 		}
 		if !supportsAllModalities(m, requiredModalities) {
+			continue
+		}
+		if input.EstimatedOutputTokens > 0 && m.MaxOutputTokens > 0 && m.MaxOutputTokens < input.EstimatedOutputTokens {
+			continue
+		}
+		if input.OutputFormat != "" && !supportsOutputFormat(m, input.OutputFormat) {
 			continue
 		}
 		kept = append(kept, m)
 	}
 
 	log := fmt.Sprintf(
-		"context>=%d, web_search=%v, code_execution=%v, modalities=%v -> %d/%d models",
-		estimatedContextTokens, input.NeedsWebSearch, input.NeedsCodeExecution,
-		modalitiesList(requiredModalities), len(kept), len(r.Catalog.Models),
+		"context>=%d, tools=%v, modalities=%v, estimated_output_tokens=%d, output_format=%q -> %d/%d models",
+		estimatedContextTokens, input.RequiredTools, modalitiesList(requiredModalities),
+		input.EstimatedOutputTokens, input.OutputFormat, len(kept), len(r.Catalog.Models),
 	)
 	return kept, log
+}
+
+func supportsAllTools(m Model, required []string) bool {
+	supported := map[string]bool{}
+	for _, t := range m.SupportsTools {
+		supported[t] = true
+	}
+	for _, t := range required {
+		if !supported[t] {
+			return false
+		}
+	}
+	return true
+}
+
+func supportsOutputFormat(m Model, format string) bool {
+	for _, f := range m.SupportsOutputFormats {
+		if f == format {
+			return true
+		}
+	}
+	return false
 }
 
 func supportsAllModalities(m Model, required map[string]bool) bool {
@@ -173,6 +259,19 @@ func modalitiesList(m map[string]bool) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// reasoningDepthWeight looks up the configured cost-scoring weight for a
+// reasoning_depth value. An unrecognized value falls back to the weight for
+// defaultThreeLevelEnum ("moderate"), matching enumScore's fallback used by
+// the auto-mode heuristic -- without this, the same unrecognized input would
+// silently score as 0 here (weaker than even "low") while being treated as
+// "moderate" for auto-mode tier selection.
+func (r Router) reasoningDepthWeight(depth string) float64 {
+	if w, ok := r.Weights.ReasoningDepthWeight[depth]; ok {
+		return w
+	}
+	return r.Weights.ReasoningDepthWeight[defaultThreeLevelEnum]
 }
 
 func filterByMode(models []Model, mode string) []Model {
@@ -199,25 +298,89 @@ func escalateMode(mode string) (string, bool) {
 	return mode, false
 }
 
+// modeSet collects every mode tier reachable by at least one of the given
+// models, e.g. an image-only model that only lists "instant" in its Modes
+// contributes just {"instant"}.
+func modeSet(models []Model) map[string]bool {
+	set := map[string]bool{}
+	for _, m := range models {
+		for _, mode := range m.Modes {
+			set[mode] = true
+		}
+	}
+	return set
+}
+
+// nearestAvailableMode finds the closest tier to mode that is present in
+// available, preferring to move up the tiers first (a stronger tier being
+// the fallback direction matches the same "when unsure, prefer capable over
+// absent" reasoning behind confidence-based escalation) and only falling
+// back downward if nothing stronger is servable. Returns ok=false only if
+// mode isn't a recognized tier at all.
+func nearestAvailableMode(mode string, available map[string]bool) (string, bool) {
+	idx := -1
+	for i, m := range modeTiers {
+		if m == mode {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return "", false
+	}
+	for i := idx + 1; i < len(modeTiers); i++ {
+		if available[modeTiers[i]] {
+			return modeTiers[i], true
+		}
+	}
+	for i := idx - 1; i >= 0; i-- {
+		if available[modeTiers[i]] {
+			return modeTiers[i], true
+		}
+	}
+	return "", false
+}
+
 // determineAutoMode picks a base mode tier for requestedMode=="auto" from a
 // simple weighted combination of reasoning_depth, complexity_score and
-// creativity_level. See the TODO'd constants above.
-func (r Router) determineAutoMode(input ClassifierOutput) (string, string) {
+// creativity_level (see the TODO'd constants above), then snaps that pick to
+// the nearest tier actually reachable given availableModes -- the models
+// that survived this request's hard filters. Without this snap, a request
+// that (via required_tools/output_format/modality) can only be served by a
+// model restricted to a single tier -- e.g. an image generator that only
+// lists "instant" -- would compute a "natural" tier like "thinking" and then
+// fail with "no candidate models support mode" even though a capable model
+// exists, just not at that tier.
+func (r Router) determineAutoMode(input ClassifierOutput, availableModes map[string]bool) (string, string) {
 	score := enumScore(input.ReasoningDepth) + 2*input.ComplexityScore + 0.5*enumScore(input.CreativityLevel)
 
-	var mode string
+	// Ceilings are inclusive: a score landing exactly on a boundary buys the
+	// cheaper tier, not the pricier one. This matters for neutral or
+	// unrecognized enum inputs (which fall back to "moderate" -- see
+	// defaultThreeLevelEnum) landing exactly on autoScoreThinkingCeiling;
+	// they should not silently escalate all the way to "max".
+	var naturalMode string
 	switch {
-	case score < autoScoreInstantCeiling:
-		mode = "instant"
-	case score < autoScoreThinkingCeiling:
-		mode = "thinking"
+	case score <= autoScoreInstantCeiling:
+		naturalMode = "instant"
+	case score <= autoScoreThinkingCeiling:
+		naturalMode = "thinking"
 	default:
-		mode = "max"
+		naturalMode = "max"
+	}
+
+	mode := naturalMode
+	snapNote := ""
+	if !availableModes[mode] {
+		if snapped, ok := nearestAvailableMode(mode, availableModes); ok {
+			snapNote = fmt.Sprintf("; natural tier %s has no hard-filter survivors, adjusted to %s", naturalMode, snapped)
+			mode = snapped
+		}
 	}
 
 	reasonDetail := fmt.Sprintf(
-		"score=%.2f (reasoning_depth=%s, complexity_score=%.2f, creativity_level=%s)",
-		score, input.ReasoningDepth, input.ComplexityScore, input.CreativityLevel,
+		"score=%.2f (reasoning_depth=%s, complexity_score=%.2f, creativity_level=%s)%s",
+		score, input.ReasoningDepth, input.ComplexityScore, input.CreativityLevel, snapNote,
 	)
 	return mode, reasonDetail
 }
@@ -234,7 +397,7 @@ func (r Router) determineAutoMode(input ClassifierOutput) (string, string) {
 // effectiveBias means, all else equal within the tier, prefer the cheapest
 // model. Ties are broken by lowest total cost.
 func (r Router) scoreAndPick(input ClassifierOutput, candidates []Model) (Model, string) {
-	qualityPull := r.Weights.ReasoningDepthWeight[input.ReasoningDepth] + r.Weights.ComplexityWeight*input.ComplexityScore
+	qualityPull := r.reasoningDepthWeight(input.ReasoningDepth) + r.Weights.ComplexityWeight*input.ComplexityScore
 	effectiveBias := qualityPull - r.Weights.CostWeight
 
 	best := candidates[0]

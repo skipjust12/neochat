@@ -8,18 +8,21 @@ func testCatalog() Catalog {
 			ID: "instant-model", Provider: "test", Modes: []string{"instant"},
 			CostInputPerMTok: 1, CostOutputPerMTok: 2, ContextWindow: 50_000,
 			SupportsModality: []string{"text", "code"},
+			MaxOutputTokens:  4096, SupportsOutputFormats: []string{"text", "markdown"},
 		},
 		{
 			ID: "thinking-model", Provider: "test", Modes: []string{"instant", "thinking"},
 			CostInputPerMTok: 3, CostOutputPerMTok: 10, ContextWindow: 200_000,
-			SupportsModality:  []string{"text", "code", "image"},
-			SupportsWebSearch: true, SupportsCodeExecution: true,
+			SupportsModality: []string{"text", "code", "image"},
+			SupportsTools:    []string{ToolWebSearch, ToolCodeExecution},
+			MaxOutputTokens:  16384, SupportsOutputFormats: []string{"text", "markdown", "json"},
 		},
 		{
 			ID: "max-model", Provider: "test", Modes: []string{"thinking", "max"},
 			CostInputPerMTok: 15, CostOutputPerMTok: 75, ContextWindow: 500_000,
-			SupportsModality:  []string{"text", "code", "image"},
-			SupportsWebSearch: true, SupportsCodeExecution: true,
+			SupportsModality: []string{"text", "code", "image"},
+			SupportsTools:    []string{ToolWebSearch, ToolCodeExecution},
+			MaxOutputTokens:  32768, SupportsOutputFormats: []string{"text", "markdown", "json", "function_call"},
 		},
 	}}
 }
@@ -42,8 +45,7 @@ func baseInput() ClassifierOutput {
 		ModalityOutputExpected: []string{"text", "code"},
 		ReasoningDepth:         "moderate",
 		CreativityLevel:        "low",
-		NeedsWebSearch:         false,
-		NeedsCodeExecution:     false,
+		RequiredTools:          nil,
 		ExpectedOutputLength:   "medium",
 		ComplexityScore:        0.6,
 		ContextDependency:      "light",
@@ -91,6 +93,72 @@ func TestRoute_LowConfidenceEscalatesModeTier(t *testing.T) {
 	}
 	if result.SelectedMode != "thinking" {
 		t.Errorf("expected escalation from instant to thinking, got mode=%s", result.SelectedMode)
+	}
+}
+
+func TestRoute_HardFilterByToolsOutputTokensAndFormat(t *testing.T) {
+	r := NewRouter(testCatalog(), testWeights())
+
+	// instant-model declares no tools and only "text"/"markdown" output
+	// formats, so a request needing code_execution and JSON output must
+	// skip it even though instant is otherwise the cheapest tier.
+	withTools := baseInput()
+	withTools.Confidence = 0.9
+	withTools.RequiredTools = []string{ToolCodeExecution}
+	withTools.OutputFormat = "json"
+	result, err := r.Route(withTools, "instant", "", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SelectedModelID != "thinking-model" {
+		t.Errorf("expected thinking-model (only instant-tier model with code_execution+json), got %s", result.SelectedModelID)
+	}
+
+	// instant-model caps at 4096 output tokens; asking for far more should
+	// exclude it even with no tool/format requirements at all.
+	longOutput := baseInput()
+	longOutput.Confidence = 0.9
+	longOutput.EstimatedOutputTokens = 10_000
+	result, err = r.Route(longOutput, "instant", "", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SelectedModelID != "thinking-model" {
+		t.Errorf("expected thinking-model (only instant-tier model with enough max_output_tokens), got %s", result.SelectedModelID)
+	}
+}
+
+func TestRoute_AutoModeSnapsToAvailableTierWhenNaturalTierHasNoCandidates(t *testing.T) {
+	// A single-model catalog that can only ever serve "instant", modeling an
+	// image-only generator (like nano-banana-2-lite in the real catalog).
+	catalog := Catalog{Models: []Model{
+		{
+			ID: "image-only-model", Provider: "test", Modes: []string{"instant"},
+			CostInputPerMTok: 1, CostOutputPerMTok: 1, ContextWindow: 100_000,
+			SupportsModality:      []string{"text", "image"},
+			SupportsOutputFormats: []string{"image"},
+		},
+	}}
+	r := NewRouter(catalog, testWeights())
+
+	// high/high/0.9 pushes the auto heuristic's "natural" tier to "max", but
+	// the only hard-filter survivor is instant-only. Before the fix this
+	// returned "no candidate models support mode \"max\"" even though a
+	// perfectly capable model existed, just not at that tier.
+	input := ClassifierOutput{
+		ReasoningDepth: "high", CreativityLevel: "high",
+		ModalityInput: []string{"text"}, ModalityOutputExpected: []string{"image"},
+		OutputFormat: "image", ComplexityScore: 0.9, Confidence: 0.9,
+	}
+	result, err := r.Route(input, "auto", "", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SelectedModelID != "image-only-model" {
+		t.Errorf("expected image-only-model, got %s", result.SelectedModelID)
+	}
+	if result.SelectedMode != "instant" {
+		t.Errorf("expected auto mode to snap down to instant (the only available tier), got %s", result.SelectedMode)
 	}
 }
 
