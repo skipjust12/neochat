@@ -1,0 +1,48 @@
+{
+  "models": [
+    {
+      "id": "claude-haiku-4-5",
+      "provider": "anthropic",
+      "modes": ["instant"],
+      "cost_input_per_mtok": 1.0,
+      "cost_output_per_mtok": 5.0,
+      "context_window": 200000,
+      "supports_modality": ["text", "code"],
+      "supports_web_search": false,
+      "supports_code_execution": false
+    },
+    {
+      "id": "claude-sonnet-5",
+      "provider": "anthropic",
+      "modes": ["instant", "thinking"],
+      "cost_input_per_mtok": 3.0,
+      "cost_output_per_mtok": 15.0,
+      "context_window": 200000,
+      "supports_modality": ["text", "code", "image"],
+      "supports_web_search": true,
+      "supports_code_execution": true
+    },
+    {
+      "id": "gpt-5-thinking",
+      "provider": "openai",
+      "modes": ["thinking", "max"],
+      "cost_input_per_mtok": 5.0,
+      "cost_output_per_mtok": 20.0,
+      "context_window": 400000,
+      "supports_modality": ["text", "code", "image"],
+      "supports_web_search": true,
+      "supports_code_execution": true
+    },
+    {
+      "id": "claude-opus-5",
+      "provider": "anthropic",
+      "modes": ["max"],
+      "cost_input_per_mtok": 15.0,
+      "cost_output_per_mtok": 75.0,
+      "context_window": 500000,
+      "supports_modality": ["text", "code", "image"],
+      "supports_web_search": true,
+      "supports_code_execution": true
+    }
+  ]
+}
