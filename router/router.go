@@ -81,10 +81,17 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		return RouteResult{}, fmt.Errorf("router: no candidate models survive hard filters (%s)", filterLog)
 	}
 
+	// availableModes are the mode tiers actually reachable given the models
+	// that survived the hard filters -- e.g. a request that (via
+	// output_format/required_tools/modality) only an image-only,
+	// instant-only model can serve has availableModes == {"instant"}, even
+	// though the catalog as a whole spans all three tiers.
+	availableModes := modeSet(commonCandidates)
+
 	baseMode := requestedMode
 	autoReason := ""
 	if requestedMode == "auto" {
-		baseMode, autoReason = r.determineAutoMode(input)
+		baseMode, autoReason = r.determineAutoMode(input, availableModes)
 	}
 
 	// confidenceBelowThreshold records the actual comparison against the
@@ -95,10 +102,26 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 	confidenceBelowThreshold := input.Confidence < r.Weights.ConfidenceEscalationThreshold
 	effectiveMode := baseMode
 	escalated := false
+	escalationTarget := "" // the tier escalation aimed for, before any snap; used only in the reason text
+	escalationSnapNote := ""
 	if confidenceBelowThreshold {
 		if escalatedMode, ok := escalateMode(baseMode); ok {
+			escalationTarget = escalatedMode
 			effectiveMode = escalatedMode
 			escalated = true
+			// The escalation target itself might not be servable by any
+			// hard-filter survivor (same class of gap as the auto-mode
+			// snap above). Since escalation is already a system decision
+			// overriding the nominal mode, snapping it to the nearest
+			// tier that is actually available keeps the same "when
+			// unsure, prefer capable over absent" philosophy instead of
+			// erroring out on a tier nothing can serve.
+			if !availableModes[effectiveMode] {
+				if snapped, ok := nearestAvailableMode(effectiveMode, availableModes); ok {
+					escalationSnapNote = fmt.Sprintf(" (no hard-filter survivors at %s; snapped to %s)", escalationTarget, snapped)
+					effectiveMode = snapped
+				}
+			}
 		}
 	}
 
@@ -120,8 +143,8 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 	}
 	switch {
 	case escalated:
-		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalated %s -> %s. ",
-			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode, effectiveMode)
+		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalated %s -> %s%s. ",
+			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode, escalationTarget, escalationSnapNote)
 	case confidenceBelowThreshold:
 		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalation triggered but base_mode=%s has no higher tier. ",
 			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode)
@@ -275,10 +298,60 @@ func escalateMode(mode string) (string, bool) {
 	return mode, false
 }
 
+// modeSet collects every mode tier reachable by at least one of the given
+// models, e.g. an image-only model that only lists "instant" in its Modes
+// contributes just {"instant"}.
+func modeSet(models []Model) map[string]bool {
+	set := map[string]bool{}
+	for _, m := range models {
+		for _, mode := range m.Modes {
+			set[mode] = true
+		}
+	}
+	return set
+}
+
+// nearestAvailableMode finds the closest tier to mode that is present in
+// available, preferring to move up the tiers first (a stronger tier being
+// the fallback direction matches the same "when unsure, prefer capable over
+// absent" reasoning behind confidence-based escalation) and only falling
+// back downward if nothing stronger is servable. Returns ok=false only if
+// mode isn't a recognized tier at all.
+func nearestAvailableMode(mode string, available map[string]bool) (string, bool) {
+	idx := -1
+	for i, m := range modeTiers {
+		if m == mode {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		return "", false
+	}
+	for i := idx + 1; i < len(modeTiers); i++ {
+		if available[modeTiers[i]] {
+			return modeTiers[i], true
+		}
+	}
+	for i := idx - 1; i >= 0; i-- {
+		if available[modeTiers[i]] {
+			return modeTiers[i], true
+		}
+	}
+	return "", false
+}
+
 // determineAutoMode picks a base mode tier for requestedMode=="auto" from a
 // simple weighted combination of reasoning_depth, complexity_score and
-// creativity_level. See the TODO'd constants above.
-func (r Router) determineAutoMode(input ClassifierOutput) (string, string) {
+// creativity_level (see the TODO'd constants above), then snaps that pick to
+// the nearest tier actually reachable given availableModes -- the models
+// that survived this request's hard filters. Without this snap, a request
+// that (via required_tools/output_format/modality) can only be served by a
+// model restricted to a single tier -- e.g. an image generator that only
+// lists "instant" -- would compute a "natural" tier like "thinking" and then
+// fail with "no candidate models support mode" even though a capable model
+// exists, just not at that tier.
+func (r Router) determineAutoMode(input ClassifierOutput, availableModes map[string]bool) (string, string) {
 	score := enumScore(input.ReasoningDepth) + 2*input.ComplexityScore + 0.5*enumScore(input.CreativityLevel)
 
 	// Ceilings are inclusive: a score landing exactly on a boundary buys the
@@ -286,19 +359,28 @@ func (r Router) determineAutoMode(input ClassifierOutput) (string, string) {
 	// unrecognized enum inputs (which fall back to "moderate" -- see
 	// defaultThreeLevelEnum) landing exactly on autoScoreThinkingCeiling;
 	// they should not silently escalate all the way to "max".
-	var mode string
+	var naturalMode string
 	switch {
 	case score <= autoScoreInstantCeiling:
-		mode = "instant"
+		naturalMode = "instant"
 	case score <= autoScoreThinkingCeiling:
-		mode = "thinking"
+		naturalMode = "thinking"
 	default:
-		mode = "max"
+		naturalMode = "max"
+	}
+
+	mode := naturalMode
+	snapNote := ""
+	if !availableModes[mode] {
+		if snapped, ok := nearestAvailableMode(mode, availableModes); ok {
+			snapNote = fmt.Sprintf("; natural tier %s has no hard-filter survivors, adjusted to %s", naturalMode, snapped)
+			mode = snapped
+		}
 	}
 
 	reasonDetail := fmt.Sprintf(
-		"score=%.2f (reasoning_depth=%s, complexity_score=%.2f, creativity_level=%s)",
-		score, input.ReasoningDepth, input.ComplexityScore, input.CreativityLevel,
+		"score=%.2f (reasoning_depth=%s, complexity_score=%.2f, creativity_level=%s)%s",
+		score, input.ReasoningDepth, input.ComplexityScore, input.CreativityLevel, snapNote,
 	)
 	return mode, reasonDetail
 }

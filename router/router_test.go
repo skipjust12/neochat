@@ -128,6 +128,40 @@ func TestRoute_HardFilterByToolsOutputTokensAndFormat(t *testing.T) {
 	}
 }
 
+func TestRoute_AutoModeSnapsToAvailableTierWhenNaturalTierHasNoCandidates(t *testing.T) {
+	// A single-model catalog that can only ever serve "instant", modeling an
+	// image-only generator (like nano-banana-2-lite in the real catalog).
+	catalog := Catalog{Models: []Model{
+		{
+			ID: "image-only-model", Provider: "test", Modes: []string{"instant"},
+			CostInputPerMTok: 1, CostOutputPerMTok: 1, ContextWindow: 100_000,
+			SupportsModality:      []string{"text", "image"},
+			SupportsOutputFormats: []string{"image"},
+		},
+	}}
+	r := NewRouter(catalog, testWeights())
+
+	// high/high/0.9 pushes the auto heuristic's "natural" tier to "max", but
+	// the only hard-filter survivor is instant-only. Before the fix this
+	// returned "no candidate models support mode \"max\"" even though a
+	// perfectly capable model existed, just not at that tier.
+	input := ClassifierOutput{
+		ReasoningDepth: "high", CreativityLevel: "high",
+		ModalityInput: []string{"text"}, ModalityOutputExpected: []string{"image"},
+		OutputFormat: "image", ComplexityScore: 0.9, Confidence: 0.9,
+	}
+	result, err := r.Route(input, "auto", "", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SelectedModelID != "image-only-model" {
+		t.Errorf("expected image-only-model, got %s", result.SelectedModelID)
+	}
+	if result.SelectedMode != "instant" {
+		t.Errorf("expected auto mode to snap down to instant (the only available tier), got %s", result.SelectedMode)
+	}
+}
+
 func TestRoute_AutoModePicksTierFromComplexity(t *testing.T) {
 	r := NewRouter(testCatalog(), testWeights())
 
