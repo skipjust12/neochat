@@ -1,10 +1,10 @@
 {
-  "reasoning_depth_weight": {
-    "low": 0.2,
-    "moderate": 0.6,
-    "high": 1.2
-  },
-  "complexity_weight": 1.0,
-  "cost_weight": 0.5,
-  "confidence_escalation_threshold": 0.5
+  "confidence_escalation_threshold": 0.5,
+  "auto_mode": {
+    "reasoning_weight": 1.0,
+    "complexity_weight": 2.0,
+    "creativity_weight": 0.2,
+    "instant_ceiling": 1.0,
+    "thinking_ceiling": 2.5
+  }
 }
