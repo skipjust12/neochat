@@ -154,8 +154,9 @@ func validateInput(input ClassifierOutput) error {
 
 // applyHardFilters removes models that cannot serve the request at all,
 // independent of which mode tier is ultimately chosen: insufficient context
-// window, missing web-search/code-execution support, or missing modality
-// support. It returns the surviving models plus a short human-readable log
+// window, a missing required tool, missing modality support, an output
+// budget below the estimated response length, or an unsupported output
+// format. It returns the surviving models plus a short human-readable log
 // of what was checked, for inclusion in RouteResult.Reason.
 func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens int) ([]Model, string) {
 	requiredModalities := map[string]bool{}
@@ -171,24 +172,49 @@ func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens 
 		if m.ContextWindow < estimatedContextTokens {
 			continue
 		}
-		if input.NeedsWebSearch && !m.SupportsWebSearch {
-			continue
-		}
-		if input.NeedsCodeExecution && !m.SupportsCodeExecution {
+		if !supportsAllTools(m, input.RequiredTools) {
 			continue
 		}
 		if !supportsAllModalities(m, requiredModalities) {
+			continue
+		}
+		if input.EstimatedOutputTokens > 0 && m.MaxOutputTokens > 0 && m.MaxOutputTokens < input.EstimatedOutputTokens {
+			continue
+		}
+		if input.OutputFormat != "" && !supportsOutputFormat(m, input.OutputFormat) {
 			continue
 		}
 		kept = append(kept, m)
 	}
 
 	log := fmt.Sprintf(
-		"context>=%d, web_search=%v, code_execution=%v, modalities=%v -> %d/%d models",
-		estimatedContextTokens, input.NeedsWebSearch, input.NeedsCodeExecution,
-		modalitiesList(requiredModalities), len(kept), len(r.Catalog.Models),
+		"context>=%d, tools=%v, modalities=%v, estimated_output_tokens=%d, output_format=%q -> %d/%d models",
+		estimatedContextTokens, input.RequiredTools, modalitiesList(requiredModalities),
+		input.EstimatedOutputTokens, input.OutputFormat, len(kept), len(r.Catalog.Models),
 	)
 	return kept, log
+}
+
+func supportsAllTools(m Model, required []string) bool {
+	supported := map[string]bool{}
+	for _, t := range m.SupportsTools {
+		supported[t] = true
+	}
+	for _, t := range required {
+		if !supported[t] {
+			return false
+		}
+	}
+	return true
+}
+
+func supportsOutputFormat(m Model, format string) bool {
+	for _, f := range m.SupportsOutputFormats {
+		if f == format {
+			return true
+		}
+	}
+	return false
 }
 
 func supportsAllModalities(m Model, required map[string]bool) bool {

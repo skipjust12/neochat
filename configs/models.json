@@ -8,8 +8,9 @@
       "cost_output_per_mtok": 5.0,
       "context_window": 200000,
       "supports_modality": ["text", "code"],
-      "supports_web_search": false,
-      "supports_code_execution": false
+      "supports_tools": [],
+      "max_output_tokens": 8192,
+      "supports_output_formats": ["text", "markdown"]
     },
     {
       "id": "claude-sonnet-5",
@@ -19,8 +20,9 @@
       "cost_output_per_mtok": 15.0,
       "context_window": 200000,
       "supports_modality": ["text", "code", "image"],
-      "supports_web_search": true,
-      "supports_code_execution": true
+      "supports_tools": ["web_search", "code_execution"],
+      "max_output_tokens": 16384,
+      "supports_output_formats": ["text", "markdown", "json", "function_call"]
     },
     {
       "id": "gpt-5-thinking",
@@ -30,8 +32,9 @@
       "cost_output_per_mtok": 20.0,
       "context_window": 400000,
       "supports_modality": ["text", "code", "image"],
-      "supports_web_search": true,
-      "supports_code_execution": true
+      "supports_tools": ["web_search", "code_execution"],
+      "max_output_tokens": 32768,
+      "supports_output_formats": ["text", "markdown", "json", "function_call"]
     },
     {
       "id": "claude-opus-5",
@@ -41,8 +44,9 @@
       "cost_output_per_mtok": 75.0,
       "context_window": 500000,
       "supports_modality": ["text", "code", "image"],
-      "supports_web_search": true,
-      "supports_code_execution": true
+      "supports_tools": ["web_search", "code_execution"],
+      "max_output_tokens": 32768,
+      "supports_output_formats": ["text", "markdown", "json", "function_call"]
     },
     {
       "id": "claude-fable-5",
@@ -52,8 +56,9 @@
       "cost_output_per_mtok": 10.0,
       "context_window": 200000,
       "supports_modality": ["text", "code", "image"],
-      "supports_web_search": true,
-      "supports_code_execution": false
+      "supports_tools": ["web_search"],
+      "max_output_tokens": 8192,
+      "supports_output_formats": ["text", "markdown"]
     },
     {
       "id": "gpt-5.6-luna",
@@ -63,8 +68,9 @@
       "cost_output_per_mtok": 2.0,
       "context_window": 300000,
       "supports_modality": ["text", "code"],
-      "supports_web_search": true,
-      "supports_code_execution": true
+      "supports_tools": ["web_search", "code_execution"],
+      "max_output_tokens": 8192,
+      "supports_output_formats": ["text", "markdown", "json"]
     },
     {
       "id": "gpt-5.6-terra",
@@ -74,8 +80,9 @@
       "cost_output_per_mtok": 16.0,
       "context_window": 400000,
       "supports_modality": ["text", "code", "image"],
-      "supports_web_search": true,
-      "supports_code_execution": true
+      "supports_tools": ["web_search", "code_execution"],
+      "max_output_tokens": 16384,
+      "supports_output_formats": ["text", "markdown", "json", "function_call"]
     },
     {
       "id": "gpt-5.6-sol",
@@ -85,8 +92,9 @@
       "cost_output_per_mtok": 60.0,
       "context_window": 400000,
       "supports_modality": ["text", "code", "image"],
-      "supports_web_search": true,
-      "supports_code_execution": true
+      "supports_tools": ["web_search", "code_execution"],
+      "max_output_tokens": 32768,
+      "supports_output_formats": ["text", "markdown", "json", "function_call"]
     },
     {
       "id": "kimi-k3",
@@ -96,8 +104,9 @@
       "cost_output_per_mtok": 2.5,
       "context_window": 1000000,
       "supports_modality": ["text", "code"],
-      "supports_web_search": false,
-      "supports_code_execution": false
+      "supports_tools": [],
+      "max_output_tokens": 8192,
+      "supports_output_formats": ["text", "markdown"]
     },
     {
       "id": "gpt-oss-120b",
@@ -107,8 +116,9 @@
       "cost_output_per_mtok": 1.2,
       "context_window": 128000,
       "supports_modality": ["text", "code"],
-      "supports_web_search": false,
-      "supports_code_execution": false
+      "supports_tools": [],
+      "max_output_tokens": 4096,
+      "supports_output_formats": ["text", "markdown"]
     }
   ]
 }

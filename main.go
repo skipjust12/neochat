@@ -28,12 +28,15 @@ func main() {
 		"modality_output_expected": ["text", "code"],
 		"reasoning_depth": "moderate",
 		"creativity_level": "low",
-		"needs_web_search": false,
-		"needs_code_execution": false,
+		"required_tools": [],
 		"expected_output_length": "medium",
+		"estimated_output_tokens": 1200,
+		"output_format": "text",
 		"complexity_score": 0.6,
 		"context_dependency": "light",
-		"confidence": 0.82
+		"confidence": 0.82,
+		"content_flags": [],
+		"safety_risk_score": 0.0
 	}`
 
 	var input router.ClassifierOutput
