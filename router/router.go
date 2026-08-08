@@ -9,15 +9,6 @@ import (
 // one step to the right; "max" is the ceiling and cannot escalate further.
 var modeTiers = []string{"instant", "thinking", "max"}
 
-// TODO: вынести в weights.json позже.
-// Пороговые правила для auto-режима: комбинируем reasoning_depth,
-// complexity_score и creativity_level в один числовой "запрос на мощность"
-// и режем его порогами ниже.
-const (
-	autoScoreInstantCeiling  = 1.0 // score <= this -> "instant"
-	autoScoreThinkingCeiling = 2.5 // score <= this -> "thinking"; else -> "max"
-)
-
 // defaultThreeLevelEnum is the fallback used everywhere a "low"/"moderate"/
 // "high" classifier field (reasoning_depth, creativity_level) is looked up
 // but the classifier sent something outside that enum. Keeping a single
@@ -132,7 +123,7 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		)
 	}
 
-	winner, scoreLog := r.scoreAndPick(input, modeCandidates)
+	winner, scoreLog := r.scoreAndPick(modeCandidates)
 
 	var reason strings.Builder
 	fmt.Fprintf(&reason, "hard filters passed: %s. ", filterLog)
@@ -261,19 +252,6 @@ func modalitiesList(m map[string]bool) []string {
 	return out
 }
 
-// reasoningDepthWeight looks up the configured cost-scoring weight for a
-// reasoning_depth value. An unrecognized value falls back to the weight for
-// defaultThreeLevelEnum ("moderate"), matching enumScore's fallback used by
-// the auto-mode heuristic -- without this, the same unrecognized input would
-// silently score as 0 here (weaker than even "low") while being treated as
-// "moderate" for auto-mode tier selection.
-func (r Router) reasoningDepthWeight(depth string) float64 {
-	if w, ok := r.Weights.ReasoningDepthWeight[depth]; ok {
-		return w
-	}
-	return r.Weights.ReasoningDepthWeight[defaultThreeLevelEnum]
-}
-
 func filterByMode(models []Model, mode string) []Model {
 	var kept []Model
 	for _, m := range models {
@@ -352,18 +330,21 @@ func nearestAvailableMode(mode string, available map[string]bool) (string, bool)
 // fail with "no candidate models support mode" even though a capable model
 // exists, just not at that tier.
 func (r Router) determineAutoMode(input ClassifierOutput, availableModes map[string]bool) (string, string) {
-	score := enumScore(input.ReasoningDepth) + 2*input.ComplexityScore + 0.5*enumScore(input.CreativityLevel)
+	w := r.Weights.AutoMode
+	score := w.ReasoningWeight*enumScore(input.ReasoningDepth) +
+		w.ComplexityWeight*input.ComplexityScore +
+		w.CreativityWeight*enumScore(input.CreativityLevel)
 
 	// Ceilings are inclusive: a score landing exactly on a boundary buys the
 	// cheaper tier, not the pricier one. This matters for neutral or
 	// unrecognized enum inputs (which fall back to "moderate" -- see
-	// defaultThreeLevelEnum) landing exactly on autoScoreThinkingCeiling;
-	// they should not silently escalate all the way to "max".
+	// defaultThreeLevelEnum) landing exactly on the thinking ceiling; they
+	// should not silently escalate all the way to "max".
 	var naturalMode string
 	switch {
-	case score <= autoScoreInstantCeiling:
+	case score <= w.InstantCeiling:
 		naturalMode = "instant"
-	case score <= autoScoreThinkingCeiling:
+	case score <= w.ThinkingCeiling:
 		naturalMode = "thinking"
 	default:
 		naturalMode = "max"
@@ -385,37 +366,26 @@ func (r Router) determineAutoMode(input ClassifierOutput, availableModes map[str
 	return mode, reasonDetail
 }
 
-// scoreAndPick applies the weighted scoring formula from weights.json to
-// pick a winner among mode-eligible candidates:
-//
-//	qualityPull    = reasoning_depth_weight[depth] + complexity_weight * complexity_score
-//	effectiveBias  = qualityPull - cost_weight
-//	score(model)   = effectiveBias * (cost_input_per_mtok + cost_output_per_mtok)
-//
-// A positive effectiveBias means the request's reasoning/complexity demands
-// push toward the strongest (priciest) model within the tier; a negative
-// effectiveBias means, all else equal within the tier, prefer the cheapest
-// model. Ties are broken by lowest total cost.
-func (r Router) scoreAndPick(input ClassifierOutput, candidates []Model) (Model, string) {
-	qualityPull := r.reasoningDepthWeight(input.ReasoningDepth) + r.Weights.ComplexityWeight*input.ComplexityScore
-	effectiveBias := qualityPull - r.Weights.CostWeight
-
+// scoreAndPick picks the cheapest model among candidates already known to
+// be eligible for the target mode tier. Quality is decided before this
+// point -- by which tier got selected (determineAutoMode / the user's
+// explicit requestedMode) and by the hard filters -- so every survivor
+// here has already been judged good enough for the request; scoreAndPick's
+// only job is "не самая дешёвая, а самая дешёвая из тех, что не теряют в
+// качестве": minimize cost among the already-qualified set. Ties are
+// broken by catalog order (first model at the minimum cost wins).
+func (r Router) scoreAndPick(candidates []Model) (Model, string) {
 	best := candidates[0]
-	bestScore := effectiveBias * (best.CostInputPerMTok + best.CostOutputPerMTok)
+	bestCost := best.CostInputPerMTok + best.CostOutputPerMTok
 
 	for _, m := range candidates[1:] {
-		totalCost := m.CostInputPerMTok + m.CostOutputPerMTok
-		score := effectiveBias * totalCost
-		bestTotalCost := best.CostInputPerMTok + best.CostOutputPerMTok
-		if score > bestScore || (score == bestScore && totalCost < bestTotalCost) {
+		cost := m.CostInputPerMTok + m.CostOutputPerMTok
+		if cost < bestCost {
 			best = m
-			bestScore = score
+			bestCost = cost
 		}
 	}
 
-	log := fmt.Sprintf(
-		"quality_pull=%.2f, effective_bias=%.2f, winner=%s (cost=%.2f, score=%.2f)",
-		qualityPull, effectiveBias, best.ID, best.CostInputPerMTok+best.CostOutputPerMTok, bestScore,
-	)
+	log := fmt.Sprintf("cheapest in tier: winner=%s (cost=%.2f)", best.ID, bestCost)
 	return best, log
 }

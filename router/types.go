@@ -81,13 +81,35 @@ type Catalog struct {
 	Models []Model `json:"models"`
 }
 
+// AutoModeWeights configures the auto-mode tier heuristic: how much each
+// classifier signal contributes to the "how much model do we need" score,
+// and where the instant/thinking/max boundaries sit on that score.
+//
+// score is reasoning_weight*enumScore(reasoning_depth) plus
+// complexity_weight*complexity_score plus
+// creativity_weight*enumScore(creativity_level), where enumScore maps
+// "low"/"moderate"/"high" to 0/1/2. Ceilings are inclusive: a score landing
+// exactly on a boundary buys the cheaper tier.
+type AutoModeWeights struct {
+	ReasoningWeight  float64 `json:"reasoning_weight"`
+	ComplexityWeight float64 `json:"complexity_weight"`
+	CreativityWeight float64 `json:"creativity_weight"`
+	InstantCeiling   float64 `json:"instant_ceiling"`
+	ThinkingCeiling  float64 `json:"thinking_ceiling"`
+}
+
 // Weights holds the scoring weights and thresholds loaded from weights.json.
 // Field meanings and units are documented alongside the JSON file itself.
+//
+// Model selection within an already-chosen tier is deliberately not
+// weighted by anything here: once a tier is picked, every survivor in it
+// has already been judged "good enough" (that's what the tier and the hard
+// filters are for), so Route always takes the cheapest one -- see
+// scoreAndPick. AutoModeWeights and ConfidenceEscalationThreshold are the
+// only places quality/cost tradeoffs are actually made.
 type Weights struct {
-	ReasoningDepthWeight          map[string]float64 `json:"reasoning_depth_weight"`
-	ComplexityWeight              float64            `json:"complexity_weight"`
-	CostWeight                    float64            `json:"cost_weight"`
-	ConfidenceEscalationThreshold float64            `json:"confidence_escalation_threshold"`
+	ConfidenceEscalationThreshold float64         `json:"confidence_escalation_threshold"`
+	AutoMode                      AutoModeWeights `json:"auto_mode"`
 }
 
 // RouteResult is the output of the routing decision.

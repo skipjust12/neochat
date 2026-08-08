@@ -29,10 +29,14 @@ func testCatalog() Catalog {
 
 func testWeights() Weights {
 	return Weights{
-		ReasoningDepthWeight:          map[string]float64{"low": 0.2, "moderate": 0.6, "high": 1.2},
-		ComplexityWeight:              1.0,
-		CostWeight:                    0.5,
 		ConfidenceEscalationThreshold: 0.5,
+		AutoMode: AutoModeWeights{
+			ReasoningWeight:  1.0,
+			ComplexityWeight: 2.0,
+			CreativityWeight: 0.2,
+			InstantCeiling:   1.0,
+			ThinkingCeiling:  2.5,
+		},
 	}
 }
 
