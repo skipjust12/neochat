@@ -111,7 +111,7 @@
     {
       "id": "gemini-3.6-flash",
       "provider": "google",
-      "modes": ["instant", "thinking"],
+      "modes": ["instant"],
       "cost_input_per_mtok": 1.5,
       "cost_output_per_mtok": 7.5,
       "context_window": 1048576,
