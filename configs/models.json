@@ -1,19 +1,6 @@
 {
   "models": [
     {
-      "id": "gemma-4-31b-it:free",
-      "api_model_id": "google/gemma-4-31b-it:free",
-      "provider": "google",
-      "modes": ["instant"],
-      "cost_input_per_mtok": 0.0,
-      "cost_output_per_mtok": 0.0,
-      "context_window": 131072,
-      "supports_modality": ["text", "code"],
-      "supports_tools": [],
-      "max_output_tokens": 8192,
-      "supports_output_formats": ["text", "markdown"]
-    },
-    {
       "id": "claude-haiku-4-5",
       "provider": "anthropic",
       "modes": ["instant"],

@@ -28,7 +28,7 @@ func TestOpenRouterClient_Generate(t *testing.T) {
 	c := NewOpenRouterClient("test-key")
 	c.baseURL = srv.URL
 
-	result, err := c.Generate(context.Background(), "google/gemma-4-31b-it:free", []Message{
+	result, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{
 		{Role: "system", Content: "you are helpful"},
 		{Role: "user", Content: "hi"},
 	})
@@ -36,8 +36,8 @@ func TestOpenRouterClient_Generate(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if gotReq.Model != "google/gemma-4-31b-it:free" {
-		t.Errorf("request model = %q, want google/gemma-4-31b-it:free", gotReq.Model)
+	if gotReq.Model != "test-vendor/test-model" {
+		t.Errorf("request model = %q, want test-vendor/test-model", gotReq.Model)
 	}
 	if len(gotReq.Messages) != 2 || gotReq.Messages[0].Role != "system" || gotReq.Messages[1].Role != "user" {
 		t.Errorf("request messages = %+v, want [system, user]", gotReq.Messages)
@@ -69,7 +69,7 @@ func TestOpenRouterClient_Generate_OptionalHeaders(t *testing.T) {
 	c.Referer = "https://example.com"
 	c.Title = "NeoChat"
 
-	if _, err := c.Generate(context.Background(), "google/gemma-4-31b-it:free", []Message{{Role: "user", Content: "hi"}}); err != nil {
+	if _, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
@@ -77,14 +77,14 @@ func TestOpenRouterClient_Generate_OptionalHeaders(t *testing.T) {
 func TestOpenRouterClient_Generate_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"error": {"message": "No endpoints found for google/gemma-4-31b-it:free", "code": 404}}`))
+		_, _ = w.Write([]byte(`{"error": {"message": "No endpoints found for test-vendor/test-model", "code": 404}}`))
 	}))
 	defer srv.Close()
 
 	c := NewOpenRouterClient("test-key")
 	c.baseURL = srv.URL
 
-	_, err := c.Generate(context.Background(), "google/gemma-4-31b-it:free", []Message{{Role: "user", Content: "hi"}})
+	_, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
 	if err == nil {
 		t.Fatal("expected an error for a 404 response, got nil")
 	}
