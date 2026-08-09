@@ -53,7 +53,13 @@ type ClassifierOutput struct {
 
 // Model describes a single entry in the model catalog (models.json).
 type Model struct {
-	ID                string   `json:"id"`
+	ID string `json:"id"`
+
+	// APIModelID is the string the vendor's own API expects as the model
+	// identifier, if it differs from ID (the catalog's internal name).
+	// Empty means "same as ID" -- see ResolveAPIModelID.
+	APIModelID string `json:"api_model_id,omitempty"`
+
 	Provider          string   `json:"provider"`
 	Modes             []string `json:"modes"`
 	CostInputPerMTok  float64  `json:"cost_input_per_mtok"`

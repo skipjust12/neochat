@@ -33,3 +33,14 @@ func (c Catalog) FindModel(id string) (Model, bool) {
 	}
 	return Model{}, false
 }
+
+// ResolveAPIModelID returns the string a provider.Client should use to
+// call this model: APIModelID if the catalog set one explicitly, or ID
+// otherwise (the common case -- most catalog IDs already match the
+// vendor's own naming).
+func (m Model) ResolveAPIModelID() string {
+	if m.APIModelID != "" {
+		return m.APIModelID
+	}
+	return m.ID
+}

@@ -48,13 +48,29 @@ func NewRouter(catalog Catalog, weights Weights) Router {
 // Route selects a model and product mode for a single request, given the
 // classifier's analysis of it, the mode the user explicitly requested
 // ("auto" | "instant" | "thinking" | "max" | "manual"), the manually chosen
-// model ID (only used when requestedMode == "manual"), and an estimate of
-// how many tokens of conversation context the request carries.
-func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelID string, estimatedContextTokens int) (RouteResult, error) {
+// model ID (only used when requestedMode == "manual"), an estimate of how
+// many tokens of conversation context the request carries, and whether
+// this user's Thinking+Max spend has hit their plan's 30-day rolling cap
+// (see the limits package and docs/unit-economics.md section 6).
+// thinkingMaxLocked comes from outside -- Route has no notion of "plans"
+// or spend history, only this one boolean.
+func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelID string, estimatedContextTokens int, thinkingMaxLocked bool) (RouteResult, error) {
 	if requestedMode == "manual" {
 		model, ok := r.Catalog.FindModel(manualModelID)
 		if !ok {
 			return RouteResult{}, fmt.Errorf("router: manual_model_id %q not found in catalog", manualModelID)
+		}
+		// Manual bypasses scoring, but not the spend lock -- docs/unit-economics.md
+		// section 6.1 calls out manual mode by name as the loophole that would
+		// otherwise let a locked-out user keep hitting an expensive model
+		// directly. Unlike the scored path below, there is no cheaper
+		// candidate to silently fall back to (the user asked for this exact
+		// model), so this returns an error instead of substituting a
+		// different model the caller didn't ask for.
+		if thinkingMaxLocked && !modelSupportsMode(model, "instant") {
+			return RouteResult{}, fmt.Errorf(
+				"router: manual_model_id %q is thinking/max-tier and thinking_max is locked for this user this billing cycle", manualModelID,
+			)
 		}
 		return RouteResult{
 			SelectedModelID:  model.ID,
@@ -117,6 +133,22 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		}
 	}
 
+	// thinkingMaxLocked forces Thinking/Max down to Instant regardless of
+	// what auto-mode/escalation decided -- it is a spend-guarantee override,
+	// not a quality signal, so it applies after those are resolved rather
+	// than participating in the tier math itself. Unlike escalation, this
+	// only ever moves down: nearestAvailableMode's "prefer stronger" bias
+	// would be exactly backwards here.
+	lockedDowngradeNote := ""
+	if thinkingMaxLocked && effectiveMode != "instant" {
+		if availableModes["instant"] {
+			lockedDowngradeNote = fmt.Sprintf(" thinking_max locked for this billing cycle: forced %s -> instant.", effectiveMode)
+			effectiveMode = "instant"
+		} else {
+			lockedDowngradeNote = fmt.Sprintf(" thinking_max locked, but no instant-tier candidate survives hard filters: kept %s.", effectiveMode)
+		}
+	}
+
 	modeCandidates := filterByMode(commonCandidates, effectiveMode)
 	if len(modeCandidates) == 0 {
 		return RouteResult{}, fmt.Errorf(
@@ -144,7 +176,8 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		fmt.Fprintf(&reason, "confidence %.2f >= threshold %.2f: no escalation. ",
 			input.Confidence, r.Weights.ConfidenceEscalationThreshold)
 	}
-	fmt.Fprintf(&reason, "scored %d candidate(s) for mode=%s: %s", len(modeCandidates), effectiveMode, scoreLog)
+	fmt.Fprintf(&reason, "scored %d candidate(s) for mode=%s: %s.", len(modeCandidates), effectiveMode, scoreLog)
+	reason.WriteString(lockedDowngradeNote)
 
 	return RouteResult{
 		SelectedModelID:  winner.ID,
@@ -252,6 +285,16 @@ func modalitiesList(m map[string]bool) []string {
 		out = append(out, k)
 	}
 	return out
+}
+
+// modelSupportsMode reports whether m lists mode among its Modes.
+func modelSupportsMode(m Model, mode string) bool {
+	for _, mm := range m.Modes {
+		if mm == mode {
+			return true
+		}
+	}
+	return false
 }
 
 func filterByMode(models []Model, mode string) []Model {
