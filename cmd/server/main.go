@@ -35,28 +35,33 @@ func main() {
 		log.Fatal(err)
 	}
 
-	openAIKey := os.Getenv("OPENAI_API_KEY")
-	if openAIKey == "" {
-		log.Fatal("OPENAI_API_KEY is required (no key, no real vendor calls -- see provider.OpenAIClient)")
+	openRouterKey := os.Getenv("OPENROUTER_API_KEY")
+	if openRouterKey == "" {
+		log.Fatal("OPENROUTER_API_KEY is required (no key, no real vendor calls -- see provider.OpenRouterClient)")
 	}
-	openAIClient := provider.NewOpenAIClient(openAIKey)
+	openRouterClient := provider.NewOpenRouterClient(openRouterKey)
 
 	classifierModelID := os.Getenv("CLASSIFIER_API_MODEL_ID")
 	if classifierModelID == "" {
-		log.Fatal("CLASSIFIER_API_MODEL_ID is required (the exact vendor-side model string to classify with)")
+		log.Fatal("CLASSIFIER_API_MODEL_ID is required (the exact OpenRouter model slug, e.g. \"vendor/model-name\", to classify with)")
 	}
 
 	srv := &server.Server{
 		Router:     router.NewRouter(catalog, weights),
-		Classifier: classifier.New(openAIClient, classifierModelID, systemPrompt),
+		Classifier: classifier.New(openRouterClient, classifierModelID, systemPrompt),
 		Store:      limits.NewInMemorySpendStore(),
 		Plans:      plans,
-		// Only "openai" has a real client wired up right now -- routing
-		// to a model from any other catalog provider (anthropic, google,
-		// ...) will fail at generate time with a clear error until a
-		// provider.Client exists for it. See README "Provider abstraction
-		// layer".
-		Generators: map[string]provider.Client{"openai": openAIClient},
+		// Only "google" has a real client wired up right now -- it's the
+		// provider tag on configs/models.json's temporary
+		// "gemma-4-31b-it:free" test entry (see docs/running-locally.md).
+		// Routing to a model tagged with any other catalog provider will
+		// fail at generate time with a clear error until either that
+		// entry is given a verified OpenRouter slug (api_model_id) and
+		// added here, or this map is built from every catalog provider at
+		// once -- OpenRouter can serve all of them through this same
+		// client, the missing piece is confirming each one's real slug,
+		// not writing another Client implementation.
+		Generators: map[string]provider.Client{"google": openRouterClient},
 	}
 
 	addr := os.Getenv("ADDR")

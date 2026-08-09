@@ -2,55 +2,70 @@
 
 `cmd/server` is the real HTTP entry point (`main.go` at the repo root is a separate, router-only demo — leave it alone). It has never been tested against a live vendor API from inside a Claude Code on the web session: that session's outbound network policy blocks arbitrary external hosts (confirmed for both `api.openai.com` and `openrouter.ai` — a 403 from the session's own egress proxy, not from either vendor). Testing against a real API has to happen on a machine without that restriction — most likely yours.
 
-## 1. Find your model's real API name
+The server calls vendors through **OpenRouter** (`provider.OpenRouterClient`, `https://openrouter.ai/api/v1`), matching the product's original "Model access: OpenRouter at launch" decision (see README). OpenRouter model IDs are `vendor/model-name` (e.g. `google/gemma-4-31b-it:free`), not a vendor's own bare model name — get this string wrong and every call 404s.
 
-The catalog (`configs/models.json`) uses forward-looking internal names like `gpt-5.6-luna` for cataloging purposes. There is no guarantee that string is what OpenAI's API actually expects — a free-trial account in particular likely only has access to a small set of base models. Check what your key can actually call before assuming the catalog name works:
+## 0. Temporary test entry: `gemma-4-31b-it:free`
 
-```bash
-curl https://api.openai.com/v1/models -H "Authorization: Bearer $OPENAI_API_KEY" | python3 -m json.tool
-```
-
-If the real model name differs from the catalog id, don't hand-edit `models.json`'s `id` (that's the internal name the router's tier/pricing logic keys off). Instead set `api_model_id` on that catalog entry — `router.Model.ResolveAPIModelID()` returns it in preference to `id`, and that's what `provider.Client.Generate` is actually called with:
+`configs/models.json` currently has a **temporary** entry added just to prove the pipeline works end to end on a free-tier OpenRouter key:
 
 ```json
 {
-  "id": "gpt-5.6-luna",
-  "api_model_id": "gpt-4o-mini",
-  "provider": "openai",
+  "id": "gemma-4-31b-it:free",
+  "api_model_id": "google/gemma-4-31b-it:free",
+  "provider": "google",
+  "modes": ["instant"],
+  "cost_input_per_mtok": 0.0,
+  "cost_output_per_mtok": 0.0,
   ...
 }
 ```
 
-## 2. Set the required environment variables
+Cost is set to $0/Mtok on purpose so `scoreAndPick` (cheapest-in-tier wins) picks it over every other instant-tier model automatically — a plain `"requested_mode": "auto"` request with a simple message like "привет" should land on it without needing `manual_model_id`. `cmd/server/main.go`'s `Generators` map only wires a real client for `provider: "google"` right now (this entry's provider) — routing to anything else will fail cleanly with `no provider.Client configured for provider "..."` until either that catalog entry gets a verified OpenRouter slug or the map is extended.
+
+**Remove this entry (and the `Generators` map comment referencing it) once the pipeline is confirmed working** — it's not a real catalog model, just a known-good target for the first live test.
+
+## 1. Set the required environment variables
 
 | Variable | Meaning |
 |---|---|
-| `OPENAI_API_KEY` | Required. No key, no real vendor calls — `cmd/server` refuses to start without it. |
-| `CLASSIFIER_API_MODEL_ID` | Required. The exact vendor-side model string to classify with (same "check what your key can actually call" caveat as above — this does not have to be the same model as generation). |
+| `OPENROUTER_API_KEY` | Required. No key, no real vendor calls — `cmd/server` refuses to start without it. |
+| `CLASSIFIER_API_MODEL_ID` | Required. The exact OpenRouter model slug to classify with — for a first test, reuse `google/gemma-4-31b-it:free` here too, since it's the only confirmed-available model on a free-trial key. |
 | `ADDR` | Optional, defaults to `:8080`. |
 
 **Never commit a real key.** Set it in your shell for the one command, not in a file that gets `git add`ed:
 
 ```bash
-export OPENAI_API_KEY="sk-..."
-export CLASSIFIER_API_MODEL_ID="gpt-4o-mini"
+export OPENROUTER_API_KEY="sk-or-..."
+export CLASSIFIER_API_MODEL_ID="google/gemma-4-31b-it:free"
 ```
 
-## 3. Run it
+## 2. Run it
 
 ```bash
 go run ./cmd/server
 ```
 
-## 4. Send a test request
+## 3. Send a test request
 
 ```bash
 curl -s localhost:8080/chat -X POST -d '{
   "user_id": "test-user",
   "plan_id": "pro",
-  "message": "write a haiku about databases",
+  "message": "привет",
   "requested_mode": "auto",
-  "estimated_context_tokens": 500
+  "estimated_context_tokens": 200
+}' | python3 -m json.tool
+```
+
+To bypass the classifier/auto-mode entirely and force Gemma regardless of what gets classified (useful for isolating "does the plumbing work at all" from "does auto-routing pick sensibly"):
+
+```bash
+curl -s localhost:8080/chat -X POST -d '{
+  "user_id": "test-user",
+  "plan_id": "pro",
+  "message": "привет",
+  "requested_mode": "manual",
+  "manual_model_id": "gemma-4-31b-it:free"
 }' | python3 -m json.tool
 ```
 
@@ -58,8 +73,8 @@ Expected response shape:
 
 ```json
 {
-  "selected_model_id": "...",
-  "selected_mode": "instant | thinking | max",
+  "selected_model_id": "gemma-4-31b-it:free",
+  "selected_mode": "instant",
   "reason": "...",
   "estimated_cost_usd": 0.0,
   "actual_cost_usd": 0.0,
@@ -71,9 +86,9 @@ Expected response shape:
 
 ## What to watch for on the first real run
 
-- **`no provider.Client configured for provider "..."`** — the router selected a model from a catalog provider other than `openai` (only `openai` has a wired-up client right now, see `cmd/server/main.go`'s `Generators` map). Either restrict testing to OpenAI-catalog models (`requested_mode: "manual"` + a `manual_model_id` like `gpt-5.6-luna`/`gpt-oss-120b`), or this is the point where a second `provider.Client` needs writing.
-- **A 404/`model does not exist` error from OpenAI** — `api_model_id` doesn't match what your key can actually call; go back to step 1.
-- **The classifier reply fails to parse as JSON** — `classifier.Classify` already strips a wrapping ` ```json ` fence, but a genuinely different failure (the model refusing, adding prose, etc.) will surface as a clear parse error with the raw reply included — that's real signal about how the base model your key has access to behaves with this prompt, not necessarily a bug.
+- **`no provider.Client configured for provider "..."`** — the router selected a model tagged with a catalog provider other than `google` (only `google` has a wired-up client right now, see `cmd/server/main.go`'s `Generators` map and step 0 above). Use the manual-mode request above to pin it to Gemma, or this is the point where a second `provider.Client`/`Generators` entry needs adding.
+- **A 404 / "No endpoints found" error from OpenRouter** — `api_model_id` doesn't match a real OpenRouter slug; double-check the exact string on openrouter.ai's model page (copy-paste, don't retype).
+- **The classifier reply fails to parse as JSON** — `classifier.Classify` already strips a wrapping ` ```json ` fence, but a genuinely different failure (the model refusing, adding prose, etc.) will surface as a clear parse error with the raw reply included — that's real signal about how the model your key has access to behaves with this prompt, not necessarily a bug.
 
 ## After testing
 
