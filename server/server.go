@@ -29,11 +29,12 @@ const tosViolationMessage = "This message was blocked because it violates our us
 // Server holds everything one /chat request needs. All fields are
 // required; use New to build one with validation.
 type Server struct {
-	Router     router.Router
-	Classifier classifier.Classifier
-	Moderator  moderation.Moderator
-	Store      limits.SpendStore
-	Plans      map[string]limits.PlanLimits
+	Router        router.Router
+	Classifier    classifier.Classifier
+	Moderator     moderation.Moderator
+	ModerationLog moderation.BlockLog
+	Store         limits.SpendStore
+	Plans         map[string]limits.PlanLimits
 
 	// Generators maps a catalog Model.Provider string (e.g. "openai",
 	// "anthropic") to the client that can actually call it. A model whose
@@ -147,6 +148,18 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	}
 	if modResult.Flagged {
 		log.Printf("server: /chat blocked by moderation for user_id=%s categories=%v reason=%q", req.UserID, modResult.Categories, modResult.Reason)
+		// The block itself already happened (nothing below this point
+		// runs) regardless of whether it's successfully recorded --
+		// logging failure is a monitoring gap, not a reason to let a
+		// flagged message through.
+		if err := s.ModerationLog.Record(ctx, moderation.BlockEntry{
+			UserID:     req.UserID,
+			Categories: modResult.Categories,
+			Reason:     modResult.Reason,
+			Timestamp:  time.Now(),
+		}); err != nil {
+			log.Printf("server: failed to record moderation block for user_id=%s: %v", req.UserID, err)
+		}
 		return chatResponse{Blocked: true, ResponseText: tosViolationMessage}, nil
 	}
 	if classifyErr != nil {

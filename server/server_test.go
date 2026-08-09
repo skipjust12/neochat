@@ -62,10 +62,11 @@ func newTestServer(t *testing.T, genResponses []provider.GenerateResult) (*Serve
 	genClient := &provider.FakeClient{Responses: genResponses}
 
 	return &Server{
-		Router:     router.NewRouter(testCatalog(), testWeights()),
-		Classifier: classifier.New(classifierClient, "fake-classifier-model", "system prompt"),
-		Moderator:  moderation.New(moderationClient, "fake-moderation-model", "system prompt"),
-		Store:      limits.NewInMemorySpendStore(),
+		Router:        router.NewRouter(testCatalog(), testWeights()),
+		Classifier:    classifier.New(classifierClient, "fake-classifier-model", "system prompt"),
+		Moderator:     moderation.New(moderationClient, "fake-moderation-model", "system prompt"),
+		ModerationLog: moderation.NewInMemoryBlockLog(),
+		Store:         limits.NewInMemorySpendStore(),
 		Plans: map[string]limits.PlanLimits{
 			"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10.0, InstantExtraCapUSD: 3.0},
 		},
@@ -157,6 +158,46 @@ func TestHandle_ModerationFlaggedBlocksBeforeGeneration(t *testing.T) {
 	}
 	if len(genClient.Requests) != 0 {
 		t.Errorf("expected no generate calls when moderation flags the request, got %d", len(genClient.Requests))
+	}
+
+	blockLog := s.ModerationLog.(*moderation.InMemoryBlockLog)
+	entries := blockLog.Entries()
+	if len(entries) != 1 {
+		t.Fatalf("len(ModerationLog.Entries()) = %d, want 1", len(entries))
+	}
+	if entries[0].UserID != "u1" {
+		t.Errorf("recorded UserID = %q, want u1", entries[0].UserID)
+	}
+	if len(entries[0].Categories) != 1 || entries[0].Categories[0] != "illegal_activity" {
+		t.Errorf("recorded Categories = %v, want [illegal_activity]", entries[0].Categories)
+	}
+}
+
+// fakeFailingBlockLog always errors on Record -- used to check that a
+// logging failure doesn't undo the block itself.
+type fakeFailingBlockLog struct{}
+
+func (fakeFailingBlockLog) Record(context.Context, moderation.BlockEntry) error {
+	return errors.New("log store unavailable")
+}
+
+func TestHandle_ModerationFlaggedStillBlocksWhenLoggingFails(t *testing.T) {
+	s, genClient := newTestServer(t, nil)
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
+		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
+	}}, "fake-moderation-model", "system prompt")
+	s.ModerationLog = fakeFailingBlockLog{}
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "bad request", RequestedMode: "instant", EstimatedContextTokens: 100}
+	resp, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !resp.Blocked {
+		t.Errorf("Blocked = false, want true even when recording the block fails")
+	}
+	if len(genClient.Requests) != 0 {
+		t.Errorf("expected no generate calls, got %d", len(genClient.Requests))
 	}
 }
 

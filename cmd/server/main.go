@@ -67,8 +67,12 @@ func main() {
 		Router:     router.NewRouter(catalog, weights),
 		Classifier: classifier.New(openRouterClient, classifierModelID, systemPrompt),
 		Moderator:  moderation.New(openRouterClient, moderationModelID, moderationSystemPrompt),
-		Store:      limits.NewInMemorySpendStore(),
-		Plans:      plans,
+		// InMemoryBlockLog is a throwaway stand-in, same as
+		// limits.InMemorySpendStore below -- see moderation.BlockLog's doc
+		// comment for the swap-in procedure once a real database exists.
+		ModerationLog: moderation.NewInMemoryBlockLog(),
+		Store:         limits.NewInMemorySpendStore(),
+		Plans:         plans,
 		// Every catalog provider tag routes through the same
 		// OpenRouterClient -- OpenRouter serves all of them, so there's no
 		// need for a second provider.Client implementation (see README
