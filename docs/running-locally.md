@@ -12,6 +12,7 @@ The server calls vendors through **OpenRouter** (`provider.OpenRouterClient`, `h
 |---|---|
 | `OPENROUTER_API_KEY` | Required. No key, no real vendor calls — `cmd/server` refuses to start without it. |
 | `CLASSIFIER_API_MODEL_ID` | Optional, defaults to `google/gemini-3.5-flash-lite` (the model `prompts/classifier_system_prompt.md` was validated against). Override for a different OpenRouter slug. |
+| `MODERATION_API_MODEL_ID` | Optional, defaults to `openai/gpt-oss-120b` (the model `docs/unit-economics.md` assumed for moderation). Override for a different OpenRouter slug. |
 | `ADDR` | Optional, defaults to `:8080`. |
 
 **Never commit a real key.** Set it in your shell for the one command, not in a file that gets `git add`ed:
@@ -51,15 +52,31 @@ Expected response shape:
 }
 ```
 
+Every request now also runs through Layer 1 moderation (`moderation/`, see README "Moderation") concurrently with classification. If it flags the message, the response instead looks like this — no model is ever selected or called:
+
+```json
+{
+  "selected_model_id": "",
+  "selected_mode": "",
+  "reason": "",
+  "estimated_cost_usd": 0.0,
+  "actual_cost_usd": 0.0,
+  "response_text": "This message was blocked because it violates our usage policies.",
+  "blocked": true
+}
+```
+
 `plan_id` must be one of `configs/plans.json`'s `plan_id` values (`pro`, `pro_plus`, `max`).
 
 ## What to watch for
 
-- **`no provider.Client configured for provider "..."`** — the router selected a model from a catalog provider with no wired-up client (only `"google"` has one right now, see `cmd/server/main.go`'s `Generators` map). None of `configs/models.json`'s current entries have a confirmed-real `api_model_id` yet (see README "Next steps") — a generation attempt will hit either this error or a 404, until one is confirmed and set.
-- **A 404 / "No endpoints found" error from OpenRouter** — `api_model_id` doesn't match a real OpenRouter slug; double-check the exact string on openrouter.ai's model page (copy-paste, don't retype). If a catalog entry has no `api_model_id` set, `ResolveAPIModelID` falls back to its bare `id`, which is almost never a valid OpenRouter slug on its own (needs the `vendor/` prefix).
+- **`no provider.Client configured for provider "..."`** — the router selected a model from a catalog provider with no wired-up client. Shouldn't happen anymore: `cmd/server/main.go`'s `Generators` map now covers all five catalog providers (`anthropic`, `openai`, `google`, `moonshot`, `deepseek`) through the same `OpenRouterClient`. If you see this, either a new catalog entry added a provider tag not yet in that map, or there's a typo between the two.
+- **A 404 / "No endpoints found" error from OpenRouter** — `api_model_id` doesn't match a real OpenRouter slug; double-check the exact string on openrouter.ai's model page (copy-paste, don't retype). Every `configs/models.json` entry now sets `api_model_id` explicitly, sourced via search (this session can't reach `openrouter.ai` directly to fetch pages itself — see README "Status") rather than a live confirmed call per model, so a 404 here likely means one of those looked-up slugs is stale or wrong and needs a real check.
 - **429** — rate limit or exhausted free-tier quota on the key, not a bug here.
 - **401** — bad/expired key; double check the exact value in your shell, not a leftover from an earlier export.
 - **The classifier reply fails to parse as JSON** — `classifier.Classify` already strips a wrapping ` ```json ` fence, but a genuinely different failure (the model refusing, adding prose, etc.) will surface as a clear parse error with the raw reply included — that's real signal about how the model behaves with this prompt through OpenRouter specifically, not necessarily a bug.
+- **`moderate: ...` error, every request fails** — the moderation model call itself failed (bad `MODERATION_API_MODEL_ID`, rate limit, JSON parse failure — same failure modes as the classifier, just in `moderation.Moderate`). Moderation fails closed on purpose (see README "Moderation"), so this takes down `/chat` entirely rather than letting requests through unmoderated — check the error for which of those it actually is.
+- **Every request comes back `"blocked": true`** — either genuinely correct (you're testing with a phrase that should trip a policy category) or the moderation model is being overly aggressive; check `docs/unit-economics.md`'s cost assumption still matches whichever model `MODERATION_API_MODEL_ID` resolves to, and see the flagged reason in the server log (`server: /chat blocked by moderation ...`) — it's logged server-side even though the client only sees the generic ToS message.
 
 ## After testing
 

@@ -1,8 +1,8 @@
 // Command server runs the real HTTP entry point: POST /chat runs
-// classify -> check spend lock -> route -> generate -> record spend end
-// to end against a real vendor API. main.go at the repo root stays a
-// router-only demo; this is the first thing in the repo that actually
-// serves requests.
+// classify + moderate -> check spend lock -> route -> generate -> record
+// spend end to end against a real vendor API. main.go at the repo root
+// stays a router-only demo; this is the first thing in the repo that
+// actually serves requests.
 package main
 
 import (
@@ -12,6 +12,7 @@ import (
 
 	"neochat/classifier"
 	"neochat/limits"
+	"neochat/moderation"
 	"neochat/provider"
 	"neochat/router"
 	"neochat/server"
@@ -34,6 +35,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	moderationSystemPrompt, err := moderation.LoadSystemPrompt("prompts/moderation_system_prompt.md")
+	if err != nil {
+		log.Fatal(err)
+	}
 
 	openRouterKey := os.Getenv("OPENROUTER_API_KEY")
 	if openRouterKey == "" {
@@ -50,19 +55,37 @@ func main() {
 		classifierModelID = "google/gemini-3.5-flash-lite"
 	}
 
+	// openai/gpt-oss-120b is the default: it's the model
+	// docs/unit-economics.md assumed for both moderation layers. Override
+	// with MODERATION_API_MODEL_ID for a different OpenRouter slug.
+	moderationModelID := os.Getenv("MODERATION_API_MODEL_ID")
+	if moderationModelID == "" {
+		moderationModelID = "openai/gpt-oss-120b"
+	}
+
 	srv := &server.Server{
 		Router:     router.NewRouter(catalog, weights),
 		Classifier: classifier.New(openRouterClient, classifierModelID, systemPrompt),
-		Store:      limits.NewInMemorySpendStore(),
-		Plans:      plans,
-		// Only "google" has a real client wired up right now. None of the
-		// catalog's entries have a verified OpenRouter slug yet (see
-		// README "Next steps"), so routing to any of them for generation
-		// will still fail at generate time with a clear error until an
-		// entry's api_model_id is confirmed against the real OpenRouter
-		// catalog -- this map entry is ready for that, not tied to any
-		// specific model.
-		Generators: map[string]provider.Client{"google": openRouterClient},
+		Moderator:  moderation.New(openRouterClient, moderationModelID, moderationSystemPrompt),
+		// InMemoryBlockLog is a throwaway stand-in, same as
+		// limits.InMemorySpendStore below -- see moderation.BlockLog's doc
+		// comment for the swap-in procedure once a real database exists.
+		ModerationLog: moderation.NewInMemoryBlockLog(),
+		Store:         limits.NewInMemorySpendStore(),
+		Plans:         plans,
+		// Every catalog provider tag routes through the same
+		// OpenRouterClient -- OpenRouter serves all of them, so there's no
+		// need for a second provider.Client implementation (see README
+		// "OpenRouter as a single point of failure" and "Next steps").
+		// Each catalog entry's api_model_id (configs/models.json) now
+		// carries a real OpenRouter slug for its provider.
+		Generators: map[string]provider.Client{
+			"anthropic": openRouterClient,
+			"openai":    openRouterClient,
+			"google":    openRouterClient,
+			"moonshot":  openRouterClient,
+			"deepseek":  openRouterClient,
+		},
 	}
 
 	addr := os.Getenv("ADDR")
