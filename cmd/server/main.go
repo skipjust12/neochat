@@ -55,14 +55,19 @@ func main() {
 		Classifier: classifier.New(openRouterClient, classifierModelID, systemPrompt),
 		Store:      limits.NewInMemorySpendStore(),
 		Plans:      plans,
-		// Only "google" has a real client wired up right now. None of the
-		// catalog's entries have a verified OpenRouter slug yet (see
-		// README "Next steps"), so routing to any of them for generation
-		// will still fail at generate time with a clear error until an
-		// entry's api_model_id is confirmed against the real OpenRouter
-		// catalog -- this map entry is ready for that, not tied to any
-		// specific model.
-		Generators: map[string]provider.Client{"google": openRouterClient},
+		// Every catalog provider tag routes through the same
+		// OpenRouterClient -- OpenRouter serves all of them, so there's no
+		// need for a second provider.Client implementation (see README
+		// "OpenRouter as a single point of failure" and "Next steps").
+		// Each catalog entry's api_model_id (configs/models.json) now
+		// carries a real OpenRouter slug for its provider.
+		Generators: map[string]provider.Client{
+			"anthropic": openRouterClient,
+			"openai":    openRouterClient,
+			"google":    openRouterClient,
+			"moonshot":  openRouterClient,
+			"deepseek":  openRouterClient,
+		},
 	}
 
 	addr := os.Getenv("ADDR")
