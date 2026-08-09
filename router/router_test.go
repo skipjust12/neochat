@@ -197,3 +197,50 @@ func TestRoute_AutoModePicksTierFromComplexity(t *testing.T) {
 		t.Errorf("expected auto mode=max for a hard, high-complexity request, got %s", result.SelectedMode)
 	}
 }
+
+// TestRoute_CostTieBreaksByCapabilityThenID pins down scoreAndPick's tie
+// rule for equal-cost candidates in the same tier (e.g. claude-sonnet-5 vs
+// kimi-k3, both $18/Mtok blended): the more capable model wins, and if
+// capability is also tied, the lexicographically smaller ID wins. Catalog
+// order must not decide the outcome.
+func TestRoute_CostTieBreaksByCapabilityThenID(t *testing.T) {
+	lessCapable := Model{
+		ID: "z-model", Provider: "test", Modes: []string{"thinking"},
+		CostInputPerMTok: 3, CostOutputPerMTok: 15, ContextWindow: 200_000,
+		SupportsModality: []string{"text", "code"},
+		MaxOutputTokens:  16384, SupportsOutputFormats: []string{"text", "markdown"},
+	}
+	moreCapable := Model{
+		ID: "a-model", Provider: "test", Modes: []string{"thinking"},
+		CostInputPerMTok: 3, CostOutputPerMTok: 15, ContextWindow: 200_000,
+		SupportsModality: []string{"text", "code"},
+		SupportsTools:    []string{ToolWebSearch},
+		MaxOutputTokens:  16384, SupportsOutputFormats: []string{"text", "markdown"},
+	}
+	r := NewRouter(Catalog{Models: []Model{lessCapable, moreCapable}}, testWeights())
+
+	input := baseInput()
+	input.ReasoningDepth = "high"
+	input.ComplexityScore = 0.6
+	input.CreativityLevel = "moderate"
+
+	result, err := r.Route(input, "thinking", "", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SelectedModelID != "a-model" {
+		t.Errorf("expected the more capable equal-cost model (a-model) to win the tie, got %s", result.SelectedModelID)
+	}
+
+	// Now make both models equally capable too -- the tie must fall through
+	// to ID order, not catalog order.
+	moreCapable.SupportsTools = nil
+	r = NewRouter(Catalog{Models: []Model{lessCapable, moreCapable}}, testWeights())
+	result, err = r.Route(input, "thinking", "", 1000)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SelectedModelID != "a-model" {
+		t.Errorf("expected fully-tied models to break by ID order (a-model < z-model), got %s", result.SelectedModelID)
+	}
+}
