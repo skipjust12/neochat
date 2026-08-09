@@ -17,6 +17,7 @@ AI aggregator with depth-based modes, not model-based modes.
   - [Config-driven weights](#config-driven-weights)
   - [Classifier output schema](#classifier-output-schema)
   - [Moderation](#moderation)
+  - [Spend limits](#spend-limits)
 - [Pre-launch engineering checklist](#pre-launch-engineering-checklist)
 - [Additional architectural risks](#additional-architectural-risks)
 - [Infrastructure (MVP)](#infrastructure-mvp)
@@ -82,7 +83,7 @@ Cheap models are used for routing wherever possible without a quality hit. The s
 ## Open questions
 
 1. **Training data for the auto-routing classifier.** This is bottleneck #1 — without data (query → which model gave the best answer) there's nothing to build a classifier on. Options: a proprietary labeled dataset, open benchmarks (lmsys, MMLU), user feedback (thumbs up/down as auto-labeling), off-the-shelf solutions (Not Diamond, RouteLLM) as a stopgap.
-2. **Unit economics are not modeled yet.** Known: OpenRouter adds a markup on top of vendor pricing, and the plan is to operate at a loss early with no firm cap defined. Risk: burning the budget faster than reaching product-market fit.
+2. ~~Unit economics are not modeled yet.~~ Modeled — see [`docs/unit-economics.md`](docs/unit-economics.md): typical margin ~75–80%, plus a guaranteed-margin plan for the Thinking+Max spend cap (`limits/`, see below).
 
 ## Overall assessment
 
@@ -220,6 +221,16 @@ Two-layer, parallel moderation — never blocking on UX latency.
 - Cost on flagged requests isn't always zero — generation may partially complete in parallel with the input check. Accepted tradeoff for UX (the alternative is DPI-style latency on every request).
 - Log separately: intended vs. actual outcome, and which layer triggered the block — needed for debugging and threshold calibration.
 
+### Spend limits
+
+Full design and the numbers behind it: [`docs/unit-economics.md`](docs/unit-economics.md) section 6. Implemented in the `limits/` package.
+
+- **Two independent pools, not one budget.** Instant is near-free ($0.0014/request) and is never fully blocked — even a locked-out user keeps a working chat. Thinking+Max is the actual constrained resource and the only one that gets hard-capped.
+- **One 30-day rolling cap per plan** (not a fixed calendar month — a rolling window closes the boundary-doubling gap where a user could burn the full cap on day 30 and again on day 1). Set *below* the plan price on purpose (Pro $10, Pro+ $50, Max $100 against $19/$100/$200 prices), so the worst case still guarantees real margin, not just break-even. A separate, smaller Instant cap ($3/$5/$8) exists purely as an anti-bot ceiling — it's a gateway-side throttle concern, not a routing decision, so it never reaches `router.Route`.
+- **`limits.SpendStore`** is the interface seam between this accounting logic and wherever spend actually lives (`Sum`/`Record` over rolling windows). `limits.InMemorySpendStore` is a deliberately throwaway stand-in — a mutex-guarded map using hourly buckets, good enough to develop and test against, with no persistence across restarts. It exists because there is no server yet to justify building a real Postgres/Redis-backed implementation; swapping one in later means implementing the same two-method interface and deleting the in-memory one, nothing else changes.
+- **`router.Route` takes a `thinkingMaxLocked bool`**, computed by `limits.CheckThinkingMaxLock` before routing. When true, it forces Thinking/Max down to Instant on the scored path, and rejects (rather than silently substitutes) a thinking/max-tier `manual_model_id` — manual mode is explicitly the loophole that would otherwise let a locked-out user keep hitting an expensive model directly.
+- A three-layer version (5h/7d/30d rolling windows, for burst smoothing and front-loading protection) was designed and deliberately dropped for v1: typical usage already sits 2–2.3× below the monthly cap, so the sub-windows would mostly protect against the same abuse the monthly cap already catches, at real implementation cost and with fraction guesses that had no usage data behind them yet.
+
 ---
 
 ## Pre-launch engineering checklist
@@ -231,7 +242,8 @@ Things to bake in now, because retrofitting them later on a live prod system is 
 3. **Request-level idempotency and cancellation.** If a user disconnects mid-generation (closes the tab), does the upstream request keep running and burning money? Needs explicit cancellation of the upstream call on client disconnect — `context` cancellation in Go is nearly free if wired in from the start, expensive to retrofit through the whole stack later.
 4. **Circuit breaker / per-model health tracking**, not just a per-request timeout fallback. If a specific model at a specific provider starts failing en masse, the router should exclude it for all users temporarily, rather than every individual request re-hitting the same timeout. This state ("which models are healthy right now") should live in memory/Redis, updated from real failures — without it, the first real incident means every user waits out the same timeout individually instead of a silent automatic bypass.
 5. **Conversation storage schema built for migration from day one.** The chat history format (JSON fields, message schema version) should allow new fields without breaking changes — e.g. storing reasoning blocks separately from the final answer, or metadata like which model answered a given message (needed for UI like "Thought for N seconds"). A single raw-text column saves time now, costs weeks later when you need to backfill metadata onto old records.
-6. **Stateless app layer**, ready for horizontal scaling even with a single server today. If session state lives in process memory instead of Redis/DB, the moment you add a second instance, a user landing on the other instance loses context. Session state and rate-limit counters (5h/weekly windows) belong in Redis from the start, not local process memory.
+6. **Stateless app layer**, ready for horizontal scaling even with a single server today. If session state lives in process memory instead of Redis/DB, the moment you add a second instance, a user landing on the other instance loses context. Session state and rate-limit counters belong in Redis from the start, not local process memory.
+   - **The rate-limit counters themselves are designed and interface-ready** (`limits/`, see "Spend limits" above) — `limits.InMemorySpendStore` is exactly the local-process-memory anti-pattern this item warns against, kept deliberately isolated behind `limits.SpendStore` so swapping in Redis is a one-file change once there's a server process to make statelessness matter at all.
 7. **Per-request cost accounting, not aggregate.** Log `cost_usd` on every individual API call (classification and generation both), tied to `user_id`, `model`, `timestamp`, from day one. Needed for billing (credit/limit checks), future unit economics, and eval sets. Logging only success/failure without cost is data that's often impossible to reconstruct retroactively — provider pricing changes over time.
    - **Router-side pricing math is in place** (`router/cost.go`): `RouteResult.EstimatedCostUSD` prices the selected model against `estimated_context_tokens` + the classifier's `estimated_output_tokens`, for abuse-defense checks and UI display before generation starts. `NewCostLogEntry` builds the actual per-request billing record from real token usage once a generation completes (`user_id`, `request_id`, `model_id`, `mode`, token counts, `cost_usd`, `timestamp`) — the router only builds this value, persisting it to a store is still unbuilt (needs the server layer this repo doesn't have yet).
 8. **Secrets/API keys via env/vault from the first commit.** With 8+ providers/keys (OpenRouter, possibly direct contracts later, email, payment processor), hardcoded secrets on live prod are a standing leak/downtime risk waiting to happen.
@@ -274,15 +286,15 @@ Things to bake in now, because retrofitting them later on a live prod system is 
 
 - Positioning and mode structure defined.
 - Routing architecture and config system designed (config-driven weights, model catalog as data, classifier output schema).
-- Go router: base version implemented — feature-based scoring against `weights.json`, hard filters, manual-mode passthrough, auto-mode tier selection. No circuit breaker, no cost logging, no persistence yet (by design, deferred).
-- Classifier: not yet wired to a real model call.
+- Go router: implemented — feature-based scoring against `weights.json`, hard filters, manual-mode passthrough, auto-mode tier selection, deterministic cost-tie breaking, per-request cost estimation (`router/cost.go`), and a spend-lock override (`thinkingMaxLocked`) that forces Thinking/Max down to Instant. No circuit breaker, no real persistence yet (by design, deferred — see `limits/`).
+- Spend limits: designed and implemented (`limits/`, see "Spend limits" above) — 30-day rolling hard cap per plan, `InMemorySpendStore` as a throwaway stand-in until there's a server to wire a real store behind the same interface.
+- Unit economics: modeled (`docs/unit-economics.md`) — typical ~75–80% margin, guaranteed-margin worst case via the spend cap above.
+- Classifier: prompt written and validated (`prompts/classifier_system_prompt.md`) against live Gemini 3.5 Flash-Lite / Claude Haiku 4.5 calls — not yet wired into a server, no real request pipeline calls it automatically.
 - No real OpenRouter integration yet.
-- Unit economics not modeled.
 
 ## Next steps (execution)
 
-1. Review the base router implementation — edge cases (empty candidate list after filtering, confidence-escalation correctness, `reason` field readability for debugging).
-2. Implement the actual classifier call (pick one candidate model — Gemini Flash-Lite or Claude Haiku 4.5 — not both at once).
-3. Hand-label a ~20–30 prompt eval set, run it through classifier + router, check for routing mismatches.
-4. Wire up real OpenRouter calls only after step 3 looks sane.
-5. Replace placeholder pricing/context-window figures in `models.json` with real OpenRouter numbers.
+1. Wire up real OpenRouter calls, or at minimum a first direct-vendor call, so there's an actual generation pipeline for the classifier/router/limits chain to sit in front of.
+2. Once there's a server process: replace `limits.InMemorySpendStore` with a Redis/Postgres-backed `SpendStore` (same interface, see "Spend limits"), and give `router.Route`'s `thinkingMaxLocked` input a real caller instead of the `main.go` demo simulation.
+3. Replace placeholder pricing/context-window figures in `models.json` with real OpenRouter numbers.
+4. Revisit the dropped 5h/7d sub-window layers (see "Spend limits") once real usage data exists to size their fractions on, instead of on guesses.
