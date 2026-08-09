@@ -294,7 +294,8 @@ Things to bake in now, because retrofitting them later on a live prod system is 
 
 ## Next steps (execution)
 
-1. Wire up real OpenRouter calls, or at minimum a first direct-vendor call, so there's an actual generation pipeline for the classifier/router/limits chain to sit in front of.
-2. Once there's a server process: replace `limits.InMemorySpendStore` with a Redis/Postgres-backed `SpendStore` (same interface, see "Spend limits"), and give `router.Route`'s `thinkingMaxLocked` input a real caller instead of the `main.go` demo simulation.
-3. Replace placeholder pricing/context-window figures in `models.json` with real OpenRouter numbers.
-4. Revisit the dropped 5h/7d sub-window layers (see "Spend limits") once real usage data exists to size their fractions on, instead of on guesses.
+1. ~~Wire up real OpenRouter calls, or at minimum a first direct-vendor call~~ — done: `cmd/server` runs classify → check spend lock → route → generate → record spend end to end against a real OpenAI call. Untested against a live API so far — Claude Code on the web's own egress policy blocks arbitrary external hosts (confirmed for both `api.openai.com` and `openrouter.ai`), so the first live run has to happen locally. See [`docs/running-locally.md`](docs/running-locally.md).
+2. Once there's a deployed server process (not just a local `go run`): replace `limits.InMemorySpendStore` with a Redis/Postgres-backed `SpendStore` (same interface, see "Spend limits").
+3. Replace placeholder pricing/context-window figures in `models.json` with real OpenRouter numbers, and confirm each catalog entry's real vendor-side model string (`api_model_id`) once accounts with broader model access exist — a free-trial key likely only reaches a handful of base models, not the full catalog.
+4. Add a second `provider.Client` (Anthropic first, matching most of the catalog) once OpenAI-only testing is validated — `cmd/server/main.go`'s `Generators` map only has an `"openai"` entry right now.
+5. Revisit the dropped 5h/7d sub-window layers (see "Spend limits") once real usage data exists to size their fractions on, instead of on guesses.
