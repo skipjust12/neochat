@@ -117,4 +117,12 @@ type RouteResult struct {
 	SelectedModelID string `json:"selected_model_id"`
 	SelectedMode    string `json:"selected_mode"`
 	Reason          string `json:"reason"`
+
+	// EstimatedCostUSD prices the selected model against the request's
+	// estimated_context_tokens (input) and estimated_output_tokens (output,
+	// from the classifier). It is a pre-flight estimate for abuse defense
+	// and UI display -- not a billing record. Actual cost, computed from
+	// real token usage once generation completes, belongs in a
+	// CostLogEntry (see cost.go), not here.
+	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 }

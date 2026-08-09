@@ -57,9 +57,10 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 			return RouteResult{}, fmt.Errorf("router: manual_model_id %q not found in catalog", manualModelID)
 		}
 		return RouteResult{
-			SelectedModelID: model.ID,
-			SelectedMode:    "manual",
-			Reason:          fmt.Sprintf("requested_mode=manual: bypassed scoring, used manual_model_id=%q directly", manualModelID),
+			SelectedModelID:  model.ID,
+			SelectedMode:     "manual",
+			Reason:           fmt.Sprintf("requested_mode=manual: bypassed scoring, used manual_model_id=%q directly", manualModelID),
+			EstimatedCostUSD: ComputeCostUSD(model, estimatedContextTokens, input.EstimatedOutputTokens),
 		}, nil
 	}
 
@@ -146,9 +147,10 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 	fmt.Fprintf(&reason, "scored %d candidate(s) for mode=%s: %s", len(modeCandidates), effectiveMode, scoreLog)
 
 	return RouteResult{
-		SelectedModelID: winner.ID,
-		SelectedMode:    effectiveMode,
-		Reason:          reason.String(),
+		SelectedModelID:  winner.ID,
+		SelectedMode:     effectiveMode,
+		Reason:           reason.String(),
+		EstimatedCostUSD: ComputeCostUSD(winner, estimatedContextTokens, input.EstimatedOutputTokens),
 	}, nil
 }
 

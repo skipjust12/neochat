@@ -49,7 +49,8 @@ func main() {
 		log.Fatal(err)
 	}
 
-	fmt.Printf("selected_model_id: %s\n", result.SelectedModelID)
-	fmt.Printf("selected_mode:     %s\n", result.SelectedMode)
-	fmt.Printf("reason:            %s\n", result.Reason)
+	fmt.Printf("selected_model_id:  %s\n", result.SelectedModelID)
+	fmt.Printf("selected_mode:      %s\n", result.SelectedMode)
+	fmt.Printf("estimated_cost_usd: %.6f\n", result.EstimatedCostUSD)
+	fmt.Printf("reason:             %s\n", result.Reason)
 }
