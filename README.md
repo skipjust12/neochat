@@ -200,26 +200,26 @@ Design principle: the classifier returns **raw task features**, never a final mo
 
 Two-layer, parallel moderation — never blocking on UX latency.
 
-**Layer 1 — input (before showing the response to the user)**
+**Layer 1 — input (before showing the response to the user) — implemented (`moderation/`, wired into `server.handle`)**
 
-- Runs in parallel with classification/routing (same 0.5–1s "Routing" overhead, adds nothing on top).
-- A cheap model/moderation API checks the request text.
-- Generation from the main model starts independently and concurrently, writing to a server-side buffer — nothing is sent to the user yet.
-- Once both results (routing + moderation) are back:
-  - `ok` → start streaming the buffer to the user, then stream normally.
-  - `flagged` → generation is aborted, the user sees nothing but a ToS violation message.
+- Runs concurrently with classification (`sync.WaitGroup`, two goroutines) — both are cheap-model calls over the same raw request text, so there's no reason to pay their latency twice.
+- A cheap model checks the request text against `prompts/moderation_system_prompt.md` and returns `{flagged, categories, reason}` — same JSON-over-a-cheap-model pattern as the classifier (`classifier/`), including the same fenced-reply defense.
+- `flagged` → generation is skipped entirely (never even attempted) and the user sees nothing but a fixed ToS violation message (`chatResponse.Blocked`); the flagging model/reason is logged server-side, not exposed to the client.
+- **Deviation from the original design, and why:** the spec above (start generation concurrently into a server-side buffer, discard on flag) is a streaming-pipeline optimization — this repo's `/chat` endpoint isn't streaming yet (see "Layer 2" below), so generating before moderation clears would only waste money, never save user-visible latency. Generation simply waits on both results instead.
+- **Fails closed:** a moderation call erroring (as opposed to flagging) fails the whole request rather than letting an unmoderated message through — an outage of the moderation model is currently an outage of chat. Revisit once the circuit-breaker item (pre-launch checklist) makes a softer fallback safe.
 
-**Layer 2 — output (during streaming)**
+**Layer 2 — output (during streaming) — not built**
 
+- Needs the response to actually be streamed first; `/chat` today returns one complete JSON response, so there's no incremental output to scan mid-stream yet.
 - Response chunks are checked incrementally, in parallel with the ongoing stream — moderation doesn't gate the stream, it runs as an async observer.
 - If flagged mid-stream: abort the stream + show a ToS violation message.
 - Backstop against jailbreak patterns and unwanted output that wasn't obvious from the request alone.
 
 **Architectural requirements:**
 
-- Both checks are async goroutines, never sequential steps.
-- Cost on flagged requests isn't always zero — generation may partially complete in parallel with the input check. Accepted tradeoff for UX (the alternative is DPI-style latency on every request).
-- Log separately: intended vs. actual outcome, and which layer triggered the block — needed for debugging and threshold calibration.
+- Both checks are async goroutines, never sequential steps. (True today for classify+moderate; will also apply to generate+Layer 2 once streaming exists.)
+- Cost on flagged requests isn't always zero once Layer 2/streaming exists — generation may partially complete in parallel with the input check. Accepted tradeoff for UX (the alternative is DPI-style latency on every request). Not a concern yet for Layer 1 alone: it gates generation outright, so a flagged request costs only the classify+moderate calls, nothing more.
+- Log separately: intended vs. actual outcome, and which layer triggered the block — needed for debugging and threshold calibration. Layer 1 currently logs `user_id`, `categories`, and `reason` server-side on every block (see `server.handle`); nothing is persisted to a queryable store yet.
 
 ### Spend limits
 
@@ -292,6 +292,7 @@ Things to bake in now, because retrofitting them later on a live prod system is 
 - Classifier: prompt written and validated (`prompts/classifier_system_prompt.md`) against live Gemini 3.5 Flash-Lite / Claude Haiku 4.5 calls, and wired into `cmd/server` for automatic use per request.
 - OpenRouter integration: written (`provider.OpenRouterClient`), wired into `cmd/server`. **Confirmed live (2026-08-09):** a local run reached OpenRouter and got real HTTP responses back (429/401), proving the request/auth wiring is correct end to end — no successful generated response captured yet (blocked on account balance/rate limit, not code). See [`docs/running-locally.md`](docs/running-locally.md).
 - Model catalog (`configs/models.json`): every entry now carries a real OpenRouter slug (`api_model_id`) and pricing/context-window figures looked up against OpenRouter's model pages (2026-08-09; this session's own network egress to `openrouter.ai` is blocked, so this was done via indexed-page search rather than a direct fetch — treat as a strong first pass, not a substitute for one confirmed live generation per model). `cmd/server/main.go`'s `Generators` map now routes all five catalog providers (`anthropic`, `openai`, `google`, `moonshot`, `deepseek`) through the same `OpenRouterClient`. **Not yet re-verified:** `kimi-k3` and `deepseek-v4-flash`'s `max_output_tokens` (search results for these were inconsistent/implausible, so the prior placeholder was kept rather than overwritten with an unreliable number). **Not yet propagated:** `docs/unit-economics.md`'s blended-rate tables and worked examples still use the old `claude-sonnet-5` ($3/$15), `kimi-k3` ($3/$15), `gpt-5.6-luna` ($1/$6), and `gpt-5.6-terra` ($2.5/$15) prices — several of those changed (see `models.json`), so the ~75–80% margin conclusion needs re-deriving before it's trusted again.
+- Moderation: Layer 1 (input) implemented (`moderation/`, wired into `server.handle`, see "Moderation" above) — runs concurrently with the classifier, blocks generation outright on a flag, fails closed on a moderation-model error. Layer 2 (streaming output) not built — blocked on `/chat` not streaming yet.
 
 ## Next steps (execution)
 
@@ -300,5 +301,7 @@ Things to bake in now, because retrofitting them later on a live prod system is 
 3. Once there's a deployed server process (not just a local `go run`): replace `limits.InMemorySpendStore` with a Redis/Postgres-backed `SpendStore` (same interface, see "Spend limits").
 4. ~~Replace placeholder pricing/context-window figures in `models.json` with real numbers, and confirm each catalog entry's real OpenRouter slug (`api_model_id`)~~ — done for all 12 entries (2026-08-09), sourced via search since this session can't reach `openrouter.ai` directly; worth a real live-call spot-check per model once possible, and `kimi-k3`/`deepseek-v4-flash`'s `max_output_tokens` still need a real source.
 5. ~~Extend `cmd/server/main.go`'s `Generators` map to cover every catalog provider~~ — done: all five provider tags route through `OpenRouterClient`.
-6. Recompute `docs/unit-economics.md`'s blended rates, worked examples, and the ~75–80% margin conclusion against the updated `models.json` prices (`claude-sonnet-5`, `kimi-k3`, `gpt-5.6-luna`, and `gpt-5.6-terra` all changed) — the current numbers there predate this catalog update.
+6. Recompute `docs/unit-economics.md`'s blended rates, worked examples, and the ~75–80% margin conclusion against the updated `models.json` prices (`claude-sonnet-5`, `kimi-k3`, `gpt-5.6-luna`, and `gpt-5.6-terra` all changed) — the current numbers there predate this catalog update. While there, add Layer 1 moderation's real cost (a `gpt-oss-120b` call per request, see "Moderation") — the existing model already assumed this cost, so this is mostly confirming the assumption held.
 7. Revisit the dropped 5h/7d sub-window layers (see "Spend limits") once real usage data exists to size their fractions on, instead of on guesses.
+8. ~~Implement Layer 1 (input) moderation~~ — done (`moderation/`). Build Layer 2 (output, streaming) once `/chat` actually streams — no point checking response chunks incrementally against a response that's delivered in one shot.
+9. Persist moderation-block events (`user_id`, `categories`, `reason`, timestamp) to a real store instead of just `log.Printf` — needed for threshold calibration and abuse pattern analysis, same "per-request logging" argument as `router.CostLogEntry`.
