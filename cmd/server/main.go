@@ -41,9 +41,13 @@ func main() {
 	}
 	openRouterClient := provider.NewOpenRouterClient(openRouterKey)
 
+	// google/gemini-3.5-flash-lite is the default: it's the model
+	// prompts/classifier_system_prompt.md was validated against (see
+	// docs/unit-economics.md's assumptions table). Override with
+	// CLASSIFIER_API_MODEL_ID for a different OpenRouter slug.
 	classifierModelID := os.Getenv("CLASSIFIER_API_MODEL_ID")
 	if classifierModelID == "" {
-		log.Fatal("CLASSIFIER_API_MODEL_ID is required (the exact OpenRouter model slug, e.g. \"vendor/model-name\", to classify with)")
+		classifierModelID = "google/gemini-3.5-flash-lite"
 	}
 
 	srv := &server.Server{
@@ -51,16 +55,13 @@ func main() {
 		Classifier: classifier.New(openRouterClient, classifierModelID, systemPrompt),
 		Store:      limits.NewInMemorySpendStore(),
 		Plans:      plans,
-		// Only "google" has a real client wired up right now -- it's the
-		// provider tag on configs/models.json's temporary
-		// "gemma-4-31b-it:free" test entry (see docs/running-locally.md).
-		// Routing to a model tagged with any other catalog provider will
-		// fail at generate time with a clear error until either that
-		// entry is given a verified OpenRouter slug (api_model_id) and
-		// added here, or this map is built from every catalog provider at
-		// once -- OpenRouter can serve all of them through this same
-		// client, the missing piece is confirming each one's real slug,
-		// not writing another Client implementation.
+		// Only "google" has a real client wired up right now. None of the
+		// catalog's entries have a verified OpenRouter slug yet (see
+		// README "Next steps"), so routing to any of them for generation
+		// will still fail at generate time with a clear error until an
+		// entry's api_model_id is confirmed against the real OpenRouter
+		// catalog -- this map entry is ready for that, not tied to any
+		// specific model.
 		Generators: map[string]provider.Client{"google": openRouterClient},
 	}
 
