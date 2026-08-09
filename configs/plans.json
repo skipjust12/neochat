@@ -1,0 +1,19 @@
+{
+  "plans": [
+    {
+      "plan_id": "pro",
+      "thinking_max_cap_usd": 10.0,
+      "instant_extra_cap_usd": 3.0
+    },
+    {
+      "plan_id": "pro_plus",
+      "thinking_max_cap_usd": 50.0,
+      "instant_extra_cap_usd": 5.0
+    },
+    {
+      "plan_id": "max",
+      "thinking_max_cap_usd": 100.0,
+      "instant_extra_cap_usd": 8.0
+    }
+  ]
+}
