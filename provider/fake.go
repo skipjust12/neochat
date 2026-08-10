@@ -12,6 +12,16 @@ type FakeClient struct {
 	Responses []GenerateResult
 	Err       error // if set, every call returns this error instead
 
+	// Block, if non-nil, makes Generate wait on this channel (or on ctx
+	// being done, whichever comes first) before doing anything else --
+	// simulates a slow/hung upstream call for tests that need to verify
+	// context cancellation actually stops in-flight work instead of
+	// running it to completion. A nil channel (the zero value) means "no
+	// blocking", so existing tests that don't set this are unaffected.
+	// Nothing ever needs to close/send on it in practice: a canceled ctx
+	// is always the way these tests end the block.
+	Block chan struct{}
+
 	calls int
 	// Requests records every call's arguments, for tests that want to
 	// assert on what was sent (e.g. that the classifier's system prompt
@@ -24,8 +34,15 @@ type FakeRequest struct {
 	Messages   []Message
 }
 
-func (f *FakeClient) Generate(_ context.Context, apiModelID string, messages []Message) (GenerateResult, error) {
+func (f *FakeClient) Generate(ctx context.Context, apiModelID string, messages []Message) (GenerateResult, error) {
 	f.Requests = append(f.Requests, FakeRequest{APIModelID: apiModelID, Messages: messages})
+	if f.Block != nil {
+		select {
+		case <-ctx.Done():
+			return GenerateResult{}, ctx.Err()
+		case <-f.Block:
+		}
+	}
 	if f.Err != nil {
 		return GenerateResult{}, f.Err
 	}

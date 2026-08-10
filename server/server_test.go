@@ -114,6 +114,67 @@ func TestHandle_HappyPath(t *testing.T) {
 	}
 }
 
+// TestHandle_ClassifyAndModerateRespectContextCancellation verifies the
+// README pre-launch checklist's "request-level cancellation" item at the
+// classify/moderate stage: if the client disconnects (net/http cancels
+// r.Context()) while those two calls are still in flight, handle() must
+// not hang waiting for them -- both goroutines should return promptly
+// once ctx is done, since they're passed the same ctx as everything
+// else.
+func TestHandle_ClassifyAndModerateRespectContextCancellation(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.Classifier = classifier.New(&provider.FakeClient{Block: make(chan struct{})}, "fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(&provider.FakeClient{Block: make(chan struct{})}, "fake-moderation-model", "system prompt")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
+	start := time.Now()
+	_, err := s.handle(ctx, req, s.Plans["pro"])
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error once the context deadline is exceeded")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected the error to wrap context.DeadlineExceeded, got: %v", err)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("handle() took %s to return, want well under 2s", elapsed)
+	}
+}
+
+// TestHandle_GenerateRespectsContextCancellation is the same check at the
+// generation stage: a client disconnecting mid-generation must not leave
+// the upstream call (and its cost) running to completion unobserved.
+func TestHandle_GenerateRespectsContextCancellation(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	blockedGen := &provider.FakeClient{Block: make(chan struct{})}
+	s.Generators = map[string]provider.Client{"openai": blockedGen}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
+	start := time.Now()
+	_, err := s.handle(ctx, req, s.Plans["pro"])
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error once the context deadline is exceeded")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected the error to wrap context.DeadlineExceeded, got: %v", err)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("handle() took %s to return, want well under 2s", elapsed)
+	}
+	if len(blockedGen.Requests) != 1 {
+		t.Errorf("expected exactly 1 generate call to have started, got %d", len(blockedGen.Requests))
+	}
+}
+
 // TestHandle_ConversationHistoryCarriesToNextTurn checks the actual point
 // of conversation/: a second request on the same conversation_id sends
 // the model both the first turn's user message and its own prior answer,
