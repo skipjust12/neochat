@@ -3,9 +3,11 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestOpenRouterClient_Generate(t *testing.T) {
@@ -87,5 +89,43 @@ func TestOpenRouterClient_Generate_APIError(t *testing.T) {
 	_, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
 	if err == nil {
 		t.Fatal("expected an error for a 404 response, got nil")
+	}
+}
+
+// TestOpenRouterClient_Generate_RespectsContextCancellation verifies the
+// README pre-launch checklist's "request-level cancellation" item at the
+// one place it actually has to be real: the outbound HTTP call. Generate
+// already builds its request with http.NewRequestWithContext, which
+// should make net/http abort the round trip the moment ctx is done --
+// this pins that behavior down with a server that would otherwise hang
+// far longer than the test's timeout, so a regression (e.g. someone
+// swapping in http.NewRequest by mistake) would make this test time out
+// instead of silently passing.
+func TestOpenRouterClient_Generate_RespectsContextCancellation(t *testing.T) {
+	block := make(chan struct{}) // never closed -- the handler hangs until the client gives up
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		<-block
+	}))
+	defer srv.Close()
+	defer close(block) // let the handler goroutine exit after the test finishes
+
+	c := NewOpenRouterClient("test-key")
+	c.baseURL = srv.URL
+
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	start := time.Now()
+	_, err := c.Generate(ctx, "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
+	elapsed := time.Since(start)
+
+	if err == nil {
+		t.Fatal("expected an error once the context deadline is exceeded")
+	}
+	if !errors.Is(err, context.DeadlineExceeded) {
+		t.Errorf("expected the error to wrap context.DeadlineExceeded, got: %v", err)
+	}
+	if elapsed > 2*time.Second {
+		t.Errorf("Generate took %s to return after the context deadline passed, want well under the httpClient's 60s timeout", elapsed)
 	}
 }

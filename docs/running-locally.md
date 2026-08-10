@@ -43,6 +43,7 @@ Expected response shape:
 
 ```json
 {
+  "conversation_id": "...",
   "selected_model_id": "...",
   "selected_mode": "instant | thinking | max",
   "reason": "...",
@@ -56,6 +57,7 @@ Every request now also runs through Layer 1 moderation (`moderation/`, see READM
 
 ```json
 {
+  "conversation_id": "...",
   "selected_model_id": "",
   "selected_mode": "",
   "reason": "",
@@ -65,6 +67,21 @@ Every request now also runs through Layer 1 moderation (`moderation/`, see READM
   "blocked": true
 }
 ```
+
+To continue the same thread instead of starting a new one each time, pass the `conversation_id` the previous response returned:
+
+```bash
+curl -s localhost:8080/chat -X POST -d '{
+  "user_id": "test-user",
+  "plan_id": "pro",
+  "conversation_id": "PASTE_THE_ONE_FROM_THE_LAST_RESPONSE",
+  "message": "а теперь объясни то же самое проще",
+  "requested_mode": "auto",
+  "estimated_context_tokens": 200
+}' | python3 -m json.tool
+```
+
+Leaving `conversation_id` out (or empty) always starts a brand new conversation — there's no way to "continue the most recent one implicitly," the client has to track and pass the ID itself.
 
 `plan_id` must be one of `configs/plans.json`'s `plan_id` values (`pro`, `pro_plus`, `max`).
 
