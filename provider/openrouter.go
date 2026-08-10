@@ -1,12 +1,14 @@
 package provider
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -122,4 +124,146 @@ func (c *OpenRouterClient) Generate(ctx context.Context, apiModelID string, mess
 		InputTokens:  resp.Usage.PromptTokens,
 		OutputTokens: resp.Usage.CompletionTokens,
 	}, nil
+}
+
+// openRouterStreamRequest mirrors openRouterChatRequest plus the two
+// fields that turn streaming on: Stream itself, and StreamOptions'
+// IncludeUsage, which asks OpenRouter to emit one extra chunk at the end
+// carrying the real token usage (mirroring OpenAI's streaming contract) --
+// without it, a streamed GenerateResult would have no token counts for
+// router.ComputeCostUSD / limits.RecordThinkingMaxSpend to bill against.
+type openRouterStreamRequest struct {
+	Model         string                  `json:"model"`
+	Messages      []openRouterChatMessage `json:"messages"`
+	Stream        bool                    `json:"stream"`
+	StreamOptions struct {
+		IncludeUsage bool `json:"include_usage"`
+	} `json:"stream_options"`
+}
+
+// openRouterStreamChunk is one `data: {...}` line of an OpenAI-compatible
+// SSE chat-completions stream. Choices carries the incremental text
+// (empty on the final usage-only chunk); Usage is nil on every chunk
+// except that final one.
+type openRouterStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+	} `json:"usage"`
+	Error *struct {
+		Message string `json:"message"`
+		Code    any    `json:"code"`
+	} `json:"error"`
+}
+
+// GenerateStream is Generate's streaming counterpart: same request, but
+// with stream:true, parsing the vendor's `data: {...}` SSE lines as they
+// arrive instead of waiting for one complete JSON body. The returned
+// channel is fed by a background goroutine and closed once the stream
+// ends, one way or another -- see StreamChunk's doc comment for the exact
+// contract.
+func (c *OpenRouterClient) GenerateStream(ctx context.Context, apiModelID string, messages []Message) (<-chan StreamChunk, error) {
+	reqBody := openRouterStreamRequest{Model: apiModelID, Stream: true}
+	reqBody.StreamOptions.IncludeUsage = true
+	for _, m := range messages {
+		reqBody.Messages = append(reqBody.Messages, openRouterChatMessage{Role: m.Role, Content: m.Content})
+	}
+
+	body, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("provider: marshal openrouter stream request: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("provider: build openrouter stream request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+c.apiKey)
+	httpReq.Header.Set("Accept", "text/event-stream")
+	if c.Referer != "" {
+		httpReq.Header.Set("HTTP-Referer", c.Referer)
+	}
+	if c.Title != "" {
+		httpReq.Header.Set("X-Title", c.Title)
+	}
+
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("provider: openrouter stream request failed: %w", err)
+	}
+	if httpResp.StatusCode != http.StatusOK {
+		defer httpResp.Body.Close()
+		respBody, _ := io.ReadAll(httpResp.Body)
+		return nil, fmt.Errorf("provider: openrouter stream request failed with status %d: %s", httpResp.StatusCode, respBody)
+	}
+
+	ch := make(chan StreamChunk)
+	go func() {
+		defer close(ch)
+		defer httpResp.Body.Close()
+
+		send := func(chunk StreamChunk) bool {
+			select {
+			case ch <- chunk:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+
+		var text strings.Builder
+		var inputTokens, outputTokens int
+
+		scanner := bufio.NewScanner(httpResp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			data, ok := strings.CutPrefix(line, "data: ")
+			if !ok {
+				continue
+			}
+			if data == "[DONE]" {
+				break
+			}
+
+			var chunk openRouterStreamChunk
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				send(StreamChunk{Err: fmt.Errorf("provider: parse openrouter stream chunk: %w (data=%s)", err, data)})
+				return
+			}
+			if chunk.Error != nil {
+				send(StreamChunk{Err: fmt.Errorf("provider: openrouter stream error (code=%v): %s", chunk.Error.Code, chunk.Error.Message)})
+				return
+			}
+			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+				delta := chunk.Choices[0].Delta.Content
+				text.WriteString(delta)
+				if !send(StreamChunk{Delta: delta}) {
+					return
+				}
+			}
+			if chunk.Usage != nil {
+				inputTokens = chunk.Usage.PromptTokens
+				outputTokens = chunk.Usage.CompletionTokens
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			send(StreamChunk{Err: fmt.Errorf("provider: read openrouter stream: %w", err)})
+			return
+		}
+
+		send(StreamChunk{Done: true, Final: GenerateResult{
+			Text:         text.String(),
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
+		}})
+	}()
+
+	return ch, nil
 }

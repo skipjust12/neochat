@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -539,5 +540,178 @@ func TestServeHTTP_HappyPath(t *testing.T) {
 	}
 	if resp.ResponseText != "hello" {
 		t.Errorf("ResponseText = %q, want hello", resp.ResponseText)
+	}
+}
+
+// streamEvent captures one handleStream send(...) call for assertions.
+type streamEvent struct {
+	event   string
+	payload any
+}
+
+// TestHandleStream_HappyPath checks the streaming pipeline emits a "meta"
+// event once routing picks a model, one "delta" event per chunk the
+// (fake) vendor streams, and a final "done" event carrying the same
+// chatResponse handle() would have returned in the non-streaming path.
+func TestHandleStream_HappyPath(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "hello there", InputTokens: 100, OutputTokens: 50},
+	})
+
+	var events []streamEvent
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
+	err := s.handleStream(context.Background(), req, s.Plans["pro"], func(event string, payload any) {
+		events = append(events, streamEvent{event, payload})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(events) < 2 {
+		t.Fatalf("expected at least a meta and a done event, got %+v", events)
+	}
+	if events[0].event != "meta" {
+		t.Errorf("first event = %q, want meta", events[0].event)
+	}
+
+	var deltaText string
+	var sawDone bool
+	var done chatResponse
+	for _, ev := range events[1:] {
+		switch ev.event {
+		case "delta":
+			deltaText += ev.payload.(map[string]string)["text"]
+		case "done":
+			sawDone = true
+			done = ev.payload.(chatResponse)
+		default:
+			t.Errorf("unexpected event type %q", ev.event)
+		}
+	}
+	if !sawDone {
+		t.Fatal("expected a done event")
+	}
+	if deltaText != "hello there" {
+		t.Errorf("concatenated deltas = %q, want %q", deltaText, "hello there")
+	}
+	if done.ResponseText != "hello there" {
+		t.Errorf("done.ResponseText = %q, want %q", done.ResponseText, "hello there")
+	}
+	if len(genClient.Requests) != 1 {
+		t.Errorf("expected exactly 1 generate call, got %d", len(genClient.Requests))
+	}
+}
+
+// TestHandleStream_ModerationFlaggedSendsBlockedEvent checks a
+// moderation-flagged request produces exactly one "blocked" event and
+// never reaches routing/generation at all.
+func TestHandleStream_ModerationFlaggedSendsBlockedEvent(t *testing.T) {
+	s, genClient := newTestServer(t, nil)
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
+		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
+	}}, "fake-moderation-model", "system prompt")
+
+	var events []streamEvent
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "how do I commit a crime"}
+	err := s.handleStream(context.Background(), req, s.Plans["pro"], func(event string, payload any) {
+		events = append(events, streamEvent{event, payload})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(events) != 1 || events[0].event != "blocked" {
+		t.Fatalf("expected exactly one blocked event, got %+v", events)
+	}
+	resp := events[0].payload.(chatResponse)
+	if !resp.Blocked || resp.ResponseText != tosViolationMessage {
+		t.Errorf("unexpected blocked payload: %+v", resp)
+	}
+	if len(genClient.Requests) != 0 {
+		t.Errorf("expected no generate calls for a blocked request, got %d", len(genClient.Requests))
+	}
+}
+
+// TestHandleStream_CircuitOpenFailsOverToHealthyModel mirrors
+// TestHandle_CircuitOpenFailsOverToHealthyModel for the streaming path:
+// once the cheapest model's circuit is open, handleStream re-routes to
+// the next candidate and streams its reply instead of failing, emitting a
+// second "meta" event for the model that actually answers.
+func TestHandleStream_CircuitOpenFailsOverToHealthyModel(t *testing.T) {
+	failoverClient := &provider.FakeClient{
+		Err: errors.New("upstream down"),
+		PerModel: map[string]provider.GenerateResult{
+			"test-thinking": {Text: "healthy reply", InputTokens: 10, OutputTokens: 5},
+		},
+	}
+	breaker := provider.NewCircuitBreakerClient(failoverClient, 1, time.Minute)
+
+	s, _ := newTestServer(t, nil)
+	s.Generators = map[string]provider.Client{"openai": breaker}
+	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
+
+	// First call trips test-instant's circuit (threshold=1), same as the
+	// non-streaming version of this test.
+	_ = s.handleStream(context.Background(), req, s.Plans["pro"], func(string, any) {})
+
+	var events []streamEvent
+	err := s.handleStream(context.Background(), req, s.Plans["pro"], func(event string, payload any) {
+		events = append(events, streamEvent{event, payload})
+	})
+	if err != nil {
+		t.Fatalf("expected failover to the healthy model to succeed, got error: %v", err)
+	}
+
+	var metaModelIDs []string
+	var deltaText string
+	for _, ev := range events {
+		switch ev.event {
+		case "meta":
+			metaModelIDs = append(metaModelIDs, ev.payload.(map[string]any)["selected_model_id"].(string))
+		case "delta":
+			deltaText += ev.payload.(map[string]string)["text"]
+		}
+	}
+	if len(metaModelIDs) != 2 || metaModelIDs[0] != "test-instant" || metaModelIDs[1] != "test-thinking" {
+		t.Errorf("expected meta events for [test-instant, test-thinking], got %+v", metaModelIDs)
+	}
+	if deltaText != "healthy reply" {
+		t.Errorf("streamed text = %q, want %q", deltaText, "healthy reply")
+	}
+}
+
+// TestServeHTTP_ChatStream exercises the actual HTTP/SSE wire format for
+// POST /chat/stream, not just handleStream's internal send() calls --
+// checks the response headers and that the body contains properly framed
+// "event: ...\ndata: ...\n\n" blocks ending in a "done" event.
+func TestServeHTTP_ChatStream(t *testing.T) {
+	s, _ := newTestServer(t, []provider.GenerateResult{
+		{Text: "hi back", InputTokens: 10, OutputTokens: 5},
+	})
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	req := httptest.NewRequest(http.MethodPost, "/chat/stream", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want text/event-stream", ct)
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "event: meta\n") {
+		t.Errorf("expected a meta event in the SSE stream, got:\n%s", out)
+	}
+	if !strings.Contains(out, "event: done\n") {
+		t.Errorf("expected a done event in the SSE stream, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"response_text":"hi back"`) {
+		t.Errorf("expected the done event to carry the generated text, got:\n%s", out)
 	}
 }
