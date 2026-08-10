@@ -51,14 +51,15 @@ type Server struct {
 	// generated from -- see handleChat's error path.
 	Generators map[string]provider.Client
 
-	// SystemPrompt is prepended as a "system" message ahead of
-	// conversation history and the new user message on every generation
-	// call (see handle) -- the prompt for the model actually answering
-	// the user, distinct from Classifier.SystemPrompt and
-	// Moderator.SystemPrompt, which are their own cheap-model calls.
-	// Empty means no system message is sent at all, so this field can be
-	// left unset until a real prompt exists (see LoadSystemPrompt).
-	SystemPrompt string
+	// SystemPrompts maps a persona name (one of SystemPromptNames -- e.g.
+	// "Default", "Expert") to the prompt text prepended as a "system"
+	// message ahead of conversation history and the new user message on
+	// every generation call (see prepare) -- the prompt for the model
+	// actually answering the user, distinct from Classifier.SystemPrompt
+	// and Moderator.SystemPrompt, which are their own cheap-model calls.
+	// A persona with no entry (prompt not written yet -- see
+	// LoadSystemPrompts) sends no system message at all when selected.
+	SystemPrompts map[string]string
 }
 
 // chatRequest is the wire format for POST /chat.
@@ -75,6 +76,29 @@ type chatRequest struct {
 	RequestedMode          string `json:"requested_mode"` // "auto" | "instant" | "thinking" | "max" | "manual"
 	ManualModelID          string `json:"manual_model_id,omitempty"`
 	EstimatedContextTokens int    `json:"estimated_context_tokens"`
+
+	// Persona picks which of SystemPromptNames' system prompts to send
+	// with this request (e.g. "Expert", "Cynical") -- the UI's tone/style
+	// picker once it exists. Empty means "Default". A non-empty value not
+	// in SystemPromptNames is a 400, same as an unknown plan_id.
+	Persona string `json:"persona,omitempty"`
+}
+
+// defaultPersona is the persona used when a request doesn't specify one.
+const defaultPersona = "Default"
+
+// isValidPersona reports whether name is one of SystemPromptNames.
+// Validation is against this fixed list, not against which personas
+// currently have loaded prompt text -- a persona whose file is still an
+// empty placeholder (see LoadSystemPrompts) is a legitimate selection
+// that just sends no system message, not a client error.
+func isValidPersona(name string) bool {
+	for _, n := range SystemPromptNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
 }
 
 type chatResponse struct {
@@ -125,6 +149,10 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 	plan, ok := plans[req.PlanID]
 	if !ok {
 		http.Error(w, fmt.Sprintf("unknown plan_id %q", req.PlanID), http.StatusBadRequest)
+		return chatRequest{}, limits.PlanLimits{}, false
+	}
+	if req.Persona != "" && !isValidPersona(req.Persona) {
+		http.Error(w, fmt.Sprintf("unknown persona %q (want one of %v)", req.Persona, SystemPromptNames), http.StatusBadRequest)
 		return chatRequest{}, limits.PlanLimits{}, false
 	}
 	return req, plan, true
@@ -301,9 +329,15 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	if err != nil {
 		return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
 	}
+	persona := req.Persona
+	if persona == "" {
+		persona = defaultPersona
+	}
+	systemPrompt := s.SystemPrompts[persona] // "" for a valid-but-not-yet-written persona -- see LoadSystemPrompts
+
 	messages := make([]provider.Message, 0, len(history)+2)
-	if s.SystemPrompt != "" {
-		messages = append(messages, provider.Message{Role: "system", Content: s.SystemPrompt})
+	if systemPrompt != "" {
+		messages = append(messages, provider.Message{Role: "system", Content: systemPrompt})
 	}
 	for _, m := range history {
 		messages = append(messages, provider.Message{Role: string(m.Role), Content: m.Content})

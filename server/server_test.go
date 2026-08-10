@@ -117,14 +117,19 @@ func TestHandle_HappyPath(t *testing.T) {
 
 // TestHandle_PrependsSystemPromptWhenConfigured checks that a configured
 // Server.SystemPrompt is sent to the generation model as the first
-// message, ahead of conversation history and the new user message.
-func TestHandle_PrependsSystemPromptWhenConfigured(t *testing.T) {
+// message, ahead of conversation history and the new user message, for the
+// request's chosen persona -- defaulting to "Default" when the request
+// doesn't specify one.
+func TestHandle_PrependsSystemPromptForSelectedPersona(t *testing.T) {
 	s, genClient := newTestServer(t, []provider.GenerateResult{
 		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
 	})
-	s.SystemPrompt = "you are a helpful assistant"
+	s.SystemPrompts = map[string]string{
+		"Default": "you are a helpful assistant",
+		"Expert":  "you are a domain expert, terse and precise",
+	}
 
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000, Persona: "Expert"}
 	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -133,23 +138,44 @@ func TestHandle_PrependsSystemPromptWhenConfigured(t *testing.T) {
 		t.Fatalf("expected exactly 1 generate call, got %d", len(genClient.Requests))
 	}
 	msgs := genClient.Requests[0].Messages
-	if len(msgs) == 0 || msgs[0].Role != "system" || msgs[0].Content != s.SystemPrompt {
-		t.Fatalf("expected first message to be the system prompt, got %+v", msgs)
+	if len(msgs) == 0 || msgs[0].Role != "system" || msgs[0].Content != s.SystemPrompts["Expert"] {
+		t.Fatalf("expected first message to be the Expert system prompt, got %+v", msgs)
 	}
 	if last := msgs[len(msgs)-1]; last.Role != "user" || last.Content != req.Message {
 		t.Errorf("expected last message to be the user's request, got %+v", last)
 	}
 }
 
-// TestHandle_NoSystemMessageWhenPromptEmpty checks that leaving
-// Server.SystemPrompt unset (its zero value, e.g. before the real prompt
-// is written) sends no system message at all, rather than an empty one.
-func TestHandle_NoSystemMessageWhenPromptEmpty(t *testing.T) {
+// TestHandle_DefaultsToDefaultPersonaWhenUnspecified checks an empty
+// Persona field resolves to "Default", not "no persona at all".
+func TestHandle_DefaultsToDefaultPersonaWhenUnspecified(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
+	})
+	s.SystemPrompts = map[string]string{"Default": "you are a helpful assistant"}
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs := genClient.Requests[0].Messages
+	if len(msgs) == 0 || msgs[0].Role != "system" || msgs[0].Content != "you are a helpful assistant" {
+		t.Fatalf("expected the Default persona's prompt, got %+v", msgs)
+	}
+}
+
+// TestHandle_NoSystemMessageWhenPersonaPromptNotWrittenYet checks that a
+// valid persona name (one of SystemPromptNames) with no entry in
+// Server.SystemPrompts (its prompt file is still an empty placeholder --
+// see LoadSystemPrompts) sends no system message at all, rather than an
+// empty one.
+func TestHandle_NoSystemMessageWhenPersonaPromptNotWrittenYet(t *testing.T) {
 	s, genClient := newTestServer(t, []provider.GenerateResult{
 		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
 	})
 
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000, Persona: "Cynical"}
 	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -159,8 +185,29 @@ func TestHandle_NoSystemMessageWhenPromptEmpty(t *testing.T) {
 	}
 	for _, m := range genClient.Requests[0].Messages {
 		if m.Role == "system" {
-			t.Errorf("expected no system message when SystemPrompt is unset, got %+v", genClient.Requests[0].Messages)
+			t.Errorf("expected no system message for a persona with no loaded prompt, got %+v", genClient.Requests[0].Messages)
 		}
+	}
+}
+
+// TestServeHTTP_UnknownPersonaRejected checks an unrecognized persona name
+// (a typo, or a client not yet updated to a persona list change) is
+// rejected up front with 400, the same way an unknown plan_id is --
+// before any classify/moderate/route/generate work happens.
+func TestServeHTTP_UnknownPersonaRejected(t *testing.T) {
+	s, genClient := newTestServer(t, nil)
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", Persona: "Snarky"})
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if len(genClient.Requests) != 0 {
+		t.Errorf("expected no generate calls for a rejected request, got %d", len(genClient.Requests))
 	}
 }
 
