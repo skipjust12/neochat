@@ -7,6 +7,7 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
@@ -20,6 +21,12 @@ import (
 	"neochat/provider"
 	"neochat/router"
 )
+
+// maxCircuitFailoverAttempts bounds how many times handle will re-route
+// around a model whose circuit just opened before giving up. Each retry
+// excludes one more model, so this is also the max number of distinct
+// models a single request will try.
+const maxCircuitFailoverAttempts = 3
 
 // tosViolationMessage is the only thing a moderation-flagged request's
 // user ever sees -- no detail about which category tripped or why, per
@@ -43,6 +50,15 @@ type Server struct {
 	// provider has no entry here can be selected by the router but not
 	// generated from -- see handleChat's error path.
 	Generators map[string]provider.Client
+
+	// SystemPrompt is prepended as a "system" message ahead of
+	// conversation history and the new user message on every generation
+	// call (see handle) -- the prompt for the model actually answering
+	// the user, distinct from Classifier.SystemPrompt and
+	// Moderator.SystemPrompt, which are their own cheap-model calls.
+	// Empty means no system message is sent at all, so this field can be
+	// left unset until a real prompt exists (see LoadSystemPrompt).
+	SystemPrompt string
 }
 
 // chatRequest is the wire format for POST /chat.
@@ -199,20 +215,6 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 		return chatResponse{}, fmt.Errorf("check thinking_max lock: %w", err)
 	}
 
-	result, err := s.Router.Route(classified, req.RequestedMode, req.ManualModelID, req.EstimatedContextTokens, locked)
-	if err != nil {
-		return chatResponse{}, fmt.Errorf("route: %w", err)
-	}
-
-	model, ok := s.Router.Catalog.FindModel(result.SelectedModelID)
-	if !ok {
-		return chatResponse{}, fmt.Errorf("selected model %q not found in catalog", result.SelectedModelID)
-	}
-	gen, ok := s.Generators[model.Provider]
-	if !ok {
-		return chatResponse{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
-	}
-
 	// Send the model everything stored for this conversation so far, plus
 	// the new message -- without this, /chat could never hold more than a
 	// single-turn exchange. estimated_context_tokens is still whatever
@@ -225,15 +227,54 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	if err != nil {
 		return chatResponse{}, fmt.Errorf("load conversation history: %w", err)
 	}
-	messages := make([]provider.Message, 0, len(history)+1)
+	messages := make([]provider.Message, 0, len(history)+2)
+	if s.SystemPrompt != "" {
+		messages = append(messages, provider.Message{Role: "system", Content: s.SystemPrompt})
+	}
 	for _, m := range history {
 		messages = append(messages, provider.Message{Role: string(m.Role), Content: m.Content})
 	}
 	messages = append(messages, provider.Message{Role: "user", Content: req.Message})
 
-	genResult, err := gen.Generate(ctx, model.ResolveAPIModelID(), messages)
-	if err != nil {
-		return chatResponse{}, fmt.Errorf("generate: %w", err)
+	// Route, then generate; on a CircuitOpenError (the model's circuit just
+	// tripped -- see provider.CircuitBreakerClient) retry with that model
+	// excluded so Route picks a different, healthy candidate instead of
+	// failing the whole request. Bounded by maxCircuitFailoverAttempts so a
+	// catalog with every candidate's circuit open still fails instead of
+	// looping.
+	var (
+		result    router.RouteResult
+		model     router.Model
+		genResult provider.GenerateResult
+	)
+	excludedModelIDs := map[string]bool{}
+	for attempt := 0; ; attempt++ {
+		result, err = s.Router.Route(classified, req.RequestedMode, req.ManualModelID, req.EstimatedContextTokens, locked, excludedModelIDs)
+		if err != nil {
+			return chatResponse{}, fmt.Errorf("route: %w", err)
+		}
+
+		var ok bool
+		model, ok = s.Router.Catalog.FindModel(result.SelectedModelID)
+		if !ok {
+			return chatResponse{}, fmt.Errorf("selected model %q not found in catalog", result.SelectedModelID)
+		}
+		gen, ok := s.Generators[model.Provider]
+		if !ok {
+			return chatResponse{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
+		}
+
+		genResult, err = gen.Generate(ctx, model.ResolveAPIModelID(), messages)
+		if err == nil {
+			break
+		}
+
+		var circuitErr *provider.CircuitOpenError
+		if !errors.As(err, &circuitErr) || attempt >= maxCircuitFailoverAttempts-1 {
+			return chatResponse{}, fmt.Errorf("generate: %w", err)
+		}
+		log.Printf("server: /chat circuit open for model_id=%s (api_model_id=%s), rerouting: %v", result.SelectedModelID, model.ResolveAPIModelID(), err)
+		excludedModelIDs[result.SelectedModelID] = true
 	}
 
 	// Best-effort: generation already succeeded and the user already has

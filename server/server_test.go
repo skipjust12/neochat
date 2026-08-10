@@ -114,6 +114,55 @@ func TestHandle_HappyPath(t *testing.T) {
 	}
 }
 
+// TestHandle_PrependsSystemPromptWhenConfigured checks that a configured
+// Server.SystemPrompt is sent to the generation model as the first
+// message, ahead of conversation history and the new user message.
+func TestHandle_PrependsSystemPromptWhenConfigured(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
+	})
+	s.SystemPrompt = "you are a helpful assistant"
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(genClient.Requests) != 1 {
+		t.Fatalf("expected exactly 1 generate call, got %d", len(genClient.Requests))
+	}
+	msgs := genClient.Requests[0].Messages
+	if len(msgs) == 0 || msgs[0].Role != "system" || msgs[0].Content != s.SystemPrompt {
+		t.Fatalf("expected first message to be the system prompt, got %+v", msgs)
+	}
+	if last := msgs[len(msgs)-1]; last.Role != "user" || last.Content != req.Message {
+		t.Errorf("expected last message to be the user's request, got %+v", last)
+	}
+}
+
+// TestHandle_NoSystemMessageWhenPromptEmpty checks that leaving
+// Server.SystemPrompt unset (its zero value, e.g. before the real prompt
+// is written) sends no system message at all, rather than an empty one.
+func TestHandle_NoSystemMessageWhenPromptEmpty(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
+	})
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(genClient.Requests) != 1 {
+		t.Fatalf("expected exactly 1 generate call, got %d", len(genClient.Requests))
+	}
+	for _, m := range genClient.Requests[0].Messages {
+		if m.Role == "system" {
+			t.Errorf("expected no system message when SystemPrompt is unset, got %+v", genClient.Requests[0].Messages)
+		}
+	}
+}
+
 // TestHandle_ClassifyAndModerateRespectContextCancellation verifies the
 // README pre-launch checklist's "request-level cancellation" item at the
 // classify/moderate stage: if the client disconnects (net/http cancels
@@ -280,17 +329,19 @@ func TestHandle_ThinkingMaxLockedDowngradesAndSkipsGeneratorButStillGenerates(t 
 	}
 }
 
-// TestHandle_CircuitBreakerOpenSurfacesAsGenerateError checks that
-// provider.CircuitBreakerClient (cmd/server/main.go wraps the real
-// OpenRouterClient with one) works when plugged into Generators exactly
-// like any other provider.Client -- server.handle doesn't need to know
-// the breaker exists, it just sees a normal Generate error once the
-// circuit trips.
+// TestHandle_CircuitBreakerOpenSurfacesAsGenerateError checks that once a
+// model's circuit is open and no other candidate model survives Route's
+// hard filters (a single-model catalog here), handle has nothing left to
+// fail over to and surfaces the CircuitOpenError-driven routing failure
+// instead of retrying forever.
 func TestHandle_CircuitBreakerOpenSurfacesAsGenerateError(t *testing.T) {
 	failingClient := &provider.FakeClient{Err: errors.New("upstream down")}
 	breaker := provider.NewCircuitBreakerClient(failingClient, 1, time.Minute)
 
+	singleModelCatalog := router.Catalog{Models: []router.Model{testCatalog().Models[0]}}
+
 	s, _ := newTestServer(t, nil)
+	s.Router = router.NewRouter(singleModelCatalog, testWeights())
 	s.Generators = map[string]provider.Client{"openai": breaker}
 	// newTestServer's Classifier/Moderator fakes only script one reply
 	// each; this test calls handle() twice, so give both two.
@@ -308,18 +359,66 @@ func TestHandle_CircuitBreakerOpenSurfacesAsGenerateError(t *testing.T) {
 		t.Fatalf("expected exactly 1 call to reach the underlying client, got %d", len(failingClient.Requests))
 	}
 
-	// Second call: circuit is open, short-circuited before the
-	// underlying client is touched again.
+	// Second call: circuit is open, handle retries Route with the model
+	// excluded, finds no other candidate (single-model catalog), and
+	// returns that routing failure -- without ever touching the
+	// underlying client again.
 	_, err := s.handle(context.Background(), req, s.Plans["pro"])
 	if err == nil {
 		t.Fatal("expected an error from the second call")
 	}
-	var circuitErr *provider.CircuitOpenError
-	if !errors.As(err, &circuitErr) {
-		t.Errorf("expected the error to wrap a *provider.CircuitOpenError, got %v", err)
-	}
 	if len(failingClient.Requests) != 1 {
 		t.Errorf("expected the second call to skip the underlying client, still got %d calls", len(failingClient.Requests))
+	}
+}
+
+// TestHandle_CircuitOpenFailsOverToHealthyModel checks the actual failover
+// path: once the cheapest candidate's circuit is open, handle re-routes
+// around it within a single call and successfully generates from the
+// next-cheapest surviving model instead of failing the whole request.
+func TestHandle_CircuitOpenFailsOverToHealthyModel(t *testing.T) {
+	failoverClient := &provider.FakeClient{
+		Err: errors.New("upstream down"),
+		PerModel: map[string]provider.GenerateResult{
+			"test-thinking": {Text: "healthy reply", InputTokens: 10, OutputTokens: 5},
+		},
+	}
+	breaker := provider.NewCircuitBreakerClient(failoverClient, 1, time.Minute)
+
+	s, _ := newTestServer(t, nil)
+	s.Generators = map[string]provider.Client{"openai": breaker}
+	// newTestServer's Classifier/Moderator fakes only script one reply
+	// each; this test calls handle() twice, so give both two.
+	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
+
+	// First call: test-instant (the cheapest instant-tier candidate) is
+	// tried, fails with a real upstream error, and trips its
+	// (threshold=1) circuit. No failover here -- the first failure isn't
+	// a CircuitOpenError, so this call still fails.
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err == nil {
+		t.Fatal("expected an error from the first call")
+	}
+
+	// Second call: test-instant's circuit is now open, so handle gets a
+	// CircuitOpenError on the first attempt, excludes test-instant, and
+	// retries Route -- which picks test-thinking, the only other
+	// instant-tier candidate. That model's circuit is untripped and its
+	// FakeClient response is scripted to succeed.
+	resp, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("expected failover to the healthy model to succeed, got error: %v", err)
+	}
+	if resp.SelectedModelID != "test-thinking" {
+		t.Errorf("expected failover to pick test-thinking, got %q", resp.SelectedModelID)
+	}
+	if resp.ResponseText != "healthy reply" {
+		t.Errorf("expected the healthy model's reply, got %q", resp.ResponseText)
+	}
+	if len(failoverClient.Requests) != 2 {
+		t.Errorf("expected 2 calls to the underlying client (failed test-instant, succeeded test-thinking), got %d", len(failoverClient.Requests))
 	}
 }
 

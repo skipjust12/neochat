@@ -29,13 +29,12 @@ import (
 // gate can be added later if a partially-recovering model turns out to
 // need it.
 //
-// What this deliberately does NOT do: make router.Route pick a different
-// model while this one's circuit is open. Generate still returns
-// CircuitOpenError, and the caller (server.handle) surfaces it as a
-// normal request failure -- actually rerouting around an unhealthy model
-// would need router.Route to accept a set of currently-excluded models,
-// which is a real API change to router/, not something this type
-// attempts. See README "Next steps".
+// Generate still returns CircuitOpenError itself rather than picking a
+// different model -- this type has no notion of "the catalog" or
+// "routing", only apiModelID strings. Failover happens one layer up:
+// server.handle catches CircuitOpenError from Generate and retries
+// router.Route with the failed model added to its excludedModelIDs set,
+// so the next Route call picks a different, healthy candidate.
 type CircuitBreakerClient struct {
 	Client           Client
 	FailureThreshold int           // consecutive failures before the circuit opens
