@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"neochat/classifier"
+	"neochat/conversation"
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
@@ -33,6 +34,7 @@ type Server struct {
 	Classifier    classifier.Classifier
 	Moderator     moderation.Moderator
 	ModerationLog moderation.BlockLog
+	Conversations conversation.Store
 	Store         limits.SpendStore
 	Plans         map[string]limits.PlanLimits
 
@@ -45,8 +47,14 @@ type Server struct {
 
 // chatRequest is the wire format for POST /chat.
 type chatRequest struct {
-	UserID                 string `json:"user_id"`
-	PlanID                 string `json:"plan_id"`
+	UserID string `json:"user_id"`
+	PlanID string `json:"plan_id"`
+
+	// ConversationID threads this request onto an existing conversation's
+	// stored history (see conversation/). Empty starts a new one --
+	// handle generates an ID and returns it in chatResponse so the client
+	// can pass it back on the next turn.
+	ConversationID         string `json:"conversation_id,omitempty"`
 	Message                string `json:"message"`
 	RequestedMode          string `json:"requested_mode"` // "auto" | "instant" | "thinking" | "max" | "manual"
 	ManualModelID          string `json:"manual_model_id,omitempty"`
@@ -54,6 +62,11 @@ type chatRequest struct {
 }
 
 type chatResponse struct {
+	// ConversationID is always the conversation this turn belongs to --
+	// either the one the request supplied, or a freshly generated one if
+	// it didn't. Present even on a Blocked response, so a client can
+	// retry in the same thread after rephrasing.
+	ConversationID   string  `json:"conversation_id"`
 	SelectedModelID  string  `json:"selected_model_id"`
 	SelectedMode     string  `json:"selected_mode"`
 	Reason           string  `json:"reason"`
@@ -111,6 +124,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 // from handleChat so tests can call it directly with a fixed request/plan
 // and inspect the typed result instead of parsing HTTP output.
 func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
+	conversationID := req.ConversationID
+	if conversationID == "" {
+		conversationID = conversation.NewID()
+	}
+
 	// Layer 1 moderation (README "Moderation") runs concurrently with
 	// classification -- both are cheap-model calls on the same raw
 	// request text, so there's no reason to pay their latency twice. This
@@ -120,11 +138,21 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	// clears would only ever waste money, never save user-visible
 	// latency, so generation simply waits for both results below instead.
 	//
+	// Both only ever look at req.Message, never at conversation history --
+	// a deliberate limitation, not an oversight: moderating/classifying
+	// full history on every turn multiplies their cost by conversation
+	// length for comparatively little benefit on the common case (a
+	// violation is usually in the newest message, not buried in an
+	// otherwise-fine history). Revisit if that assumption turns out
+	// wrong in practice.
+	//
 	// Moderation failing (as opposed to flagging) fails the whole request
 	// closed rather than silently letting an unmoderated message through
-	// -- an outage of the moderation model becomes an outage of chat,
-	// which is the deliberate tradeoff until a circuit breaker (README
-	// pre-launch checklist) makes a softer fallback safe to add.
+	// -- an outage of the moderation model becomes an outage of chat.
+	// provider.CircuitBreakerClient (README pre-launch checklist) exists
+	// but currently only wraps generation calls (see cmd/server/main.go),
+	// not this one -- extending it here would make a softer fallback
+	// safe to add.
 	var (
 		classified  router.ClassifierOutput
 		classifyErr error
@@ -160,7 +188,7 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 		}); err != nil {
 			log.Printf("server: failed to record moderation block for user_id=%s: %v", req.UserID, err)
 		}
-		return chatResponse{Blocked: true, ResponseText: tosViolationMessage}, nil
+		return chatResponse{ConversationID: conversationID, Blocked: true, ResponseText: tosViolationMessage}, nil
 	}
 	if classifyErr != nil {
 		return chatResponse{}, fmt.Errorf("classify: %w", classifyErr)
@@ -185,15 +213,42 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 		return chatResponse{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
 	}
 
-	genResult, err := gen.Generate(ctx, model.ResolveAPIModelID(), []provider.Message{
-		{Role: "user", Content: req.Message},
-	})
+	// Send the model everything stored for this conversation so far, plus
+	// the new message -- without this, /chat could never hold more than a
+	// single-turn exchange. estimated_context_tokens is still whatever
+	// the client supplied, though: this repo has no tokenizer to
+	// recompute it from real history length, so the router's context-
+	// window hard filter and cost estimate can undercount once a
+	// conversation has grown a real history (README "Context window
+	// mismatch" risk) -- unchanged by this, just now actually exercised.
+	history, err := s.Conversations.History(ctx, req.UserID, conversationID)
+	if err != nil {
+		return chatResponse{}, fmt.Errorf("load conversation history: %w", err)
+	}
+	messages := make([]provider.Message, 0, len(history)+1)
+	for _, m := range history {
+		messages = append(messages, provider.Message{Role: string(m.Role), Content: m.Content})
+	}
+	messages = append(messages, provider.Message{Role: "user", Content: req.Message})
+
+	genResult, err := gen.Generate(ctx, model.ResolveAPIModelID(), messages)
 	if err != nil {
 		return chatResponse{}, fmt.Errorf("generate: %w", err)
 	}
 
-	actualCost := router.ComputeCostUSD(model, genResult.InputTokens, genResult.OutputTokens)
+	// Best-effort: generation already succeeded and the user already has
+	// their answer, so a persistence failure here shouldn't turn into a
+	// request failure -- it just means this turn won't be there for
+	// History on the next one. Same reasoning as ModerationLog above.
 	now := time.Now()
+	if err := s.Conversations.Append(ctx, req.UserID, conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, CreatedAt: now}); err != nil {
+		log.Printf("server: failed to persist user message for conversation_id=%s: %v", conversationID, err)
+	}
+	if err := s.Conversations.Append(ctx, req.UserID, conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: genResult.Text, ModelID: model.ID, CreatedAt: now}); err != nil {
+		log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", conversationID, err)
+	}
+
+	actualCost := router.ComputeCostUSD(model, genResult.InputTokens, genResult.OutputTokens)
 	if result.SelectedMode == "instant" {
 		err = limits.RecordInstantSpend(ctx, s.Store, req.UserID, actualCost, now)
 	} else {
@@ -204,6 +259,7 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	}
 
 	return chatResponse{
+		ConversationID:   conversationID,
 		SelectedModelID:  result.SelectedModelID,
 		SelectedMode:     result.SelectedMode,
 		Reason:           result.Reason,

@@ -1,0 +1,80 @@
+package conversation
+
+import (
+	"context"
+	"testing"
+	"time"
+)
+
+func TestInMemoryStore_AppendAndHistoryPreserveOrder(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "hi", CreatedAt: time.Now()}))
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: "hello", ModelID: "m1", CreatedAt: time.Now()}))
+
+	history, err := store.History(ctx, "u1", "c1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("len(History()) = %d, want 2", len(history))
+	}
+	if history[0].Role != RoleUser || history[0].Content != "hi" {
+		t.Errorf("unexpected first message: %+v", history[0])
+	}
+	if history[1].Role != RoleAssistant || history[1].ModelID != "m1" {
+		t.Errorf("unexpected second message: %+v", history[1])
+	}
+}
+
+func TestInMemoryStore_UnknownConversationReturnsEmptyNotError(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+
+	history, err := store.History(ctx, "u1", "does-not-exist")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(history) != 0 {
+		t.Errorf("len(History()) = %d, want 0", len(history))
+	}
+}
+
+func TestInMemoryStore_IsolatesByUserAndConversation(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "u1/c1"}))
+	must(t, store.Append(ctx, "u2", "c1", Message{Role: RoleUser, Content: "u2/c1"}))
+	must(t, store.Append(ctx, "u1", "c2", Message{Role: RoleUser, Content: "u1/c2"}))
+
+	h, err := store.History(ctx, "u1", "c1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(h) != 1 || h[0].Content != "u1/c1" {
+		t.Errorf("u1/c1 history = %+v, want exactly [u1/c1]", h)
+	}
+}
+
+func TestInMemoryStore_HistoryReturnsACopy(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "original"}))
+
+	history, _ := store.History(ctx, "u1", "c1")
+	history[0].Content = "mutated"
+
+	h2, _ := store.History(ctx, "u1", "c1")
+	if h2[0].Content != "original" {
+		t.Error("mutating the returned slice should not affect the store's internal state")
+	}
+}
+
+func must(t *testing.T, err error) {
+	t.Helper()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}

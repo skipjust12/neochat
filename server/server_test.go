@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"neochat/classifier"
+	"neochat/conversation"
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
@@ -66,6 +67,7 @@ func newTestServer(t *testing.T, genResponses []provider.GenerateResult) (*Serve
 		Classifier:    classifier.New(classifierClient, "fake-classifier-model", "system prompt"),
 		Moderator:     moderation.New(moderationClient, "fake-moderation-model", "system prompt"),
 		ModerationLog: moderation.NewInMemoryBlockLog(),
+		Conversations: conversation.NewInMemoryStore(),
 		Store:         limits.NewInMemorySpendStore(),
 		Plans: map[string]limits.PlanLimits{
 			"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10.0, InstantExtraCapUSD: 3.0},
@@ -106,6 +108,87 @@ func TestHandle_HappyPath(t *testing.T) {
 
 	if len(genClient.Requests) != 1 || genClient.Requests[0].APIModelID != "test-thinking" {
 		t.Errorf("expected exactly 1 generate call against test-thinking, got %+v", genClient.Requests)
+	}
+	if resp.ConversationID == "" {
+		t.Error("expected a generated ConversationID when the request didn't supply one")
+	}
+}
+
+// TestHandle_ConversationHistoryCarriesToNextTurn checks the actual point
+// of conversation/: a second request on the same conversation_id sends
+// the model both the first turn's user message and its own prior answer,
+// not just the new message in isolation.
+func TestHandle_ConversationHistoryCarriesToNextTurn(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "first answer", InputTokens: 100, OutputTokens: 50},
+		{Text: "second answer", InputTokens: 100, OutputTokens: 50},
+	})
+	// Two handle() calls means the classifier/moderator fakes need two
+	// scripted replies each, not newTestServer's default one.
+	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
+
+	req1 := chatRequest{UserID: "u1", PlanID: "pro", Message: "what is recursion?", RequestedMode: "instant", EstimatedContextTokens: 100}
+	resp1, err := s.handle(context.Background(), req1, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("unexpected error on turn 1: %v", err)
+	}
+
+	req2 := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: resp1.ConversationID, Message: "give an example", RequestedMode: "instant", EstimatedContextTokens: 100}
+	if _, err := s.handle(context.Background(), req2, s.Plans["pro"]); err != nil {
+		t.Fatalf("unexpected error on turn 2: %v", err)
+	}
+
+	if len(genClient.Requests) != 2 {
+		t.Fatalf("expected 2 generate calls, got %d", len(genClient.Requests))
+	}
+	turn2Messages := genClient.Requests[1].Messages
+	if len(turn2Messages) != 3 {
+		t.Fatalf("turn 2 sent %d messages, want 3 (prior user + prior assistant + new user): %+v", len(turn2Messages), turn2Messages)
+	}
+	if turn2Messages[0].Role != "user" || turn2Messages[0].Content != "what is recursion?" {
+		t.Errorf("turn2Messages[0] = %+v, want the first turn's user message", turn2Messages[0])
+	}
+	if turn2Messages[1].Role != "assistant" || turn2Messages[1].Content != "first answer" {
+		t.Errorf("turn2Messages[1] = %+v, want the first turn's assistant reply", turn2Messages[1])
+	}
+	if turn2Messages[2].Role != "user" || turn2Messages[2].Content != "give an example" {
+		t.Errorf("turn2Messages[2] = %+v, want the new user message", turn2Messages[2])
+	}
+
+	history, err := s.Conversations.History(context.Background(), "u1", resp1.ConversationID)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(history) != 4 {
+		t.Fatalf("len(History()) = %d, want 4 (2 turns x user+assistant)", len(history))
+	}
+	if history[3].ModelID != "test-instant" {
+		t.Errorf("stored assistant message's ModelID = %q, want test-instant", history[3].ModelID)
+	}
+}
+
+func TestHandle_ModerationFlaggedResponseStillCarriesConversationID(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
+		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
+	}}, "fake-moderation-model", "system prompt")
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: "existing-thread", Message: "bad request", RequestedMode: "instant", EstimatedContextTokens: 100}
+	resp, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if resp.ConversationID != "existing-thread" {
+		t.Errorf("ConversationID = %q, want existing-thread (unchanged by a block)", resp.ConversationID)
+	}
+
+	history, err := s.Conversations.History(context.Background(), "u1", "existing-thread")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(history) != 0 {
+		t.Errorf("expected a blocked message not to be persisted to history, got %d entries", len(history))
 	}
 }
 

@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"neochat/classifier"
+	"neochat/conversation"
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
@@ -83,6 +84,10 @@ func main() {
 		// limits.InMemorySpendStore below -- see moderation.BlockLog's doc
 		// comment for the swap-in procedure once a real database exists.
 		ModerationLog: moderation.NewInMemoryBlockLog(),
+		// Same throwaway-stand-in story as ModerationLog/Store -- see
+		// conversation.Store's doc comment for the Postgres swap-in
+		// procedure once there's a real database to justify it.
+		Conversations: conversation.NewInMemoryStore(),
 		Store:         limits.NewInMemorySpendStore(),
 		Plans:         plans,
 		// Every catalog provider tag routes through the same
