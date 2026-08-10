@@ -41,6 +41,15 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	// The chat system prompt (prompts/chat_system_prompt.md) doesn't exist
+	// yet -- unlike the classifier/moderation prompts above, a missing or
+	// empty file here isn't fatal: server.Server.SystemPrompt just stays
+	// "" and handle sends no system message at all until the real prompt
+	// is written.
+	chatSystemPrompt, err := server.LoadSystemPrompt("prompts/chat_system_prompt.md")
+	if err != nil {
+		log.Printf("main: no chat system prompt loaded yet, generating without one: %v", err)
+	}
 
 	openRouterKey := os.Getenv("OPENROUTER_API_KEY")
 	if openRouterKey == "" {
@@ -90,6 +99,7 @@ func main() {
 		Conversations: conversation.NewInMemoryStore(),
 		Store:         limits.NewInMemorySpendStore(),
 		Plans:         plans,
+		SystemPrompt:  chatSystemPrompt,
 		// Every catalog provider tag routes through the same
 		// OpenRouterClient -- OpenRouter serves all of them, so there's no
 		// need for a second provider.Client implementation (see README

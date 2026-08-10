@@ -114,6 +114,55 @@ func TestHandle_HappyPath(t *testing.T) {
 	}
 }
 
+// TestHandle_PrependsSystemPromptWhenConfigured checks that a configured
+// Server.SystemPrompt is sent to the generation model as the first
+// message, ahead of conversation history and the new user message.
+func TestHandle_PrependsSystemPromptWhenConfigured(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
+	})
+	s.SystemPrompt = "you are a helpful assistant"
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(genClient.Requests) != 1 {
+		t.Fatalf("expected exactly 1 generate call, got %d", len(genClient.Requests))
+	}
+	msgs := genClient.Requests[0].Messages
+	if len(msgs) == 0 || msgs[0].Role != "system" || msgs[0].Content != s.SystemPrompt {
+		t.Fatalf("expected first message to be the system prompt, got %+v", msgs)
+	}
+	if last := msgs[len(msgs)-1]; last.Role != "user" || last.Content != req.Message {
+		t.Errorf("expected last message to be the user's request, got %+v", last)
+	}
+}
+
+// TestHandle_NoSystemMessageWhenPromptEmpty checks that leaving
+// Server.SystemPrompt unset (its zero value, e.g. before the real prompt
+// is written) sends no system message at all, rather than an empty one.
+func TestHandle_NoSystemMessageWhenPromptEmpty(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
+	})
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(genClient.Requests) != 1 {
+		t.Fatalf("expected exactly 1 generate call, got %d", len(genClient.Requests))
+	}
+	for _, m := range genClient.Requests[0].Messages {
+		if m.Role == "system" {
+			t.Errorf("expected no system message when SystemPrompt is unset, got %+v", genClient.Requests[0].Messages)
+		}
+	}
+}
+
 // TestHandle_ClassifyAndModerateRespectContextCancellation verifies the
 // README pre-launch checklist's "request-level cancellation" item at the
 // classify/moderate stage: if the client disconnects (net/http cancels

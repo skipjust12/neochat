@@ -50,6 +50,15 @@ type Server struct {
 	// provider has no entry here can be selected by the router but not
 	// generated from -- see handleChat's error path.
 	Generators map[string]provider.Client
+
+	// SystemPrompt is prepended as a "system" message ahead of
+	// conversation history and the new user message on every generation
+	// call (see handle) -- the prompt for the model actually answering
+	// the user, distinct from Classifier.SystemPrompt and
+	// Moderator.SystemPrompt, which are their own cheap-model calls.
+	// Empty means no system message is sent at all, so this field can be
+	// left unset until a real prompt exists (see LoadSystemPrompt).
+	SystemPrompt string
 }
 
 // chatRequest is the wire format for POST /chat.
@@ -218,7 +227,10 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	if err != nil {
 		return chatResponse{}, fmt.Errorf("load conversation history: %w", err)
 	}
-	messages := make([]provider.Message, 0, len(history)+1)
+	messages := make([]provider.Message, 0, len(history)+2)
+	if s.SystemPrompt != "" {
+		messages = append(messages, provider.Message{Role: "system", Content: s.SystemPrompt})
+	}
 	for _, m := range history {
 		messages = append(messages, provider.Message{Role: string(m.Role), Content: m.Content})
 	}
