@@ -79,7 +79,7 @@ func routeAndRecord(ctx context.Context, r router.Router, store limits.SpendStor
 		log.Fatal(err)
 	}
 
-	result, err := r.Route(input, "auto", "", 8_000, locked)
+	result, err := r.Route(input, "auto", "", 8_000, locked, nil)
 	if err != nil {
 		log.Fatal(err)
 	}

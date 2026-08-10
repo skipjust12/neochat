@@ -54,8 +54,18 @@ func NewRouter(catalog Catalog, weights Weights) Router {
 // (see the limits package and docs/unit-economics.md section 6).
 // thinkingMaxLocked comes from outside -- Route has no notion of "plans"
 // or spend history, only this one boolean.
-func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelID string, estimatedContextTokens int, thinkingMaxLocked bool) (RouteResult, error) {
+//
+// excludedModelIDs lets the caller keep Route away from models it already
+// knows are currently unhealthy -- e.g. server.handle retrying after a
+// provider.CircuitOpenError -- without Route itself knowing anything about
+// circuit breakers or providers. A nil or empty map excludes nothing. In
+// manual mode, an excluded manualModelID is still an error (there is no
+// other candidate to fall back to: the user asked for this exact model).
+func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelID string, estimatedContextTokens int, thinkingMaxLocked bool, excludedModelIDs map[string]bool) (RouteResult, error) {
 	if requestedMode == "manual" {
+		if excludedModelIDs[manualModelID] {
+			return RouteResult{}, fmt.Errorf("router: manual_model_id %q is currently unavailable (circuit open)", manualModelID)
+		}
 		model, ok := r.Catalog.FindModel(manualModelID)
 		if !ok {
 			return RouteResult{}, fmt.Errorf("router: manual_model_id %q not found in catalog", manualModelID)
@@ -84,7 +94,7 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		return RouteResult{}, err
 	}
 
-	commonCandidates, filterLog := r.applyHardFilters(input, estimatedContextTokens)
+	commonCandidates, filterLog := r.applyHardFilters(input, estimatedContextTokens, excludedModelIDs)
 	if len(commonCandidates) == 0 {
 		return RouteResult{}, fmt.Errorf("router: no candidate models survive hard filters (%s)", filterLog)
 	}
@@ -204,10 +214,11 @@ func validateInput(input ClassifierOutput) error {
 // applyHardFilters removes models that cannot serve the request at all,
 // independent of which mode tier is ultimately chosen: insufficient context
 // window, a missing required tool, missing modality support, an output
-// budget below the estimated response length, or an unsupported output
-// format. It returns the surviving models plus a short human-readable log
-// of what was checked, for inclusion in RouteResult.Reason.
-func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens int) ([]Model, string) {
+// budget below the estimated response length, an unsupported output
+// format, or membership in excludedModelIDs (e.g. a model whose circuit is
+// currently open). It returns the surviving models plus a short
+// human-readable log of what was checked, for inclusion in RouteResult.Reason.
+func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens int, excludedModelIDs map[string]bool) ([]Model, string) {
 	requiredModalities := map[string]bool{}
 	for _, m := range input.ModalityInput {
 		requiredModalities[m] = true
@@ -218,6 +229,9 @@ func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens 
 
 	var kept []Model
 	for _, m := range r.Catalog.Models {
+		if excludedModelIDs[m.ID] {
+			continue
+		}
 		if m.ContextWindow < estimatedContextTokens {
 			continue
 		}

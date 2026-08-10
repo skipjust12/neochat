@@ -12,6 +12,12 @@ type FakeClient struct {
 	Responses []GenerateResult
 	Err       error // if set, every call returns this error instead
 
+	// PerModel, if non-nil, overrides both Responses and Err for any
+	// apiModelID present as a key: that call succeeds with the mapped
+	// result instead. Lets a single FakeClient stand in for "this model is
+	// healthy, that one isn't" in failover tests.
+	PerModel map[string]GenerateResult
+
 	// Block, if non-nil, makes Generate wait on this channel (or on ctx
 	// being done, whichever comes first) before doing anything else --
 	// simulates a slow/hung upstream call for tests that need to verify
@@ -42,6 +48,9 @@ func (f *FakeClient) Generate(ctx context.Context, apiModelID string, messages [
 			return GenerateResult{}, ctx.Err()
 		case <-f.Block:
 		}
+	}
+	if resp, ok := f.PerModel[apiModelID]; ok {
+		return resp, nil
 	}
 	if f.Err != nil {
 		return GenerateResult{}, f.Err

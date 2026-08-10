@@ -47,7 +47,7 @@ func TestRoute_EstimatedCostUSDMatchesSelectedModel(t *testing.T) {
 	input := baseInput()
 	input.EstimatedOutputTokens = 1000
 
-	result, err := r.Route(input, "thinking", "", 2000, false)
+	result, err := r.Route(input, "thinking", "", 2000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -61,7 +61,7 @@ func TestRoute_EstimatedCostUSDMatchesSelectedModel(t *testing.T) {
 		t.Errorf("EstimatedCostUSD = %.6f, want %.6f", result.EstimatedCostUSD, want)
 	}
 
-	manual, err := r.Route(input, "manual", "max-model", 2000, false)
+	manual, err := r.Route(input, "manual", "max-model", 2000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

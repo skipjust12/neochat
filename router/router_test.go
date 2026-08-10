@@ -59,7 +59,7 @@ func baseInput() ClassifierOutput {
 
 func TestRoute_ManualBypassesScoring(t *testing.T) {
 	r := NewRouter(testCatalog(), testWeights())
-	result, err := r.Route(baseInput(), "manual", "max-model", 1000, false)
+	result, err := r.Route(baseInput(), "manual", "max-model", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -78,7 +78,7 @@ func TestRoute_HardFilterByContextWindow(t *testing.T) {
 	// mode, but thinking-model's 200k context window is too small.
 	input := baseInput()
 	input.Confidence = 0.9 // avoid escalation muddying the assertion
-	result, err := r.Route(input, "thinking", "", 300_000, false)
+	result, err := r.Route(input, "thinking", "", 300_000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -87,11 +87,40 @@ func TestRoute_HardFilterByContextWindow(t *testing.T) {
 	}
 }
 
+func TestRoute_ExcludedModelIDsSkipsToNextCandidate(t *testing.T) {
+	r := NewRouter(testCatalog(), testWeights())
+
+	result, err := r.Route(baseInput(), "instant", "", 1000, false, map[string]bool{"instant-model": true})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SelectedModelID != "thinking-model" {
+		t.Errorf("expected thinking-model once instant-model is excluded, got %s", result.SelectedModelID)
+	}
+}
+
+func TestRoute_ExcludedModelIDsErrorsWhenNoCandidateSurvives(t *testing.T) {
+	r := NewRouter(testCatalog(), testWeights())
+
+	_, err := r.Route(baseInput(), "instant", "", 1000, false, map[string]bool{"instant-model": true, "thinking-model": true, "max-model": true})
+	if err == nil {
+		t.Fatal("expected an error when every candidate is excluded")
+	}
+}
+
+func TestRoute_ManualModeRejectsExcludedModel(t *testing.T) {
+	r := NewRouter(testCatalog(), testWeights())
+	_, err := r.Route(baseInput(), "manual", "max-model", 1000, false, map[string]bool{"max-model": true})
+	if err == nil {
+		t.Fatal("expected an error when the manually requested model is excluded")
+	}
+}
+
 func TestRoute_LowConfidenceEscalatesModeTier(t *testing.T) {
 	r := NewRouter(testCatalog(), testWeights())
 	input := baseInput()
 	input.Confidence = 0.1 // well below the 0.5 threshold -> forces escalation
-	result, err := r.Route(input, "instant", "", 1000, false)
+	result, err := r.Route(input, "instant", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -110,7 +139,7 @@ func TestRoute_HardFilterByToolsOutputTokensAndFormat(t *testing.T) {
 	withTools.Confidence = 0.9
 	withTools.RequiredTools = []string{ToolCodeExecution}
 	withTools.OutputFormat = "json"
-	result, err := r.Route(withTools, "instant", "", 1000, false)
+	result, err := r.Route(withTools, "instant", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -123,7 +152,7 @@ func TestRoute_HardFilterByToolsOutputTokensAndFormat(t *testing.T) {
 	longOutput := baseInput()
 	longOutput.Confidence = 0.9
 	longOutput.EstimatedOutputTokens = 10_000
-	result, err = r.Route(longOutput, "instant", "", 1000, false)
+	result, err = r.Route(longOutput, "instant", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -154,7 +183,7 @@ func TestRoute_AutoModeSnapsToAvailableTierWhenNaturalTierHasNoCandidates(t *tes
 		ModalityInput: []string{"text"}, ModalityOutputExpected: []string{"image"},
 		OutputFormat: "image", ComplexityScore: 0.9, Confidence: 0.9,
 	}
-	result, err := r.Route(input, "auto", "", 1000, false)
+	result, err := r.Route(input, "auto", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -175,7 +204,7 @@ func TestRoute_AutoModePicksTierFromComplexity(t *testing.T) {
 	simple.CreativityLevel = "low"
 	simple.Confidence = 0.95
 
-	result, err := r.Route(simple, "auto", "", 1000, false)
+	result, err := r.Route(simple, "auto", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -189,7 +218,7 @@ func TestRoute_AutoModePicksTierFromComplexity(t *testing.T) {
 	hard.CreativityLevel = "high"
 	hard.Confidence = 0.95
 
-	result, err = r.Route(hard, "auto", "", 1000, false)
+	result, err = r.Route(hard, "auto", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -224,7 +253,7 @@ func TestRoute_CostTieBreaksByCapabilityThenID(t *testing.T) {
 	input.ComplexityScore = 0.6
 	input.CreativityLevel = "moderate"
 
-	result, err := r.Route(input, "thinking", "", 1000, false)
+	result, err := r.Route(input, "thinking", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -236,7 +265,7 @@ func TestRoute_CostTieBreaksByCapabilityThenID(t *testing.T) {
 	// to ID order, not catalog order.
 	moreCapable.SupportsTools = nil
 	r = NewRouter(Catalog{Models: []Model{lessCapable, moreCapable}}, testWeights())
-	result, err = r.Route(input, "thinking", "", 1000, false)
+	result, err = r.Route(input, "thinking", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -256,7 +285,7 @@ func TestRoute_ThinkingMaxLockedForcesInstant(t *testing.T) {
 	input := baseInput()
 	input.Confidence = 0.9 // avoid escalation muddying the assertion
 
-	result, err := r.Route(input, "thinking", "", 1000, true)
+	result, err := r.Route(input, "thinking", "", 1000, true, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -270,7 +299,7 @@ func TestRoute_ThinkingMaxLockedForcesInstant(t *testing.T) {
 	// Unlocked, the same request should route to thinking as normal --
 	// confirms the lock is the thing making the difference above, not some
 	// other side effect.
-	unlocked, err := r.Route(input, "thinking", "", 1000, false)
+	unlocked, err := r.Route(input, "thinking", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -289,14 +318,14 @@ func TestRoute_ThinkingMaxLockedRejectsManualThinkingModel(t *testing.T) {
 	r := NewRouter(testCatalog(), testWeights())
 	input := baseInput()
 
-	_, err := r.Route(input, "manual", "max-model", 1000, true)
+	_, err := r.Route(input, "manual", "max-model", 1000, true, nil)
 	if err == nil {
 		t.Fatal("expected an error routing to a thinking/max-tier model while thinking_max is locked, got nil")
 	}
 
 	// An instant-tier manual target must still work even when locked --
 	// the lock only concerns Thinking/Max spend.
-	result, err := r.Route(input, "manual", "instant-model", 1000, true)
+	result, err := r.Route(input, "manual", "instant-model", 1000, true, nil)
 	if err != nil {
 		t.Fatalf("unexpected error routing to an instant-tier manual target while locked: %v", err)
 	}
