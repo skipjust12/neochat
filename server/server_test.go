@@ -136,6 +136,49 @@ func TestHandle_ThinkingMaxLockedDowngradesAndSkipsGeneratorButStillGenerates(t 
 	}
 }
 
+// TestHandle_CircuitBreakerOpenSurfacesAsGenerateError checks that
+// provider.CircuitBreakerClient (cmd/server/main.go wraps the real
+// OpenRouterClient with one) works when plugged into Generators exactly
+// like any other provider.Client -- server.handle doesn't need to know
+// the breaker exists, it just sees a normal Generate error once the
+// circuit trips.
+func TestHandle_CircuitBreakerOpenSurfacesAsGenerateError(t *testing.T) {
+	failingClient := &provider.FakeClient{Err: errors.New("upstream down")}
+	breaker := provider.NewCircuitBreakerClient(failingClient, 1, time.Minute)
+
+	s, _ := newTestServer(t, nil)
+	s.Generators = map[string]provider.Client{"openai": breaker}
+	// newTestServer's Classifier/Moderator fakes only script one reply
+	// each; this test calls handle() twice, so give both two.
+	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
+
+	// First call: reaches the underlying client, fails, trips the
+	// (threshold-1) breaker.
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err == nil {
+		t.Fatal("expected an error from the first call")
+	}
+	if len(failingClient.Requests) != 1 {
+		t.Fatalf("expected exactly 1 call to reach the underlying client, got %d", len(failingClient.Requests))
+	}
+
+	// Second call: circuit is open, short-circuited before the
+	// underlying client is touched again.
+	_, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err == nil {
+		t.Fatal("expected an error from the second call")
+	}
+	var circuitErr *provider.CircuitOpenError
+	if !errors.As(err, &circuitErr) {
+		t.Errorf("expected the error to wrap a *provider.CircuitOpenError, got %v", err)
+	}
+	if len(failingClient.Requests) != 1 {
+		t.Errorf("expected the second call to skip the underlying client, still got %d calls", len(failingClient.Requests))
+	}
+}
+
 func TestHandle_ModerationFlaggedBlocksBeforeGeneration(t *testing.T) {
 	s, genClient := newTestServer(t, nil)
 	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
