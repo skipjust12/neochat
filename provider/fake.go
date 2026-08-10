@@ -1,6 +1,9 @@
 package provider
 
-import "context"
+import (
+	"context"
+	"strings"
+)
 
 // FakeClient is a scripted, no-network Client for tests -- classifier/ and
 // server/ tests use this instead of hitting a real vendor API.
@@ -61,4 +64,55 @@ func (f *FakeClient) Generate(ctx context.Context, apiModelID string, messages [
 	resp := f.Responses[f.calls]
 	f.calls++
 	return resp, nil
+}
+
+// GenerateStream is Generate's streaming counterpart: it resolves the same
+// scripted result (via PerModel, Err, or the next Responses entry) but
+// delivers it as one Delta chunk per word plus a final Done chunk, instead
+// of returning it all at once -- enough to exercise a real caller's
+// incremental-consumption logic without a real streaming vendor call.
+func (f *FakeClient) GenerateStream(ctx context.Context, apiModelID string, messages []Message) (<-chan StreamChunk, error) {
+	f.Requests = append(f.Requests, FakeRequest{APIModelID: apiModelID, Messages: messages})
+
+	ch := make(chan StreamChunk)
+	go func() {
+		defer close(ch)
+
+		if f.Block != nil {
+			select {
+			case <-ctx.Done():
+				ch <- StreamChunk{Err: ctx.Err()}
+				return
+			case <-f.Block:
+			}
+		}
+
+		resp, ok := f.PerModel[apiModelID]
+		if !ok {
+			if f.Err != nil {
+				ch <- StreamChunk{Err: f.Err}
+				return
+			}
+			if f.calls >= len(f.Responses) {
+				panic("provider: FakeClient.GenerateStream called more times than Responses were scripted")
+			}
+			resp = f.Responses[f.calls]
+			f.calls++
+		}
+
+		for _, word := range strings.SplitAfter(resp.Text, " ") {
+			if word == "" {
+				continue
+			}
+			select {
+			case ch <- StreamChunk{Delta: word}:
+			case <-ctx.Done():
+				ch <- StreamChunk{Err: ctx.Err()}
+				return
+			}
+		}
+		ch <- StreamChunk{Done: true, Final: resp}
+	}()
+
+	return ch, nil
 }

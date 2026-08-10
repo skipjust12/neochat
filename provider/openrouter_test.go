@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -127,5 +128,103 @@ func TestOpenRouterClient_Generate_RespectsContextCancellation(t *testing.T) {
 	}
 	if elapsed > 2*time.Second {
 		t.Errorf("Generate took %s to return after the context deadline passed, want well under the httpClient's 60s timeout", elapsed)
+	}
+}
+
+// TestOpenRouterClient_GenerateStream parses a real OpenAI-compatible SSE
+// stream (multiple delta chunks, a trailing usage-only chunk, then
+// [DONE]) the same way a real OpenRouter response is shaped, and checks
+// the deltas and final GenerateResult come out right.
+func TestOpenRouterClient_GenerateStream(t *testing.T) {
+	var gotReq map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotReq); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := w.(http.Flusher)
+		for _, line := range []string{
+			`data: {"choices":[{"delta":{"content":"hello "}}]}`,
+			`data: {"choices":[{"delta":{"content":"there"}}]}`,
+			`data: {"choices":[],"usage":{"prompt_tokens":7,"completion_tokens":2}}`,
+			`data: [DONE]`,
+		} {
+			fmt.Fprintf(w, "%s\n\n", line)
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	c := NewOpenRouterClient("test-key")
+	c.baseURL = srv.URL
+
+	ch, err := c.GenerateStream(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var deltas []string
+	var final GenerateResult
+	var sawDone bool
+	for chunk := range ch {
+		if chunk.Err != nil {
+			t.Fatalf("unexpected stream error: %v", chunk.Err)
+		}
+		if chunk.Delta != "" {
+			deltas = append(deltas, chunk.Delta)
+		}
+		if chunk.Done {
+			sawDone = true
+			final = chunk.Final
+		}
+	}
+
+	if !sawDone {
+		t.Fatal("expected a Done chunk")
+	}
+	if len(deltas) != 2 || deltas[0] != "hello " || deltas[1] != "there" {
+		t.Errorf("deltas = %+v, want [\"hello \", \"there\"]", deltas)
+	}
+	if final.Text != "hello there" {
+		t.Errorf("final.Text = %q, want %q", final.Text, "hello there")
+	}
+	if final.InputTokens != 7 || final.OutputTokens != 2 {
+		t.Errorf("final tokens = %d/%d, want 7/2", final.InputTokens, final.OutputTokens)
+	}
+	if stream, _ := gotReq["stream"].(bool); !stream {
+		t.Error("expected the request to set stream=true")
+	}
+}
+
+// TestOpenRouterClient_GenerateStream_APIError checks a mid-stream error
+// chunk (OpenRouter reports moderation/vendor failures this way even after
+// a 200 has already started streaming) surfaces as a StreamChunk.Err.
+func TestOpenRouterClient_GenerateStream_APIError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := w.(http.Flusher)
+		fmt.Fprintf(w, "data: %s\n\n", `{"error":{"message":"rate limited","code":429}}`)
+		flusher.Flush()
+	}))
+	defer srv.Close()
+
+	c := NewOpenRouterClient("test-key")
+	c.baseURL = srv.URL
+
+	ch, err := c.GenerateStream(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatalf("unexpected error opening the stream: %v", err)
+	}
+
+	var streamErr error
+	for chunk := range ch {
+		if chunk.Err != nil {
+			streamErr = chunk.Err
+		}
+	}
+	if streamErr == nil {
+		t.Fatal("expected the stream to end with an error")
 	}
 }

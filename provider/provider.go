@@ -31,3 +31,28 @@ type GenerateResult struct {
 type Client interface {
 	Generate(ctx context.Context, apiModelID string, messages []Message) (GenerateResult, error)
 }
+
+// StreamChunk is one piece of an in-progress streamed generation, sent on
+// the channel GenerateStream returns. Exactly one of two shapes appears
+// per stream: zero or more chunks with Delta set, followed by either one
+// chunk with Done set and Final populated (success) or one chunk with Err
+// set (failure) -- the channel is always closed right after that terminal
+// chunk, so a range loop naturally ends there.
+type StreamChunk struct {
+	Delta string
+	Err   error
+
+	Done  bool
+	Final GenerateResult // populated only when Done is true
+}
+
+// StreamingClient is a Client that can additionally stream a generation as
+// the vendor produces it, instead of the caller waiting for the whole
+// response. Not every Client needs this: classifier/moderation only ever
+// consume a full parsed JSON reply, so streaming would buy them nothing --
+// this is a separate interface rather than a new Client method so those
+// callers, and any Client implementation that doesn't need it, aren't
+// forced to grow a no-op version.
+type StreamingClient interface {
+	GenerateStream(ctx context.Context, apiModelID string, messages []Message) (<-chan StreamChunk, error)
+}

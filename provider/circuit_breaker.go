@@ -78,22 +78,76 @@ func (e *CircuitOpenError) Error() string {
 }
 
 func (c *CircuitBreakerClient) Generate(ctx context.Context, apiModelID string, messages []Message) (GenerateResult, error) {
+	if err := c.checkOpen(apiModelID); err != nil {
+		return GenerateResult{}, err
+	}
+
+	result, err := c.Client.Generate(ctx, apiModelID, messages)
+	c.recordResult(apiModelID, err)
+	return result, err
+}
+
+// GenerateStream is Generate's streaming counterpart: the same open-circuit
+// fast-fail check up front, delegating to the underlying Client's
+// GenerateStream (it must implement StreamingClient, or this errors) if
+// the circuit is closed, and the same failure/success bookkeeping once the
+// stream ends -- observed here by watching for a StreamChunk with Err set
+// vs. one with Done set, since nothing else marks the terminal chunk of a
+// stream.
+func (c *CircuitBreakerClient) GenerateStream(ctx context.Context, apiModelID string, messages []Message) (<-chan StreamChunk, error) {
+	if err := c.checkOpen(apiModelID); err != nil {
+		return nil, err
+	}
+
+	streamingClient, ok := c.Client.(StreamingClient)
+	if !ok {
+		return nil, fmt.Errorf("provider: circuit breaker's underlying %T does not implement StreamingClient", c.Client)
+	}
+	upstream, err := streamingClient.GenerateStream(ctx, apiModelID, messages)
+	if err != nil {
+		c.recordResult(apiModelID, err)
+		return nil, err
+	}
+
+	out := make(chan StreamChunk)
+	go func() {
+		defer close(out)
+		for chunk := range upstream {
+			out <- chunk
+			if chunk.Err != nil {
+				c.recordResult(apiModelID, chunk.Err)
+				return
+			}
+			if chunk.Done {
+				c.recordResult(apiModelID, nil)
+				return
+			}
+		}
+	}()
+	return out, nil
+}
+
+// checkOpen returns a *CircuitOpenError without touching the underlying
+// Client if apiModelID's circuit is currently open, nil otherwise.
+func (c *CircuitBreakerClient) checkOpen(apiModelID string) error {
 	now := c.now()
 
 	c.mu.Lock()
+	defer c.mu.Unlock()
 	state := c.states[apiModelID]
 	if state != nil && now.Before(state.openUntil) {
-		retryAfter := state.openUntil.Sub(now)
-		c.mu.Unlock()
-		return GenerateResult{}, &CircuitOpenError{APIModelID: apiModelID, RetryAfter: retryAfter}
+		return &CircuitOpenError{APIModelID: apiModelID, RetryAfter: state.openUntil.Sub(now)}
 	}
-	c.mu.Unlock()
+	return nil
+}
 
-	result, err := c.Client.Generate(ctx, apiModelID, messages)
-
+// recordResult updates apiModelID's consecutive-failure count and,
+// crossing FailureThreshold, opens its circuit for CooldownPeriod -- or
+// resets both on a nil err (success).
+func (c *CircuitBreakerClient) recordResult(apiModelID string, err error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	state = c.states[apiModelID]
+	state := c.states[apiModelID]
 	if state == nil {
 		state = &circuitState{}
 		c.states[apiModelID] = state
@@ -107,5 +161,4 @@ func (c *CircuitBreakerClient) Generate(ctx context.Context, apiModelID string, 
 		state.consecutiveFailures = 0
 		state.openUntil = time.Time{}
 	}
-	return result, err
 }

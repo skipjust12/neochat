@@ -7,6 +7,7 @@ import (
 	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -116,14 +117,19 @@ func TestHandle_HappyPath(t *testing.T) {
 
 // TestHandle_PrependsSystemPromptWhenConfigured checks that a configured
 // Server.SystemPrompt is sent to the generation model as the first
-// message, ahead of conversation history and the new user message.
-func TestHandle_PrependsSystemPromptWhenConfigured(t *testing.T) {
+// message, ahead of conversation history and the new user message, for the
+// request's chosen persona -- defaulting to "Default" when the request
+// doesn't specify one.
+func TestHandle_PrependsSystemPromptForSelectedPersona(t *testing.T) {
 	s, genClient := newTestServer(t, []provider.GenerateResult{
 		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
 	})
-	s.SystemPrompt = "you are a helpful assistant"
+	s.SystemPrompts = map[string]string{
+		"Default": "you are a helpful assistant",
+		"Expert":  "you are a domain expert, terse and precise",
+	}
 
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000, Persona: "Expert"}
 	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -132,23 +138,44 @@ func TestHandle_PrependsSystemPromptWhenConfigured(t *testing.T) {
 		t.Fatalf("expected exactly 1 generate call, got %d", len(genClient.Requests))
 	}
 	msgs := genClient.Requests[0].Messages
-	if len(msgs) == 0 || msgs[0].Role != "system" || msgs[0].Content != s.SystemPrompt {
-		t.Fatalf("expected first message to be the system prompt, got %+v", msgs)
+	if len(msgs) == 0 || msgs[0].Role != "system" || msgs[0].Content != s.SystemPrompts["Expert"] {
+		t.Fatalf("expected first message to be the Expert system prompt, got %+v", msgs)
 	}
 	if last := msgs[len(msgs)-1]; last.Role != "user" || last.Content != req.Message {
 		t.Errorf("expected last message to be the user's request, got %+v", last)
 	}
 }
 
-// TestHandle_NoSystemMessageWhenPromptEmpty checks that leaving
-// Server.SystemPrompt unset (its zero value, e.g. before the real prompt
-// is written) sends no system message at all, rather than an empty one.
-func TestHandle_NoSystemMessageWhenPromptEmpty(t *testing.T) {
+// TestHandle_DefaultsToDefaultPersonaWhenUnspecified checks an empty
+// Persona field resolves to "Default", not "no persona at all".
+func TestHandle_DefaultsToDefaultPersonaWhenUnspecified(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
+	})
+	s.SystemPrompts = map[string]string{"Default": "you are a helpful assistant"}
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	msgs := genClient.Requests[0].Messages
+	if len(msgs) == 0 || msgs[0].Role != "system" || msgs[0].Content != "you are a helpful assistant" {
+		t.Fatalf("expected the Default persona's prompt, got %+v", msgs)
+	}
+}
+
+// TestHandle_NoSystemMessageWhenPersonaPromptNotWrittenYet checks that a
+// valid persona name (one of SystemPromptNames) with no entry in
+// Server.SystemPrompts (its prompt file is still an empty placeholder --
+// see LoadSystemPrompts) sends no system message at all, rather than an
+// empty one.
+func TestHandle_NoSystemMessageWhenPersonaPromptNotWrittenYet(t *testing.T) {
 	s, genClient := newTestServer(t, []provider.GenerateResult{
 		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
 	})
 
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000, Persona: "Cynical"}
 	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -158,8 +185,29 @@ func TestHandle_NoSystemMessageWhenPromptEmpty(t *testing.T) {
 	}
 	for _, m := range genClient.Requests[0].Messages {
 		if m.Role == "system" {
-			t.Errorf("expected no system message when SystemPrompt is unset, got %+v", genClient.Requests[0].Messages)
+			t.Errorf("expected no system message for a persona with no loaded prompt, got %+v", genClient.Requests[0].Messages)
 		}
+	}
+}
+
+// TestServeHTTP_UnknownPersonaRejected checks an unrecognized persona name
+// (a typo, or a client not yet updated to a persona list change) is
+// rejected up front with 400, the same way an unknown plan_id is --
+// before any classify/moderate/route/generate work happens.
+func TestServeHTTP_UnknownPersonaRejected(t *testing.T) {
+	s, genClient := newTestServer(t, nil)
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", Persona: "Snarky"})
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	}
+	if len(genClient.Requests) != 0 {
+		t.Errorf("expected no generate calls for a rejected request, got %d", len(genClient.Requests))
 	}
 }
 
@@ -539,5 +587,178 @@ func TestServeHTTP_HappyPath(t *testing.T) {
 	}
 	if resp.ResponseText != "hello" {
 		t.Errorf("ResponseText = %q, want hello", resp.ResponseText)
+	}
+}
+
+// streamEvent captures one handleStream send(...) call for assertions.
+type streamEvent struct {
+	event   string
+	payload any
+}
+
+// TestHandleStream_HappyPath checks the streaming pipeline emits a "meta"
+// event once routing picks a model, one "delta" event per chunk the
+// (fake) vendor streams, and a final "done" event carrying the same
+// chatResponse handle() would have returned in the non-streaming path.
+func TestHandleStream_HappyPath(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "hello there", InputTokens: 100, OutputTokens: 50},
+	})
+
+	var events []streamEvent
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
+	err := s.handleStream(context.Background(), req, s.Plans["pro"], func(event string, payload any) {
+		events = append(events, streamEvent{event, payload})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(events) < 2 {
+		t.Fatalf("expected at least a meta and a done event, got %+v", events)
+	}
+	if events[0].event != "meta" {
+		t.Errorf("first event = %q, want meta", events[0].event)
+	}
+
+	var deltaText string
+	var sawDone bool
+	var done chatResponse
+	for _, ev := range events[1:] {
+		switch ev.event {
+		case "delta":
+			deltaText += ev.payload.(map[string]string)["text"]
+		case "done":
+			sawDone = true
+			done = ev.payload.(chatResponse)
+		default:
+			t.Errorf("unexpected event type %q", ev.event)
+		}
+	}
+	if !sawDone {
+		t.Fatal("expected a done event")
+	}
+	if deltaText != "hello there" {
+		t.Errorf("concatenated deltas = %q, want %q", deltaText, "hello there")
+	}
+	if done.ResponseText != "hello there" {
+		t.Errorf("done.ResponseText = %q, want %q", done.ResponseText, "hello there")
+	}
+	if len(genClient.Requests) != 1 {
+		t.Errorf("expected exactly 1 generate call, got %d", len(genClient.Requests))
+	}
+}
+
+// TestHandleStream_ModerationFlaggedSendsBlockedEvent checks a
+// moderation-flagged request produces exactly one "blocked" event and
+// never reaches routing/generation at all.
+func TestHandleStream_ModerationFlaggedSendsBlockedEvent(t *testing.T) {
+	s, genClient := newTestServer(t, nil)
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
+		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
+	}}, "fake-moderation-model", "system prompt")
+
+	var events []streamEvent
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "how do I commit a crime"}
+	err := s.handleStream(context.Background(), req, s.Plans["pro"], func(event string, payload any) {
+		events = append(events, streamEvent{event, payload})
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(events) != 1 || events[0].event != "blocked" {
+		t.Fatalf("expected exactly one blocked event, got %+v", events)
+	}
+	resp := events[0].payload.(chatResponse)
+	if !resp.Blocked || resp.ResponseText != tosViolationMessage {
+		t.Errorf("unexpected blocked payload: %+v", resp)
+	}
+	if len(genClient.Requests) != 0 {
+		t.Errorf("expected no generate calls for a blocked request, got %d", len(genClient.Requests))
+	}
+}
+
+// TestHandleStream_CircuitOpenFailsOverToHealthyModel mirrors
+// TestHandle_CircuitOpenFailsOverToHealthyModel for the streaming path:
+// once the cheapest model's circuit is open, handleStream re-routes to
+// the next candidate and streams its reply instead of failing, emitting a
+// second "meta" event for the model that actually answers.
+func TestHandleStream_CircuitOpenFailsOverToHealthyModel(t *testing.T) {
+	failoverClient := &provider.FakeClient{
+		Err: errors.New("upstream down"),
+		PerModel: map[string]provider.GenerateResult{
+			"test-thinking": {Text: "healthy reply", InputTokens: 10, OutputTokens: 5},
+		},
+	}
+	breaker := provider.NewCircuitBreakerClient(failoverClient, 1, time.Minute)
+
+	s, _ := newTestServer(t, nil)
+	s.Generators = map[string]provider.Client{"openai": breaker}
+	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
+
+	// First call trips test-instant's circuit (threshold=1), same as the
+	// non-streaming version of this test.
+	_ = s.handleStream(context.Background(), req, s.Plans["pro"], func(string, any) {})
+
+	var events []streamEvent
+	err := s.handleStream(context.Background(), req, s.Plans["pro"], func(event string, payload any) {
+		events = append(events, streamEvent{event, payload})
+	})
+	if err != nil {
+		t.Fatalf("expected failover to the healthy model to succeed, got error: %v", err)
+	}
+
+	var metaModelIDs []string
+	var deltaText string
+	for _, ev := range events {
+		switch ev.event {
+		case "meta":
+			metaModelIDs = append(metaModelIDs, ev.payload.(map[string]any)["selected_model_id"].(string))
+		case "delta":
+			deltaText += ev.payload.(map[string]string)["text"]
+		}
+	}
+	if len(metaModelIDs) != 2 || metaModelIDs[0] != "test-instant" || metaModelIDs[1] != "test-thinking" {
+		t.Errorf("expected meta events for [test-instant, test-thinking], got %+v", metaModelIDs)
+	}
+	if deltaText != "healthy reply" {
+		t.Errorf("streamed text = %q, want %q", deltaText, "healthy reply")
+	}
+}
+
+// TestServeHTTP_ChatStream exercises the actual HTTP/SSE wire format for
+// POST /chat/stream, not just handleStream's internal send() calls --
+// checks the response headers and that the body contains properly framed
+// "event: ...\ndata: ...\n\n" blocks ending in a "done" event.
+func TestServeHTTP_ChatStream(t *testing.T) {
+	s, _ := newTestServer(t, []provider.GenerateResult{
+		{Text: "hi back", InputTokens: 10, OutputTokens: 5},
+	})
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	req := httptest.NewRequest(http.MethodPost, "/chat/stream", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	if ct := rec.Header().Get("Content-Type"); ct != "text/event-stream" {
+		t.Errorf("Content-Type = %q, want text/event-stream", ct)
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "event: meta\n") {
+		t.Errorf("expected a meta event in the SSE stream, got:\n%s", out)
+	}
+	if !strings.Contains(out, "event: done\n") {
+		t.Errorf("expected a done event in the SSE stream, got:\n%s", out)
+	}
+	if !strings.Contains(out, `"response_text":"hi back"`) {
+		t.Errorf("expected the done event to carry the generated text, got:\n%s", out)
 	}
 }

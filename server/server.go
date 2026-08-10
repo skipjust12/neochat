@@ -51,14 +51,15 @@ type Server struct {
 	// generated from -- see handleChat's error path.
 	Generators map[string]provider.Client
 
-	// SystemPrompt is prepended as a "system" message ahead of
-	// conversation history and the new user message on every generation
-	// call (see handle) -- the prompt for the model actually answering
-	// the user, distinct from Classifier.SystemPrompt and
-	// Moderator.SystemPrompt, which are their own cheap-model calls.
-	// Empty means no system message is sent at all, so this field can be
-	// left unset until a real prompt exists (see LoadSystemPrompt).
-	SystemPrompt string
+	// SystemPrompts maps a persona name (one of SystemPromptNames -- e.g.
+	// "Default", "Expert") to the prompt text prepended as a "system"
+	// message ahead of conversation history and the new user message on
+	// every generation call (see prepare) -- the prompt for the model
+	// actually answering the user, distinct from Classifier.SystemPrompt
+	// and Moderator.SystemPrompt, which are their own cheap-model calls.
+	// A persona with no entry (prompt not written yet -- see
+	// LoadSystemPrompts) sends no system message at all when selected.
+	SystemPrompts map[string]string
 }
 
 // chatRequest is the wire format for POST /chat.
@@ -75,6 +76,29 @@ type chatRequest struct {
 	RequestedMode          string `json:"requested_mode"` // "auto" | "instant" | "thinking" | "max" | "manual"
 	ManualModelID          string `json:"manual_model_id,omitempty"`
 	EstimatedContextTokens int    `json:"estimated_context_tokens"`
+
+	// Persona picks which of SystemPromptNames' system prompts to send
+	// with this request (e.g. "Expert", "Cynical") -- the UI's tone/style
+	// picker once it exists. Empty means "Default". A non-empty value not
+	// in SystemPromptNames is a 400, same as an unknown plan_id.
+	Persona string `json:"persona,omitempty"`
+}
+
+// defaultPersona is the persona used when a request doesn't specify one.
+const defaultPersona = "Default"
+
+// isValidPersona reports whether name is one of SystemPromptNames.
+// Validation is against this fixed list, not against which personas
+// currently have loaded prompt text -- a persona whose file is still an
+// empty placeholder (see LoadSystemPrompts) is a legitimate selection
+// that just sends no system message, not a client error.
+func isValidPersona(name string) bool {
+	for _, n := range SystemPromptNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
 }
 
 type chatResponse struct {
@@ -100,25 +124,43 @@ type chatResponse struct {
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("POST /chat", s.handleChat)
+	mux.HandleFunc("POST /chat/stream", s.handleChatStream)
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	return mux
 }
 
-func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+// decodeChatRequest parses and validates the POST /chat and POST
+// /chat/stream request bodies -- both endpoints run the exact same
+// pipeline (see handle/handleStream) and differ only in how the result is
+// delivered, so their input handling is shared here rather than
+// duplicated per handler.
+func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]limits.PlanLimits) (chatRequest, limits.PlanLimits, bool) {
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
-		return
+		return chatRequest{}, limits.PlanLimits{}, false
 	}
 	if req.UserID == "" || req.Message == "" || req.PlanID == "" {
 		http.Error(w, "user_id, plan_id, and message are required", http.StatusBadRequest)
-		return
+		return chatRequest{}, limits.PlanLimits{}, false
 	}
-	plan, ok := s.Plans[req.PlanID]
+	plan, ok := plans[req.PlanID]
 	if !ok {
 		http.Error(w, fmt.Sprintf("unknown plan_id %q", req.PlanID), http.StatusBadRequest)
+		return chatRequest{}, limits.PlanLimits{}, false
+	}
+	if req.Persona != "" && !isValidPersona(req.Persona) {
+		http.Error(w, fmt.Sprintf("unknown persona %q (want one of %v)", req.Persona, SystemPromptNames), http.StatusBadRequest)
+		return chatRequest{}, limits.PlanLimits{}, false
+	}
+	return req, plan, true
+}
+
+func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
+	req, plan, ok := decodeChatRequest(w, r, s.Plans)
+	if !ok {
 		return
 	}
 
@@ -135,11 +177,71 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handle runs the full sequence: classify + moderate (concurrently) ->
-// check spend lock -> route -> generate -> record actual spend. Split out
-// from handleChat so tests can call it directly with a fixed request/plan
-// and inspect the typed result instead of parsing HTTP output.
-func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
+// handleChatStream is /chat's streaming counterpart: same request shape
+// and the same underlying pipeline (see handleStream), but the response is
+// delivered as a Server-Sent Events stream instead of one JSON body --
+// this is what lets a client render the reply as it's generated instead
+// of waiting for the whole thing. Event types (see writeSSEEvent calls in
+// handleStream):
+//   - "meta": routing decided a model, generation is about to start --
+//     {conversation_id, selected_model_id, selected_mode, estimated_cost_usd}.
+//     Can be sent more than once per request if a circuit-open failover
+//     re-routes mid-request; the last one sent is the model that actually
+//     answered.
+//   - "delta": one incremental text chunk -- {text}.
+//   - "done": generation finished successfully -- the full chatResponse.
+//   - "blocked": Layer 1 moderation flagged the request -- the full
+//     chatResponse (Blocked=true), no "meta"/"delta" ever preceded it.
+//   - "error": the request failed -- {message}.
+func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
+	req, plan, ok := decodeChatRequest(w, r, s.Plans)
+	if !ok {
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.WriteHeader(http.StatusOK)
+
+	send := func(event string, payload any) {
+		data, err := json.Marshal(payload)
+		if err != nil {
+			log.Printf("server: /chat/stream marshal %s event: %v", event, err)
+			return
+		}
+		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
+		flusher.Flush()
+	}
+
+	if err := s.handleStream(r.Context(), req, plan, send); err != nil {
+		log.Printf("server: /chat/stream error for user_id=%s: %v", req.UserID, err)
+		send("error", map[string]string{"message": err.Error()})
+	}
+}
+
+// preparedRequest holds everything shared between handle and handleStream
+// once classification, moderation, and history loading have all run --
+// only how the actual generation call is made (and its result delivered)
+// differs between the two.
+type preparedRequest struct {
+	conversationID string
+	classified     router.ClassifierOutput
+	locked         bool
+	messages       []provider.Message
+}
+
+// prepare runs classify + moderate (concurrently) -> check spend lock ->
+// load conversation history, the sequence both handle and handleStream
+// need before they can route and generate. If Layer 1 moderation flags
+// the request, blocked is non-nil and the caller must return it as-is
+// without running anything below (no route, no generate).
+func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanLimits) (prepared preparedRequest, blocked *chatResponse, err error) {
 	conversationID := req.ConversationID
 	if conversationID == "" {
 		conversationID = conversation.NewID()
@@ -188,7 +290,7 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	wg.Wait()
 
 	if modErr != nil {
-		return chatResponse{}, fmt.Errorf("moderate: %w", modErr)
+		return preparedRequest{}, nil, fmt.Errorf("moderate: %w", modErr)
 	}
 	if modResult.Flagged {
 		log.Printf("server: /chat blocked by moderation for user_id=%s categories=%v reason=%q", req.UserID, modResult.Categories, modResult.Reason)
@@ -204,15 +306,15 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 		}); err != nil {
 			log.Printf("server: failed to record moderation block for user_id=%s: %v", req.UserID, err)
 		}
-		return chatResponse{ConversationID: conversationID, Blocked: true, ResponseText: tosViolationMessage}, nil
+		return preparedRequest{}, &chatResponse{ConversationID: conversationID, Blocked: true, ResponseText: tosViolationMessage}, nil
 	}
 	if classifyErr != nil {
-		return chatResponse{}, fmt.Errorf("classify: %w", classifyErr)
+		return preparedRequest{}, nil, fmt.Errorf("classify: %w", classifyErr)
 	}
 
 	locked, err := limits.CheckThinkingMaxLock(ctx, s.Store, plan, req.UserID)
 	if err != nil {
-		return chatResponse{}, fmt.Errorf("check thinking_max lock: %w", err)
+		return preparedRequest{}, nil, fmt.Errorf("check thinking_max lock: %w", err)
 	}
 
 	// Send the model everything stored for this conversation so far, plus
@@ -225,71 +327,139 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	// mismatch" risk) -- unchanged by this, just now actually exercised.
 	history, err := s.Conversations.History(ctx, req.UserID, conversationID)
 	if err != nil {
-		return chatResponse{}, fmt.Errorf("load conversation history: %w", err)
+		return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
 	}
+	persona := req.Persona
+	if persona == "" {
+		persona = defaultPersona
+	}
+	systemPrompt := s.SystemPrompts[persona] // "" for a valid-but-not-yet-written persona -- see LoadSystemPrompts
+
 	messages := make([]provider.Message, 0, len(history)+2)
-	if s.SystemPrompt != "" {
-		messages = append(messages, provider.Message{Role: "system", Content: s.SystemPrompt})
+	if systemPrompt != "" {
+		messages = append(messages, provider.Message{Role: "system", Content: systemPrompt})
 	}
 	for _, m := range history {
 		messages = append(messages, provider.Message{Role: string(m.Role), Content: m.Content})
 	}
 	messages = append(messages, provider.Message{Role: "user", Content: req.Message})
 
-	// Route, then generate; on a CircuitOpenError (the model's circuit just
-	// tripped -- see provider.CircuitBreakerClient) retry with that model
-	// excluded so Route picks a different, healthy candidate instead of
-	// failing the whole request. Bounded by maxCircuitFailoverAttempts so a
-	// catalog with every candidate's circuit open still fails instead of
-	// looping.
-	var (
-		result    router.RouteResult
-		model     router.Model
-		genResult provider.GenerateResult
-	)
+	return preparedRequest{
+		conversationID: conversationID,
+		classified:     classified,
+		locked:         locked,
+		messages:       messages,
+	}, nil, nil
+}
+
+// generateCaller performs one generation call against gen -- either
+// gen.Generate directly (handle) or a wrapper that streams through
+// gen.(provider.StreamingClient) and reports each delta as it arrives
+// (handleStream). routeAndCall is agnostic to which; it only needs the
+// final GenerateResult (or error) back.
+type generateCaller func(ctx context.Context, gen provider.Client, apiModelID string, messages []provider.Message) (provider.GenerateResult, error)
+
+// directGenerate is the generateCaller handle uses: gen.Generate, no
+// streaming involved.
+func directGenerate(ctx context.Context, gen provider.Client, apiModelID string, messages []provider.Message) (provider.GenerateResult, error) {
+	return gen.Generate(ctx, apiModelID, messages)
+}
+
+// streamingGenerate builds the generateCaller handleStream uses: it
+// streams through gen's provider.StreamingClient, invoking onDelta for
+// every text chunk as it arrives, and returns the stream's final
+// GenerateResult once the vendor signals it's done.
+func streamingGenerate(onDelta func(delta string)) generateCaller {
+	return func(ctx context.Context, gen provider.Client, apiModelID string, messages []provider.Message) (provider.GenerateResult, error) {
+		streamingClient, ok := gen.(provider.StreamingClient)
+		if !ok {
+			return provider.GenerateResult{}, fmt.Errorf("provider %T does not support streaming", gen)
+		}
+		ch, err := streamingClient.GenerateStream(ctx, apiModelID, messages)
+		if err != nil {
+			return provider.GenerateResult{}, err
+		}
+		for chunk := range ch {
+			if chunk.Err != nil {
+				return provider.GenerateResult{}, chunk.Err
+			}
+			if chunk.Delta != "" {
+				onDelta(chunk.Delta)
+			}
+			if chunk.Done {
+				return chunk.Final, nil
+			}
+		}
+		return provider.GenerateResult{}, fmt.Errorf("provider: stream closed without a final chunk")
+	}
+}
+
+// routeAndCall picks a model via s.Router.Route and calls it through call,
+// retrying with the failed model excluded whenever call returns a
+// *provider.CircuitOpenError (see provider.CircuitBreakerClient), bounded
+// by maxCircuitFailoverAttempts so a catalog with every candidate's
+// circuit open still fails instead of looping. Shared by handle (call =
+// directGenerate) and handleStream (call = streamingGenerate(...)) -- the
+// routing/failover policy is identical either way, only how the model is
+// actually invoked differs.
+//
+// onRoute, if non-nil, is invoked with each successful Route result right
+// before that attempt's call -- handleStream uses this to emit its "meta"
+// event as soon as a model is picked, without waiting for generation to
+// finish. It fires again on every failover retry, so a client watching
+// "meta" events always sees the model an in-flight attempt is actually
+// using.
+func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared preparedRequest, onRoute func(router.RouteResult), call generateCaller) (router.RouteResult, router.Model, provider.GenerateResult, error) {
 	excludedModelIDs := map[string]bool{}
 	for attempt := 0; ; attempt++ {
-		result, err = s.Router.Route(classified, req.RequestedMode, req.ManualModelID, req.EstimatedContextTokens, locked, excludedModelIDs)
+		result, err := s.Router.Route(prepared.classified, req.RequestedMode, req.ManualModelID, req.EstimatedContextTokens, prepared.locked, excludedModelIDs)
 		if err != nil {
-			return chatResponse{}, fmt.Errorf("route: %w", err)
+			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("route: %w", err)
+		}
+		if onRoute != nil {
+			onRoute(result)
 		}
 
-		var ok bool
-		model, ok = s.Router.Catalog.FindModel(result.SelectedModelID)
+		model, ok := s.Router.Catalog.FindModel(result.SelectedModelID)
 		if !ok {
-			return chatResponse{}, fmt.Errorf("selected model %q not found in catalog", result.SelectedModelID)
+			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("selected model %q not found in catalog", result.SelectedModelID)
 		}
 		gen, ok := s.Generators[model.Provider]
 		if !ok {
-			return chatResponse{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
+			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
 		}
 
-		genResult, err = gen.Generate(ctx, model.ResolveAPIModelID(), messages)
+		genResult, err := call(ctx, gen, model.ResolveAPIModelID(), prepared.messages)
 		if err == nil {
-			break
+			return result, model, genResult, nil
 		}
 
 		var circuitErr *provider.CircuitOpenError
 		if !errors.As(err, &circuitErr) || attempt >= maxCircuitFailoverAttempts-1 {
-			return chatResponse{}, fmt.Errorf("generate: %w", err)
+			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("generate: %w", err)
 		}
-		log.Printf("server: /chat circuit open for model_id=%s (api_model_id=%s), rerouting: %v", result.SelectedModelID, model.ResolveAPIModelID(), err)
+		log.Printf("server: circuit open for model_id=%s (api_model_id=%s), rerouting: %v", result.SelectedModelID, model.ResolveAPIModelID(), err)
 		excludedModelIDs[result.SelectedModelID] = true
 	}
+}
 
-	// Best-effort: generation already succeeded and the user already has
-	// their answer, so a persistence failure here shouldn't turn into a
-	// request failure -- it just means this turn won't be there for
-	// History on the next one. Same reasoning as ModerationLog above.
+// finalize persists the turn, records actual spend, and builds the
+// response chatResponse/handleStream's "done" event share. Best-effort on
+// persistence: generation already succeeded and the user already has
+// their answer, so a persistence failure here shouldn't turn into a
+// request failure -- it just means this turn won't be there for History
+// on the next one. Same reasoning as prepare's ModerationLog handling.
+func (s *Server) finalize(ctx context.Context, req chatRequest, prepared preparedRequest, result router.RouteResult, model router.Model, genResult provider.GenerateResult) (chatResponse, error) {
 	now := time.Now()
-	if err := s.Conversations.Append(ctx, req.UserID, conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, CreatedAt: now}); err != nil {
-		log.Printf("server: failed to persist user message for conversation_id=%s: %v", conversationID, err)
+	if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, CreatedAt: now}); err != nil {
+		log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
 	}
-	if err := s.Conversations.Append(ctx, req.UserID, conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: genResult.Text, ModelID: model.ID, CreatedAt: now}); err != nil {
-		log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", conversationID, err)
+	if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: genResult.Text, ModelID: model.ID, CreatedAt: now}); err != nil {
+		log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
 	}
 
 	actualCost := router.ComputeCostUSD(model, genResult.InputTokens, genResult.OutputTokens)
+	var err error
 	if result.SelectedMode == "instant" {
 		err = limits.RecordInstantSpend(ctx, s.Store, req.UserID, actualCost, now)
 	} else {
@@ -300,7 +470,7 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	}
 
 	return chatResponse{
-		ConversationID:   conversationID,
+		ConversationID:   prepared.conversationID,
 		SelectedModelID:  result.SelectedModelID,
 		SelectedMode:     result.SelectedMode,
 		Reason:           result.Reason,
@@ -308,4 +478,70 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 		ActualCostUSD:    actualCost,
 		ResponseText:     genResult.Text,
 	}, nil
+}
+
+// handle runs the full non-streaming sequence: prepare (classify +
+// moderate concurrently -> check spend lock -> load history) -> route +
+// generate (with circuit-open failover) -> finalize (persist + record
+// spend). Split out from handleChat so tests can call it directly with a
+// fixed request/plan and inspect the typed result instead of parsing HTTP
+// output.
+func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
+	prepared, blocked, err := s.prepare(ctx, req, plan)
+	if err != nil {
+		return chatResponse{}, err
+	}
+	if blocked != nil {
+		return *blocked, nil
+	}
+
+	result, model, genResult, err := s.routeAndCall(ctx, req, prepared, nil, directGenerate)
+	if err != nil {
+		return chatResponse{}, err
+	}
+
+	return s.finalize(ctx, req, prepared, result, model, genResult)
+}
+
+// handleStream is handle's streaming counterpart: identical pipeline, but
+// text deltas are pushed to send("delta", ...) as they arrive instead of
+// being buffered into one final response. send is also used for the
+// "meta" event (once routing picks a model, before generation starts) and
+// the terminal "done"/"blocked" event -- see handleChatStream's doc
+// comment for the full event contract. Split out from handleChatStream
+// the same way handle is split from handleChat, for the same reason:
+// testable without parsing SSE wire output.
+func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.PlanLimits, send func(event string, payload any)) error {
+	prepared, blocked, err := s.prepare(ctx, req, plan)
+	if err != nil {
+		return err
+	}
+	if blocked != nil {
+		send("blocked", *blocked)
+		return nil
+	}
+
+	call := streamingGenerate(func(delta string) {
+		send("delta", map[string]string{"text": delta})
+	})
+	onRoute := func(result router.RouteResult) {
+		send("meta", map[string]any{
+			"conversation_id":    prepared.conversationID,
+			"selected_model_id":  result.SelectedModelID,
+			"selected_mode":      result.SelectedMode,
+			"estimated_cost_usd": result.EstimatedCostUSD,
+		})
+	}
+
+	result, model, genResult, err := s.routeAndCall(ctx, req, prepared, onRoute, call)
+	if err != nil {
+		return err
+	}
+
+	resp, err := s.finalize(ctx, req, prepared, result, model, genResult)
+	if err != nil {
+		return err
+	}
+	send("done", resp)
+	return nil
 }
