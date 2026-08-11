@@ -92,19 +92,6 @@
       "supports_output_formats": ["text", "markdown", "json", "function_call"]
     },
     {
-      "id": "gpt-oss-120b",
-      "api_model_id": "openai/gpt-oss-120b",
-      "provider": "openai",
-      "modes": ["instant"],
-      "cost_input_per_mtok": 0.03,
-      "cost_output_per_mtok": 0.17,
-      "context_window": 131072,
-      "supports_modality": ["text", "code"],
-      "supports_tools": [],
-      "max_output_tokens": 131072,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
-    },
-    {
       "id": "gemini-3.5-flash-lite",
       "api_model_id": "google/gemini-3.5-flash-lite",
       "provider": "google",
