@@ -72,6 +72,51 @@ func TestInMemoryStore_HistoryReturnsACopy(t *testing.T) {
 	}
 }
 
+func TestInMemoryStore_GetSummaryUnknownConversationReturnsZeroValue(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+
+	s, err := store.GetSummary(ctx, "u1", "does-not-exist")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if s.Text != "" || s.CoversThrough != 0 {
+		t.Errorf("GetSummary() = %+v, want the zero Summary", s)
+	}
+}
+
+func TestInMemoryStore_SetSummaryThenGetSummaryRoundTrips(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+
+	want := Summary{Text: "the user asked about X and Y", CoversThrough: 5, UpdatedAt: time.Now()}
+	must(t, store.SetSummary(ctx, "u1", "c1", want))
+
+	got, err := store.GetSummary(ctx, "u1", "c1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Text != want.Text || got.CoversThrough != want.CoversThrough {
+		t.Errorf("GetSummary() = %+v, want %+v", got, want)
+	}
+}
+
+func TestInMemoryStore_SummaryIsolatesByUserAndConversation(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+
+	must(t, store.SetSummary(ctx, "u1", "c1", Summary{Text: "u1/c1 summary"}))
+	must(t, store.SetSummary(ctx, "u2", "c1", Summary{Text: "u2/c1 summary"}))
+
+	got, err := store.GetSummary(ctx, "u1", "c1")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if got.Text != "u1/c1 summary" {
+		t.Errorf("GetSummary(u1, c1) = %+v, want Text=%q", got, "u1/c1 summary")
+	}
+}
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {

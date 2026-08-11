@@ -26,6 +26,15 @@ type Store interface {
 	// oldest first. An unknown conversation returns an empty slice, not
 	// an error -- a brand new conversation simply has no history yet.
 	History(ctx context.Context, userID, conversationID string) ([]Message, error)
+
+	// GetSummary returns the current rolling Summary for (userID,
+	// conversationID). An unknown conversation, or one that has never
+	// been summarized, returns the zero Summary (CoversThrough 0, Text
+	// ""), not an error.
+	GetSummary(ctx context.Context, userID, conversationID string) (Summary, error)
+
+	// SetSummary replaces the stored Summary for (userID, conversationID).
+	SetSummary(ctx context.Context, userID, conversationID string, s Summary) error
 }
 
 // InMemoryStore is a process-local Store backed by a plain map, safe for
@@ -38,8 +47,9 @@ type Store interface {
 // conversation IDs were ever guessed or collided -- the same scoping
 // limits.SpendStore already applies to spend, applied here to history.
 type InMemoryStore struct {
-	mu      sync.Mutex
-	history map[conversationKey][]Message
+	mu        sync.Mutex
+	history   map[conversationKey][]Message
+	summaries map[conversationKey]Summary
 }
 
 type conversationKey struct {
@@ -49,7 +59,10 @@ type conversationKey struct {
 
 // NewInMemoryStore returns an empty, ready-to-use store.
 func NewInMemoryStore() *InMemoryStore {
-	return &InMemoryStore{history: make(map[conversationKey][]Message)}
+	return &InMemoryStore{
+		history:   make(map[conversationKey][]Message),
+		summaries: make(map[conversationKey]Summary),
+	}
 }
 
 func (s *InMemoryStore) Append(_ context.Context, userID, conversationID string, msg Message) error {
@@ -67,4 +80,19 @@ func (s *InMemoryStore) History(_ context.Context, userID, conversationID string
 	out := make([]Message, len(s.history[key]))
 	copy(out, s.history[key])
 	return out, nil
+}
+
+func (s *InMemoryStore) GetSummary(_ context.Context, userID, conversationID string) (Summary, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := conversationKey{userID: userID, conversationID: conversationID}
+	return s.summaries[key], nil
+}
+
+func (s *InMemoryStore) SetSummary(_ context.Context, userID, conversationID string, summary Summary) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := conversationKey{userID: userID, conversationID: conversationID}
+	s.summaries[key] = summary
+	return nil
 }

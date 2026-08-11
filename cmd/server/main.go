@@ -9,6 +9,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"neochat/classifier"
@@ -20,6 +21,7 @@ import (
 	"neochat/provider"
 	"neochat/router"
 	"neochat/server"
+	"neochat/summarizer"
 )
 
 func main() {
@@ -85,6 +87,43 @@ func main() {
 		moderationModelID = "openai/gpt-oss-120b"
 	}
 
+	summarizerSystemPrompt, err := summarizer.LoadSystemPrompt("prompts/summarizer_system_prompt.md")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	// Same cheap model as the classifier (SUMMARIZER_API_MODEL_ID
+	// overrides independently) -- see summarizer package doc comment.
+	summarizerModelID := os.Getenv("SUMMARIZER_API_MODEL_ID")
+	if summarizerModelID == "" {
+		summarizerModelID = classifierModelID
+	}
+
+	// SummaryTailMessages: how many of the most recent messages are
+	// always sent verbatim -- see server.Server.SummaryTailMessages.
+	summaryTailMessages := 10
+	if v := os.Getenv("SUMMARY_TAIL_MESSAGES"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			log.Fatalf("SUMMARY_TAIL_MESSAGES: %v", err)
+		}
+		summaryTailMessages = n
+	}
+
+	// SummaryTriggerTokens defaults to 60% of the smallest catalog
+	// model's ContextWindow, so summarization kicks in before
+	// router.applyHardFilters would reject every model for a growing
+	// conversation -- see server.Server.SummaryTriggerTokens.
+	// SUMMARY_TRIGGER_TOKENS overrides it directly.
+	summaryTriggerTokens := smallestContextWindow(catalog) * 60 / 100
+	if v := os.Getenv("SUMMARY_TRIGGER_TOKENS"); v != "" {
+		n, err := strconv.Atoi(v)
+		if err != nil {
+			log.Fatalf("SUMMARY_TRIGGER_TOKENS: %v", err)
+		}
+		summaryTriggerTokens = n
+	}
+
 	srv := &server.Server{
 		Router:     router.NewRouter(catalog, weights),
 		Classifier: classifier.New(openRouterClient, classifierModelID, systemPrompt),
@@ -105,9 +144,12 @@ func main() {
 		// Same throwaway-stand-in story again -- see costlog.Store's doc
 		// comment for the Postgres/Redis swap-in procedure once there's a
 		// real database to justify it.
-		CostLog:       costlog.NewInMemoryStore(),
-		Plans:         plans,
-		SystemPrompts: chatSystemPrompts,
+		CostLog:              costlog.NewInMemoryStore(),
+		Plans:                plans,
+		SystemPrompts:        chatSystemPrompts,
+		Summarizer:           summarizer.New(openRouterClient, summarizerModelID, summarizerSystemPrompt),
+		SummaryTriggerTokens: summaryTriggerTokens,
+		SummaryTailMessages:  summaryTailMessages,
 		// Every catalog provider tag routes through the same
 		// OpenRouterClient -- OpenRouter serves all of them, so there's no
 		// need for a second provider.Client implementation (see README
@@ -129,4 +171,22 @@ func main() {
 	}
 	log.Printf("listening on %s", addr)
 	log.Fatal(http.ListenAndServe(addr, srv.Mux()))
+}
+
+// smallestContextWindow returns the smallest ContextWindow across every
+// model in catalog, used to derive a sensible default for
+// SUMMARY_TRIGGER_TOKENS. Panics on an empty catalog -- router.LoadCatalog
+// already fails startup before this point if configs/models.json has no
+// models, so this is an invariant, not a runtime condition to handle.
+func smallestContextWindow(catalog router.Catalog) int {
+	if len(catalog.Models) == 0 {
+		log.Fatal("smallestContextWindow: catalog has no models")
+	}
+	min := catalog.Models[0].ContextWindow
+	for _, m := range catalog.Models[1:] {
+		if m.ContextWindow < min {
+			min = m.ContextWindow
+		}
+	}
+	return min
 }
