@@ -31,4 +31,29 @@ type Message struct {
 	// the checklist item calls out as needing to be there from day one.
 	ModelID   string    `json:"model_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+
+	// IsSummary marks a message as machine-generated summary content
+	// rather than a real turn someone typed/received -- not read anywhere
+	// yet, reserved for when summarizer-produced text needs to be told
+	// apart from ordinary history (e.g. excluding it from re-summarization
+	// input, or flagging it in a transcript export).
+	IsSummary bool `json:"is_summary,omitempty"`
+}
+
+// Summary is the rolling, machine-generated compression of a
+// conversation's older messages, kept alongside the full History so a
+// long-running conversation can stay within a model's context window
+// without deleting anything from storage. See Store.GetSummary/SetSummary.
+type Summary struct {
+	// Text is the current summary content, folding in every message up to
+	// CoversThrough.
+	Text string `json:"text"`
+
+	// CoversThrough is how many of the oldest messages in History (by
+	// index, 0 meaning none) are already represented in Text. The next
+	// summarization pass only needs to fold in History[CoversThrough:],
+	// not the whole conversation again.
+	CoversThrough int `json:"covers_through"`
+
+	UpdatedAt time.Time `json:"updated_at"`
 }

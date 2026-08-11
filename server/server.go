@@ -22,6 +22,7 @@ import (
 	"neochat/moderation"
 	"neochat/provider"
 	"neochat/router"
+	"neochat/summarizer"
 	"neochat/tokenizer"
 )
 
@@ -85,6 +86,30 @@ type Server struct {
 	// A persona with no entry (prompt not written yet -- see
 	// LoadSystemPrompts) sends no system message at all when selected.
 	SystemPrompts map[string]string
+
+	// Summarizer folds the older part of a long conversation's history
+	// into a rolling text summary -- see maybeSummarize. Closes the
+	// "Context window mismatch" gap (README): without it, a conversation
+	// that outgrows every catalog model's ContextWindow simply stops
+	// routing.
+	Summarizer summarizer.Summarizer
+
+	// SummaryTriggerTokens is the tokenizer.EstimateMessages threshold
+	// (evaluated against the full stored history) above which prepare
+	// summarizes the older part of the conversation instead of sending it
+	// in full. Typically set below the smallest catalog model's
+	// ContextWindow, so summarization kicks in before applyHardFilters
+	// would reject every model -- see cmd/server/main.go for how the
+	// default is derived. <= 0 (the zero value) disables summarization
+	// entirely -- prepare sends full history exactly as it did before
+	// this feature existed.
+	SummaryTriggerTokens int
+
+	// SummaryTailMessages is how many of the most recent messages are
+	// always sent verbatim, never folded into the summary -- keeps the
+	// immediate back-and-forth the model is actively reasoning about
+	// intact even once older turns have been compressed.
+	SummaryTailMessages int
 }
 
 // chatRequest is the wire format for POST /chat.
@@ -382,28 +407,43 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	if err != nil {
 		return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
 	}
+
+	// Fold the older part of a long conversation into a rolling summary
+	// once the full history gets big enough that sending it verbatim
+	// risks outgrowing every catalog model's ContextWindow. summaryText
+	// is "" when there's nothing to summarize yet (short conversation) or
+	// summarization failed -- either way tail equals history unchanged,
+	// so the rest of prepare behaves exactly as before this feature
+	// existed.
+	tail, summaryText := s.maybeSummarize(ctx, req.UserID, conversationID, history)
+
 	persona := req.Persona
 	if persona == "" {
 		persona = defaultPersona
 	}
 	systemPrompt := s.SystemPrompts[persona] // "" for a valid-but-not-yet-written persona -- see LoadSystemPrompts
 
-	messages := make([]provider.Message, 0, len(history)+2)
+	messages := make([]provider.Message, 0, len(tail)+3)
 	if systemPrompt != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: systemPrompt})
 	}
-	for _, m := range history {
+	if summaryText != "" {
+		messages = append(messages, provider.Message{Role: "system", Content: "Earlier in this conversation:\n" + summaryText})
+	}
+	for _, m := range tail {
 		messages = append(messages, provider.Message{Role: string(m.Role), Content: m.Content})
 	}
 	messages = append(messages, provider.Message{Role: "user", Content: req.Message})
 
 	// tokenizer.EstimateMessages replaces chatRequest.EstimatedContextTokens
 	// as the number Route actually filters/prices against -- computed from
-	// the real message list (system prompt + full stored history + the new
-	// message), so it grows with the conversation instead of staying
+	// the real message list (system prompt + summary/tail history + the
+	// new message), so it grows with the conversation instead of staying
 	// whatever the client declared on turn 1 (README "Context window
 	// mismatch"), and can't be understated by a client trying to slip a
-	// request under a spend cap (README "Cost-based abuse").
+	// request under a spend cap (README "Cost-based abuse"). Once
+	// maybeSummarize starts folding old turns into a summary, this stays
+	// far smaller than the conversation's full stored history.
 	return preparedRequest{
 		conversationID:         conversationID,
 		classified:             classified,
@@ -412,6 +452,73 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 		estimatedContextTokens: tokenizer.EstimateMessages(messages),
 		requestID:              conversation.NewID(),
 	}, nil, nil
+}
+
+// maybeSummarize decides whether history is small enough to send as-is,
+// or whether its older part should be folded into a rolling summary
+// first. It returns the messages that should actually be sent verbatim
+// (either the whole of history, or just its most recent
+// SummaryTailMessages) and the summary text to inject alongside them
+// ("" if no summarization applies).
+//
+// Failure to summarize (store error or the summarizer model call
+// failing) is not fatal: it logs and falls back to sending history
+// unchanged, exactly as if SummaryTriggerTokens had not been reached --
+// worst case a very large conversation still hits applyHardFilters'
+// context-window check, the same outcome as before this feature existed.
+func (s *Server) maybeSummarize(ctx context.Context, userID, conversationID string, history []conversation.Message) ([]conversation.Message, string) {
+	// SummaryTriggerTokens <= 0 means the feature is unconfigured (the
+	// zero-value Server, e.g. in tests that don't set it) rather than
+	// "summarize everything" -- a real deployment always sets a positive
+	// threshold, see cmd/server/main.go.
+	if s.SummaryTriggerTokens <= 0 {
+		return history, ""
+	}
+	if len(history) <= s.SummaryTailMessages {
+		return history, ""
+	}
+
+	historyAsMessages := make([]provider.Message, len(history))
+	for i, m := range history {
+		historyAsMessages[i] = provider.Message{Role: string(m.Role), Content: m.Content}
+	}
+	if tokenizer.EstimateMessages(historyAsMessages) < s.SummaryTriggerTokens {
+		return history, ""
+	}
+
+	state, err := s.Conversations.GetSummary(ctx, userID, conversationID)
+	if err != nil {
+		log.Printf("server: get summary for user_id=%s conversation_id=%s: %v", userID, conversationID, err)
+		return history, ""
+	}
+
+	tailStart := len(history) - s.SummaryTailMessages
+	if state.CoversThrough > tailStart {
+		// Stored state predates a shorter SummaryTailMessages/history
+		// shrink than currently configured -- clamp rather than slice
+		// with a negative-length range below.
+		state.CoversThrough = tailStart
+	}
+
+	toFold := history[state.CoversThrough:tailStart]
+	summaryText := state.Text
+	if len(toFold) > 0 {
+		newSummary, err := s.Summarizer.Summarize(ctx, state.Text, toFold)
+		if err != nil {
+			log.Printf("server: summarize user_id=%s conversation_id=%s: %v", userID, conversationID, err)
+			return history, ""
+		}
+		summaryText = newSummary
+		if err := s.Conversations.SetSummary(ctx, userID, conversationID, conversation.Summary{
+			Text:          summaryText,
+			CoversThrough: tailStart,
+			UpdatedAt:     time.Now(),
+		}); err != nil {
+			log.Printf("server: set summary for user_id=%s conversation_id=%s: %v", userID, conversationID, err)
+		}
+	}
+
+	return history[tailStart:], summaryText
 }
 
 // generateCaller performs one generation call against gen -- either
