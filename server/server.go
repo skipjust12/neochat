@@ -16,6 +16,7 @@ import (
 
 	"neochat/classifier"
 	"neochat/conversation"
+	"neochat/costlog"
 	"neochat/idempotency"
 	"neochat/limits"
 	"neochat/moderation"
@@ -46,6 +47,19 @@ type Server struct {
 	Conversations conversation.Store
 	Store         limits.SpendStore
 	Plans         map[string]limits.PlanLimits
+
+	// CostLog persists one costlog.Store record per completed generation
+	// (real token usage, not the pre-flight estimate) -- see README
+	// pre-launch checklist item 7 ("per-request cost accounting").
+	// Distinct from Store above: Store accumulates spend into rolling
+	// windows for the Thinking+Max cap (limits.CheckThinkingMaxLock);
+	// CostLog keeps one row per request for billing reconciliation, unit-
+	// economics sanity checks, and eval-set cost tracking -- the same
+	// underlying numbers, different shape, both derived from the same
+	// finalize call. Required, not nil-safe like Idempotency: every
+	// successful generation logs a cost record unconditionally, there is
+	// no per-request opt-out.
+	CostLog costlog.Store
 
 	// Idempotency dedups retries so a client that never saw a response
 	// (dropped connection, timeout) can safely resend the same request
@@ -270,6 +284,14 @@ type preparedRequest struct {
 	// taken from chatRequest.EstimatedContextTokens (see that field's doc
 	// comment for why the client-supplied number is no longer trusted).
 	estimatedContextTokens int
+
+	// requestID identifies this one generation attempt for
+	// costlog.Store.Record (see finalize) -- distinct from conversationID
+	// (spans every turn of a thread) and chatRequest.IdempotencyKey
+	// (client-supplied, optional, for retry dedup). Generated fresh per
+	// prepare call the same way conversation.NewID mints one: 16 random
+	// bytes, hex-encoded.
+	requestID string
 }
 
 // prepare runs classify + moderate (concurrently) -> check spend lock ->
@@ -388,6 +410,7 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 		locked:                 locked,
 		messages:               messages,
 		estimatedContextTokens: tokenizer.EstimateMessages(messages),
+		requestID:              conversation.NewID(),
 	}, nil, nil
 }
 
@@ -506,6 +529,17 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	}
 	if err != nil {
 		return chatResponse{}, fmt.Errorf("record spend: %w", err)
+	}
+
+	// Best-effort like Conversations.Append above: the request already
+	// succeeded and the user already has their answer, so a logging
+	// failure here shouldn't fail the request -- it just means this one
+	// request is missing from the per-request cost log (README pre-launch
+	// checklist item 7), not from the rolling-window spend Store above,
+	// which is what actually gates the Thinking+Max cap.
+	entry := router.NewCostLogEntry(req.UserID, prepared.requestID, model, result.SelectedMode, genResult.InputTokens, genResult.OutputTokens, now)
+	if err := s.CostLog.Record(ctx, entry); err != nil {
+		log.Printf("server: failed to record cost log entry for request_id=%s: %v", prepared.requestID, err)
 	}
 
 	return chatResponse{
