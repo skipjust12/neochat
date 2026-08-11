@@ -13,6 +13,7 @@ import (
 
 	"neochat/classifier"
 	"neochat/conversation"
+	"neochat/costlog"
 	"neochat/idempotency"
 	"neochat/limits"
 	"neochat/moderation"
@@ -73,6 +74,7 @@ func newTestServer(t *testing.T, genResponses []provider.GenerateResult) (*Serve
 		Conversations: conversation.NewInMemoryStore(),
 		Store:         limits.NewInMemorySpendStore(),
 		Idempotency:   idempotency.NewInMemoryStore(),
+		CostLog:       costlog.NewInMemoryStore(),
 		Plans: map[string]limits.PlanLimits{
 			"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10.0, InstantExtraCapUSD: 3.0},
 		},
@@ -115,6 +117,67 @@ func TestHandle_HappyPath(t *testing.T) {
 	}
 	if resp.ConversationID == "" {
 		t.Error("expected a generated ConversationID when the request didn't supply one")
+	}
+}
+
+// TestHandle_RecordsCostLogEntry checks that a successful generation logs
+// exactly one costlog.Store record with the real token usage/cost --
+// distinct from Store's rolling-window spend accounting (checked above),
+// this is the per-request record for billing reconciliation and
+// unit-economics tracking (README pre-launch checklist item 7).
+func TestHandle_RecordsCostLogEntry(t *testing.T) {
+	s, _ := newTestServer(t, []provider.GenerateResult{
+		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
+	})
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	resp, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entries := s.CostLog.(*costlog.InMemoryStore).Entries()
+	if len(entries) != 1 {
+		t.Fatalf("len(CostLog.Entries()) = %d, want 1", len(entries))
+	}
+	got := entries[0]
+	if got.UserID != "u1" {
+		t.Errorf("UserID = %q, want u1", got.UserID)
+	}
+	if got.ModelID != "test-thinking" {
+		t.Errorf("ModelID = %q, want test-thinking", got.ModelID)
+	}
+	if got.Mode != "thinking" {
+		t.Errorf("Mode = %q, want thinking", got.Mode)
+	}
+	if got.InputTokens != 1000 || got.OutputTokens != 500 {
+		t.Errorf("tokens = %d/%d, want 1000/500", got.InputTokens, got.OutputTokens)
+	}
+	if got.CostUSD != resp.ActualCostUSD {
+		t.Errorf("CostUSD = %.6f, want it to match the response's ActualCostUSD %.6f", got.CostUSD, resp.ActualCostUSD)
+	}
+	if got.RequestID == "" {
+		t.Error("expected a non-empty RequestID")
+	}
+}
+
+// TestHandle_NoCostLogEntryWhenModerationBlocks checks that a
+// moderation-flagged request -- which never reaches generation -- doesn't
+// log a cost entry either. Mirrors TestHandle_ModerationFlaggedBlocksBeforeGeneration's
+// "no generate calls" assertion, one layer further down the pipeline.
+func TestHandle_NoCostLogEntryWhenModerationBlocks(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
+		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
+	}}, "fake-moderation-model", "system prompt")
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "bad request", RequestedMode: "instant", EstimatedContextTokens: 100}
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if entries := s.CostLog.(*costlog.InMemoryStore).Entries(); len(entries) != 0 {
+		t.Errorf("len(CostLog.Entries()) = %d, want 0 (no generation happened)", len(entries))
 	}
 }
 
@@ -1009,6 +1072,7 @@ func TestHandle_ContextWindowFilterUsesRealMessageSizeNotClientValue(t *testing.
 		Conversations: conversation.NewInMemoryStore(),
 		Store:         limits.NewInMemorySpendStore(),
 		Idempotency:   idempotency.NewInMemoryStore(),
+		CostLog:       costlog.NewInMemoryStore(),
 		Plans: map[string]limits.PlanLimits{
 			"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10.0, InstantExtraCapUSD: 3.0},
 		},

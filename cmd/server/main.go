@@ -13,6 +13,7 @@ import (
 
 	"neochat/classifier"
 	"neochat/conversation"
+	"neochat/costlog"
 	"neochat/idempotency"
 	"neochat/limits"
 	"neochat/moderation"
@@ -100,7 +101,11 @@ func main() {
 		// Same throwaway-stand-in story as Conversations/Store above -- see
 		// idempotency.Store's doc comment for the Redis swap-in procedure
 		// once there's a real database to justify it.
-		Idempotency:   idempotency.NewInMemoryStore(),
+		Idempotency: idempotency.NewInMemoryStore(),
+		// Same throwaway-stand-in story again -- see costlog.Store's doc
+		// comment for the Postgres/Redis swap-in procedure once there's a
+		// real database to justify it.
+		CostLog:       costlog.NewInMemoryStore(),
 		Plans:         plans,
 		SystemPrompts: chatSystemPrompts,
 		// Every catalog provider tag routes through the same
