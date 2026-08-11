@@ -13,6 +13,7 @@ import (
 
 	"neochat/classifier"
 	"neochat/conversation"
+	"neochat/idempotency"
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
@@ -96,6 +97,10 @@ func main() {
 		// procedure once there's a real database to justify it.
 		Conversations: conversation.NewInMemoryStore(),
 		Store:         limits.NewInMemorySpendStore(),
+		// Same throwaway-stand-in story as Conversations/Store above -- see
+		// idempotency.Store's doc comment for the Redis swap-in procedure
+		// once there's a real database to justify it.
+		Idempotency:   idempotency.NewInMemoryStore(),
 		Plans:         plans,
 		SystemPrompts: chatSystemPrompts,
 		// Every catalog provider tag routes through the same

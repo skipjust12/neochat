@@ -16,6 +16,7 @@ import (
 
 	"neochat/classifier"
 	"neochat/conversation"
+	"neochat/idempotency"
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
@@ -44,6 +45,15 @@ type Server struct {
 	Conversations conversation.Store
 	Store         limits.SpendStore
 	Plans         map[string]limits.PlanLimits
+
+	// Idempotency dedups retries so a client that never saw a response
+	// (dropped connection, timeout) can safely resend the same request
+	// without triggering a second generate call and a second charge --
+	// see README pre-launch checklist item 3. Keyed off chatRequest's
+	// IdempotencyKey field; nil (the zero value) disables the guard
+	// entirely, so existing callers that don't set this field are
+	// unaffected. See reserveIdempotent/finishIdempotent.
+	Idempotency idempotency.Store
 
 	// Generators maps a catalog Model.Provider string (e.g. "openai",
 	// "anthropic") to the client that can actually call it. A model whose
@@ -76,6 +86,15 @@ type chatRequest struct {
 	RequestedMode          string `json:"requested_mode"` // "auto" | "instant" | "thinking" | "max" | "manual"
 	ManualModelID          string `json:"manual_model_id,omitempty"`
 	EstimatedContextTokens int    `json:"estimated_context_tokens"`
+
+	// IdempotencyKey, if set, makes retrying this exact request safe: a
+	// second call with the same (user_id, idempotency_key) replays the
+	// first attempt's response instead of generating (and billing) again.
+	// The client is responsible for reusing the same key on a retry and
+	// picking a new one for a genuinely new message -- typically a UUID
+	// generated once per user-initiated send. Empty disables the guard for
+	// that request (no dedup, same behavior as before this field existed).
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
 
 	// Persona picks which of SystemPromptNames' system prompts to send
 	// with this request (e.g. "Expert", "Cynical") -- the UI's tone/style
@@ -480,13 +499,92 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	}, nil
 }
 
-// handle runs the full non-streaming sequence: prepare (classify +
-// moderate concurrently -> check spend lock -> load history) -> route +
-// generate (with circuit-open failover) -> finalize (persist + record
-// spend). Split out from handleChat so tests can call it directly with a
-// fixed request/plan and inspect the typed result instead of parsing HTTP
-// output.
+// reserveIdempotent claims req's idempotency key, if it has one and
+// s.Idempotency is configured. It returns (cached response, true, nil) if
+// this exact (user_id, idempotency_key) already completed -- the caller
+// must return that instead of doing any work (no re-classify, re-moderate,
+// re-generate, or re-bill). It returns (chatResponse{}, false, nil) if this
+// is a genuinely new attempt that should proceed normally, in which case
+// the caller must report its outcome back via finishIdempotent. A request
+// with no IdempotencyKey (or a Server with no Idempotency store configured)
+// always takes this second path -- the guard is opt-in per request.
+func (s *Server) reserveIdempotent(ctx context.Context, req chatRequest) (chatResponse, bool, error) {
+	if req.IdempotencyKey == "" || s.Idempotency == nil {
+		return chatResponse{}, false, nil
+	}
+
+	rec, found, err := s.Idempotency.Reserve(ctx, req.UserID, req.IdempotencyKey)
+	if err != nil {
+		if errors.Is(err, idempotency.ErrInFlight) {
+			return chatResponse{}, false, fmt.Errorf("a request with idempotency_key %q is already in progress for this user", req.IdempotencyKey)
+		}
+		return chatResponse{}, false, fmt.Errorf("idempotency reserve: %w", err)
+	}
+	if !found {
+		return chatResponse{}, false, nil
+	}
+
+	var resp chatResponse
+	if err := json.Unmarshal(rec.Response, &resp); err != nil {
+		return chatResponse{}, false, fmt.Errorf("idempotency: decode cached response for idempotency_key %q: %w", req.IdempotencyKey, err)
+	}
+	return resp, true, nil
+}
+
+// finishIdempotent reports the outcome of an attempt reserveIdempotent
+// claimed. A successful response is cached so a later retry with the same
+// key replays it instead of generating (and billing) again. A failed
+// attempt instead releases the key, so a legitimate retry after a real
+// failure (as opposed to a dropped connection after success) isn't
+// permanently stuck behind ErrInFlight. No-op under the same conditions
+// reserveIdempotent short-circuits on (no key, or no store configured).
+func (s *Server) finishIdempotent(ctx context.Context, req chatRequest, resp chatResponse, handleErr error) {
+	if req.IdempotencyKey == "" || s.Idempotency == nil {
+		return
+	}
+
+	if handleErr != nil {
+		if err := s.Idempotency.Release(ctx, req.UserID, req.IdempotencyKey); err != nil {
+			log.Printf("server: failed to release idempotency_key=%s for user_id=%s: %v", req.IdempotencyKey, req.UserID, err)
+		}
+		return
+	}
+
+	data, err := json.Marshal(resp)
+	if err != nil {
+		log.Printf("server: failed to encode idempotent response for idempotency_key=%s: %v", req.IdempotencyKey, err)
+		if relErr := s.Idempotency.Release(ctx, req.UserID, req.IdempotencyKey); relErr != nil {
+			log.Printf("server: failed to release idempotency_key=%s for user_id=%s: %v", req.IdempotencyKey, req.UserID, relErr)
+		}
+		return
+	}
+	if err := s.Idempotency.Complete(ctx, req.UserID, req.IdempotencyKey, idempotency.Record{Response: data}); err != nil {
+		log.Printf("server: failed to complete idempotency_key=%s for user_id=%s: %v", req.IdempotencyKey, req.UserID, err)
+	}
+}
+
+// handle runs the full non-streaming sequence: reserve the idempotency key
+// (if any) -> prepare (classify + moderate concurrently -> check spend lock
+// -> load history) -> route + generate (with circuit-open failover) ->
+// finalize (persist + record spend) -> report the outcome back to the
+// idempotency store. Split out from handleChat so tests can call it
+// directly with a fixed request/plan and inspect the typed result instead
+// of parsing HTTP output.
 func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
+	if cached, found, err := s.reserveIdempotent(ctx, req); err != nil {
+		return chatResponse{}, err
+	} else if found {
+		return cached, nil
+	}
+
+	resp, err := s.handleOnce(ctx, req, plan)
+	s.finishIdempotent(ctx, req, resp, err)
+	return resp, err
+}
+
+// handleOnce is handle's actual work, run at most once per idempotency key
+// -- see handle's wrapping via reserveIdempotent/finishIdempotent.
+func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
 	prepared, blocked, err := s.prepare(ctx, req, plan)
 	if err != nil {
 		return chatResponse{}, err
@@ -503,22 +601,45 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	return s.finalize(ctx, req, prepared, result, model, genResult)
 }
 
-// handleStream is handle's streaming counterpart: identical pipeline, but
-// text deltas are pushed to send("delta", ...) as they arrive instead of
-// being buffered into one final response. send is also used for the
-// "meta" event (once routing picks a model, before generation starts) and
-// the terminal "done"/"blocked" event -- see handleChatStream's doc
-// comment for the full event contract. Split out from handleChatStream
-// the same way handle is split from handleChat, for the same reason:
-// testable without parsing SSE wire output.
+// handleStream is handle's streaming counterpart: identical pipeline
+// (including the same idempotency guard, see handle), but text deltas are
+// pushed to send("delta", ...) as they arrive instead of being buffered
+// into one final response. send is also used for the "meta" event (once
+// routing picks a model, before generation starts) and the terminal
+// "done"/"blocked" event -- see handleChatStream's doc comment for the
+// full event contract. A cached idempotent replay skips straight to
+// "done"/"blocked" -- no "meta"/"delta" events, since no generation
+// actually happens on a replay. Split out from handleChatStream the same
+// way handle is split from handleChat, for the same reason: testable
+// without parsing SSE wire output.
 func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.PlanLimits, send func(event string, payload any)) error {
+	if cached, found, err := s.reserveIdempotent(ctx, req); err != nil {
+		return err
+	} else if found {
+		if cached.Blocked {
+			send("blocked", cached)
+		} else {
+			send("done", cached)
+		}
+		return nil
+	}
+
+	resp, err := s.handleStreamOnce(ctx, req, plan, send)
+	s.finishIdempotent(ctx, req, resp, err)
+	return err
+}
+
+// handleStreamOnce is handleStream's actual work, run at most once per
+// idempotency key -- see handleStream's wrapping via
+// reserveIdempotent/finishIdempotent.
+func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan limits.PlanLimits, send func(event string, payload any)) (chatResponse, error) {
 	prepared, blocked, err := s.prepare(ctx, req, plan)
 	if err != nil {
-		return err
+		return chatResponse{}, err
 	}
 	if blocked != nil {
 		send("blocked", *blocked)
-		return nil
+		return *blocked, nil
 	}
 
 	call := streamingGenerate(func(delta string) {
@@ -535,13 +656,13 @@ func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.
 
 	result, model, genResult, err := s.routeAndCall(ctx, req, prepared, onRoute, call)
 	if err != nil {
-		return err
+		return chatResponse{}, err
 	}
 
 	resp, err := s.finalize(ctx, req, prepared, result, model, genResult)
 	if err != nil {
-		return err
+		return chatResponse{}, err
 	}
 	send("done", resp)
-	return nil
+	return resp, nil
 }

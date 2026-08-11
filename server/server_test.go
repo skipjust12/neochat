@@ -13,6 +13,7 @@ import (
 
 	"neochat/classifier"
 	"neochat/conversation"
+	"neochat/idempotency"
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
@@ -70,6 +71,7 @@ func newTestServer(t *testing.T, genResponses []provider.GenerateResult) (*Serve
 		ModerationLog: moderation.NewInMemoryBlockLog(),
 		Conversations: conversation.NewInMemoryStore(),
 		Store:         limits.NewInMemorySpendStore(),
+		Idempotency:   idempotency.NewInMemoryStore(),
 		Plans: map[string]limits.PlanLimits{
 			"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10.0, InstantExtraCapUSD: 3.0},
 		},
@@ -760,5 +762,190 @@ func TestServeHTTP_ChatStream(t *testing.T) {
 	}
 	if !strings.Contains(out, `"response_text":"hi back"`) {
 		t.Errorf("expected the done event to carry the generated text, got:\n%s", out)
+	}
+}
+
+// TestHandle_IdempotencyKeyReplaysWithoutRegenerating checks the core
+// duplicate-billing guard: retrying the exact same (user_id,
+// idempotency_key) must not call the generation model a second time or
+// record spend twice -- it should just replay the first attempt's response.
+// Only one GenerateResult is scripted, so a second real generate call
+// would panic FakeClient (see provider.FakeClient.Generate) -- the test
+// passing at all is itself proof the second attempt never re-generated.
+func TestHandle_IdempotencyKeyReplaysWithoutRegenerating(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
+	})
+
+	req := chatRequest{
+		UserID: "u1", PlanID: "pro", Message: "explain recursion",
+		RequestedMode: "thinking", EstimatedContextTokens: 2000,
+		IdempotencyKey: "retry-key-1",
+	}
+
+	first, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("first attempt: unexpected error: %v", err)
+	}
+
+	second, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("retried attempt: unexpected error: %v", err)
+	}
+
+	if second != first {
+		t.Errorf("retried response = %+v, want identical to first attempt %+v", second, first)
+	}
+	if len(genClient.Requests) != 1 {
+		t.Errorf("expected exactly 1 generate call across both attempts, got %d", len(genClient.Requests))
+	}
+
+	spent, err := s.Store.Sum(context.Background(), "u1", limits.PoolThinkingMax, 30*24*time.Hour)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantCost := router.ComputeCostUSD(router.Model{CostInputPerMTok: 3, CostOutputPerMTok: 10}, 1000, 500)
+	if spent != wantCost {
+		t.Errorf("recorded thinking_max spend = %.6f, want %.6f (should be billed once, not twice)", spent, wantCost)
+	}
+}
+
+// TestHandle_IdempotencyKeyScopedPerUser checks that the same idempotency
+// key from two different users is not treated as a collision -- each user
+// gets their own generate call and their own billing, only a retry from the
+// *same* user should be deduped.
+func TestHandle_IdempotencyKeyScopedPerUser(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "answer for u1", InputTokens: 100, OutputTokens: 50},
+		{Text: "answer for u2", InputTokens: 100, OutputTokens: 50},
+	})
+	// Two handle() calls means the classifier/moderator fakes need two
+	// scripted replies each, not newTestServer's default one.
+	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
+
+	base := chatRequest{PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500, IdempotencyKey: "same-key"}
+	req1 := base
+	req1.UserID = "u1"
+	req2 := base
+	req2.UserID = "u2"
+
+	if _, err := s.handle(context.Background(), req1, s.Plans["pro"]); err != nil {
+		t.Fatalf("u1: unexpected error: %v", err)
+	}
+	if _, err := s.handle(context.Background(), req2, s.Plans["pro"]); err != nil {
+		t.Fatalf("u2: unexpected error: %v", err)
+	}
+
+	if len(genClient.Requests) != 2 {
+		t.Errorf("expected 2 generate calls (one per user), got %d", len(genClient.Requests))
+	}
+}
+
+// TestHandle_IdempotencyKeyReleasedAfterFailure checks that a failed
+// attempt does not permanently poison its idempotency key: a legitimate
+// retry after a real failure (as opposed to a retry after a dropped
+// connection following success) must still be allowed to actually run.
+func TestHandle_IdempotencyKeyReleasedAfterFailure(t *testing.T) {
+	s, genClient := newTestServer(t, nil)
+	genClient.Err = errors.New("upstream boom")
+	// Two handle() calls means the classifier/moderator fakes need two
+	// scripted replies each, not newTestServer's default one.
+	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
+
+	req := chatRequest{
+		UserID: "u1", PlanID: "pro", Message: "hi",
+		RequestedMode: "instant", EstimatedContextTokens: 500,
+		IdempotencyKey: "retry-key-2",
+	}
+
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err == nil {
+		t.Fatal("expected the first attempt to fail")
+	}
+
+	genClient.Err = nil
+	genClient.Responses = []provider.GenerateResult{{Text: "recovered", InputTokens: 10, OutputTokens: 5}}
+
+	resp, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("expected the retry to succeed once the upstream recovered, got: %v", err)
+	}
+	if resp.ResponseText != "recovered" {
+		t.Errorf("ResponseText = %q, want %q", resp.ResponseText, "recovered")
+	}
+}
+
+// TestHandle_NoIdempotencyKeyAlwaysRegenerates checks the guard is opt-in:
+// a request that never sets IdempotencyKey gets no dedup at all, matching
+// behavior from before this field existed.
+func TestHandle_NoIdempotencyKeyAlwaysRegenerates(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "first", InputTokens: 10, OutputTokens: 5},
+		{Text: "second", InputTokens: 10, OutputTokens: 5},
+	})
+	// Two handle() calls means the classifier/moderator fakes need two
+	// scripted replies each, not newTestServer's default one.
+	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
+
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("first call: unexpected error: %v", err)
+	}
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("second call: unexpected error: %v", err)
+	}
+
+	if len(genClient.Requests) != 2 {
+		t.Errorf("expected 2 generate calls (no idempotency key means no dedup), got %d", len(genClient.Requests))
+	}
+}
+
+// TestHandleStream_IdempotencyKeyReplaysWithoutRegenerating is
+// TestHandle_IdempotencyKeyReplaysWithoutRegenerating's streaming
+// counterpart: a retried request with the same idempotency key must replay
+// the cached "done" event directly, with no "meta"/"delta" events (nothing
+// is actually generated on a replay) and no second generate call.
+func TestHandleStream_IdempotencyKeyReplaysWithoutRegenerating(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "hello there", InputTokens: 100, OutputTokens: 50},
+	})
+
+	req := chatRequest{
+		UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500,
+		IdempotencyKey: "stream-retry-key",
+	}
+
+	collect := func() []streamEvent {
+		var events []streamEvent
+		err := s.handleStream(context.Background(), req, s.Plans["pro"], func(event string, payload any) {
+			events = append(events, streamEvent{event, payload})
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		return events
+	}
+
+	first := collect()
+	second := collect()
+
+	if len(genClient.Requests) != 1 {
+		t.Errorf("expected exactly 1 generate call across both attempts, got %d", len(genClient.Requests))
+	}
+	if len(second) != 1 || second[0].event != "done" {
+		t.Errorf("replayed events = %+v, want exactly one done event", second)
+	}
+
+	var firstDone chatResponse
+	for _, ev := range first {
+		if ev.event == "done" {
+			firstDone = ev.payload.(chatResponse)
+		}
+	}
+	if second[0].payload.(chatResponse) != firstDone {
+		t.Errorf("replayed done payload = %+v, want identical to first attempt's %+v", second[0].payload, firstDone)
 	}
 }
