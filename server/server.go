@@ -21,6 +21,7 @@ import (
 	"neochat/moderation"
 	"neochat/provider"
 	"neochat/router"
+	"neochat/tokenizer"
 )
 
 // maxCircuitFailoverAttempts bounds how many times handle will re-route
@@ -81,11 +82,21 @@ type chatRequest struct {
 	// stored history (see conversation/). Empty starts a new one --
 	// handle generates an ID and returns it in chatResponse so the client
 	// can pass it back on the next turn.
-	ConversationID         string `json:"conversation_id,omitempty"`
-	Message                string `json:"message"`
-	RequestedMode          string `json:"requested_mode"` // "auto" | "instant" | "thinking" | "max" | "manual"
-	ManualModelID          string `json:"manual_model_id,omitempty"`
-	EstimatedContextTokens int    `json:"estimated_context_tokens"`
+	ConversationID string `json:"conversation_id,omitempty"`
+	Message        string `json:"message"`
+	RequestedMode  string `json:"requested_mode"` // "auto" | "instant" | "thinking" | "max" | "manual"
+	ManualModelID  string `json:"manual_model_id,omitempty"`
+
+	// EstimatedContextTokens is accepted for wire-format backward
+	// compatibility but no longer used: server.prepare now computes the
+	// real figure server-side via tokenizer.EstimateMessages, from the
+	// actual system prompt + stored history + new message about to be
+	// sent, instead of trusting whatever number the client supplies here.
+	// A client-supplied estimate would either go stale as a conversation
+	// grows (README "Context window mismatch") or could be understated on
+	// purpose to slip a request under a spend cap (README "Cost-based
+	// abuse") -- deriving it from the real request body closes both.
+	EstimatedContextTokens int `json:"estimated_context_tokens,omitempty"`
 
 	// IdempotencyKey, if set, makes retrying this exact request safe: a
 	// second call with the same (user_id, idempotency_key) replays the
@@ -253,6 +264,12 @@ type preparedRequest struct {
 	classified     router.ClassifierOutput
 	locked         bool
 	messages       []provider.Message
+
+	// estimatedContextTokens is tokenizer.EstimateMessages(messages) --
+	// computed server-side from what's actually about to be sent, not
+	// taken from chatRequest.EstimatedContextTokens (see that field's doc
+	// comment for why the client-supplied number is no longer trusted).
+	estimatedContextTokens int
 }
 
 // prepare runs classify + moderate (concurrently) -> check spend lock ->
@@ -338,12 +355,7 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 
 	// Send the model everything stored for this conversation so far, plus
 	// the new message -- without this, /chat could never hold more than a
-	// single-turn exchange. estimated_context_tokens is still whatever
-	// the client supplied, though: this repo has no tokenizer to
-	// recompute it from real history length, so the router's context-
-	// window hard filter and cost estimate can undercount once a
-	// conversation has grown a real history (README "Context window
-	// mismatch" risk) -- unchanged by this, just now actually exercised.
+	// single-turn exchange.
 	history, err := s.Conversations.History(ctx, req.UserID, conversationID)
 	if err != nil {
 		return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
@@ -363,11 +375,19 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	}
 	messages = append(messages, provider.Message{Role: "user", Content: req.Message})
 
+	// tokenizer.EstimateMessages replaces chatRequest.EstimatedContextTokens
+	// as the number Route actually filters/prices against -- computed from
+	// the real message list (system prompt + full stored history + the new
+	// message), so it grows with the conversation instead of staying
+	// whatever the client declared on turn 1 (README "Context window
+	// mismatch"), and can't be understated by a client trying to slip a
+	// request under a spend cap (README "Cost-based abuse").
 	return preparedRequest{
-		conversationID: conversationID,
-		classified:     classified,
-		locked:         locked,
-		messages:       messages,
+		conversationID:         conversationID,
+		classified:             classified,
+		locked:                 locked,
+		messages:               messages,
+		estimatedContextTokens: tokenizer.EstimateMessages(messages),
 	}, nil, nil
 }
 
@@ -431,7 +451,7 @@ func streamingGenerate(onDelta func(delta string)) generateCaller {
 func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared preparedRequest, onRoute func(router.RouteResult), call generateCaller) (router.RouteResult, router.Model, provider.GenerateResult, error) {
 	excludedModelIDs := map[string]bool{}
 	for attempt := 0; ; attempt++ {
-		result, err := s.Router.Route(prepared.classified, req.RequestedMode, req.ManualModelID, req.EstimatedContextTokens, prepared.locked, excludedModelIDs)
+		result, err := s.Router.Route(prepared.classified, req.RequestedMode, req.ManualModelID, prepared.estimatedContextTokens, prepared.locked, excludedModelIDs)
 		if err != nil {
 			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("route: %w", err)
 		}

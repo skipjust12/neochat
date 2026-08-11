@@ -18,6 +18,7 @@ import (
 	"neochat/moderation"
 	"neochat/provider"
 	"neochat/router"
+	"neochat/tokenizer"
 )
 
 func testCatalog() router.Catalog {
@@ -947,5 +948,80 @@ func TestHandleStream_IdempotencyKeyReplaysWithoutRegenerating(t *testing.T) {
 	}
 	if second[0].payload.(chatResponse) != firstDone {
 		t.Errorf("replayed done payload = %+v, want identical to first attempt's %+v", second[0].payload, firstDone)
+	}
+}
+
+// TestPrepare_EstimatedContextTokensComputedFromRealMessages checks the
+// actual fix: prepare no longer trusts chatRequest.EstimatedContextTokens
+// -- it recomputes the real figure via tokenizer.EstimateMessages against
+// the system prompt + stored history + new message that's actually about
+// to be sent, so it grows as a conversation grows instead of staying
+// pinned to whatever number (if any) the client declared.
+func TestPrepare_EstimatedContextTokensComputedFromRealMessages(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	ctx := context.Background()
+
+	if err := s.Conversations.Append(ctx, "u1", "conv1", conversation.Message{Role: conversation.RoleUser, Content: strings.Repeat("hello world ", 50), CreatedAt: time.Now()}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := s.Conversations.Append(ctx, "u1", "conv1", conversation.Message{Role: conversation.RoleAssistant, Content: strings.Repeat("sure thing ", 50), CreatedAt: time.Now()}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: "conv1", Message: "ok", RequestedMode: "instant", EstimatedContextTokens: 1}
+	prepared, blocked, err := s.prepare(ctx, req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if blocked != nil {
+		t.Fatalf("unexpected block: %+v", blocked)
+	}
+
+	if prepared.estimatedContextTokens <= req.EstimatedContextTokens {
+		t.Errorf("estimatedContextTokens = %d, want it computed from real history/message content, not stuck at the client-declared %d", prepared.estimatedContextTokens, req.EstimatedContextTokens)
+	}
+	if want := tokenizer.EstimateMessages(prepared.messages); prepared.estimatedContextTokens != want {
+		t.Errorf("estimatedContextTokens = %d, want tokenizer.EstimateMessages(messages) = %d", prepared.estimatedContextTokens, want)
+	}
+}
+
+// TestHandle_ContextWindowFilterUsesRealMessageSizeNotClientValue checks
+// that a client can't dodge the router's context-window hard filter (or
+// understate cost for abuse purposes) by simply declaring a small
+// EstimatedContextTokens -- routing must fail here because the real
+// message content exceeds the only candidate model's context window,
+// regardless of what the client claimed.
+func TestHandle_ContextWindowFilterUsesRealMessageSizeNotClientValue(t *testing.T) {
+	catalog := router.Catalog{Models: []router.Model{
+		{
+			ID: "tiny-context", Provider: "openai", Modes: []string{"instant"},
+			CostInputPerMTok: 1, CostOutputPerMTok: 2, ContextWindow: 100,
+			SupportsModality: []string{"text", "code"},
+			MaxOutputTokens:  4096, SupportsOutputFormats: []string{"text", "markdown"},
+		},
+	}}
+
+	s := &Server{
+		Router:        router.NewRouter(catalog, testWeights()),
+		Classifier:    classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}}}, "fake-classifier-model", "system prompt"),
+		Moderator:     moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt"),
+		ModerationLog: moderation.NewInMemoryBlockLog(),
+		Conversations: conversation.NewInMemoryStore(),
+		Store:         limits.NewInMemorySpendStore(),
+		Idempotency:   idempotency.NewInMemoryStore(),
+		Plans: map[string]limits.PlanLimits{
+			"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10.0, InstantExtraCapUSD: 3.0},
+		},
+		Generators: map[string]provider.Client{"openai": &provider.FakeClient{}},
+	}
+
+	req := chatRequest{
+		UserID: "u1", PlanID: "pro", RequestedMode: "instant",
+		Message:                strings.Repeat("word ", 1000), // real content far exceeds ContextWindow: 100
+		EstimatedContextTokens: 1,                             // client lies small -- must not save it from the filter
+	}
+
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err == nil {
+		t.Fatal("expected routing to fail: real message content exceeds the only model's context window, regardless of the client-declared EstimatedContextTokens")
 	}
 }
