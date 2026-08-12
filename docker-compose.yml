@@ -37,6 +37,27 @@ services:
       timeout: 3s
       retries: 10
 
+  server:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: neochat-server
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      # Override the .env host defaults (127.0.0.1) -- inside the compose
+      # network the databases are reachable by service name, not localhost.
+      POSTGRES_HOST: postgres
+      REDIS_HOST: redis
+    ports:
+      - "127.0.0.1:8080:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
 volumes:
   neochat_pg_data:
   neochat_redis_data:

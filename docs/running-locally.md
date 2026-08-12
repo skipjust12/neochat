@@ -6,9 +6,9 @@
 
 The server calls vendors through **OpenRouter** (`provider.OpenRouterClient`, `https://openrouter.ai/api/v1`), matching the product's original "Model access: OpenRouter at launch" decision (see README). OpenRouter model IDs are `vendor/model-name` (e.g. `google/gemini-3.5-flash-lite`), not a vendor's own bare model name — get this string wrong and every call 404s.
 
-## 1. Start Postgres and Redis
+## 1. Start everything
 
-`cmd/server` now requires a real Postgres and Redis (see README's "Current task: local dev infrastructure") — the `InMemory*` stand-ins are gone. Both run in Docker via `docker-compose.yml` at the repo root; the Go server itself still runs directly on the host (`go run`), not in a container.
+`cmd/server` requires a real Postgres and Redis (see README's "Current task: local dev infrastructure") — the `InMemory*` stand-ins are gone. All three — Postgres, Redis, and the server itself — run in Docker via `docker-compose.yml` at the repo root; there's no separate `go run` step for normal use.
 
 Prereqs, once per machine:
 - A swap file if the host is memory-constrained (this repo's dev host is 2 GB RAM — see README point 1 under "Current task").
@@ -16,9 +16,11 @@ Prereqs, once per machine:
 
 ```bash
 cp .env.example .env    # fill in real POSTGRES_*/REDIS_* values (anything works locally) and OPENROUTER_API_KEY
-docker compose up -d
-docker compose ps        # wait until both services show "healthy"
+docker compose up -d --build
+docker compose ps        # wait until all three services show "healthy"
 ```
+
+`server`'s `Dockerfile` builds `cmd/server` (not the root `main.go` demo) and bakes in `configs/` and `prompts/`. `docker-compose.yml` overrides `POSTGRES_HOST`/`REDIS_HOST` to the in-network service names (`postgres`/`redis`) regardless of what `.env` has — `.env`'s `127.0.0.1` defaults are for running `cmd/server` on the host instead (see "Running without Docker" below), not for the containerized `server` service.
 
 `cmd/server` applies every pending migration under `db/migrations/` automatically on startup (see `db.Migrate`) — there is no separate manual migration step in the normal case. To inspect the database by hand anyway:
 
@@ -47,13 +49,31 @@ All of these go in `.env` (gitignored) — `cmd/server` loads it automatically o
 
 **Never commit a real key.** `.env` is gitignored specifically so `OPENROUTER_API_KEY` and the Postgres/Redis credentials never end up in git — don't paste real values into `.env.example` or any other tracked file.
 
-## 3. Run it
+## 3. It's already running
+
+Step 1's `docker compose up -d --build` already started `cmd/server` — there's nothing further to run. Check the logs:
+
+```bash
+docker compose logs -f server
+```
+
+On success you'll see one `db: applied migration ...` log line per migration file the first time (already-applied migrations are silently skipped on later restarts), then `listening on :8080`. The container's `HEALTHCHECK` hits `GET /health`; `docker compose ps` shows `healthy` once that starts succeeding.
+
+Changed a `.go` file, `configs/*.json`, or `prompts/*.md`? Rebuild and recreate just that service:
+
+```bash
+docker compose up -d --build server
+```
+
+### Running without Docker
+
+For a tight edit/run loop without a rebuild each time, run `cmd/server` directly on the host against the same containerized Postgres/Redis (`docker compose up -d postgres redis` on their own, skip `server`):
 
 ```bash
 go run ./cmd/server
 ```
 
-On success, you'll see one `db: applied migration ...` log line per migration file the first time (already-applied migrations are silently skipped on later restarts), then `listening on :8080`.
+This picks up `.env`'s `127.0.0.1` host defaults, which is exactly right here since the host process reaches the containers through their published ports, not the compose-internal network.
 
 ## 4. Send a test request
 
