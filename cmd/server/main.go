@@ -6,6 +6,7 @@
 package main
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"os"
@@ -15,7 +16,9 @@ import (
 	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
+	"neochat/db"
 	"neochat/idempotency"
+	"neochat/internal/envfile"
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
@@ -25,6 +28,23 @@ import (
 )
 
 func main() {
+	// .env is optional (real deployments set env vars directly) and never
+	// overrides a variable already set in the real environment -- see
+	// internal/envfile's doc comment.
+	if err := envfile.Load(".env"); err != nil {
+		log.Fatal(err)
+	}
+
+	ctx := context.Background()
+	pgDB, err := db.Connect(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+	redisClient, err := db.ConnectRedis(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
+
 	catalog, err := router.LoadCatalog("configs/models.json")
 	if err != nil {
 		log.Fatal(err)
@@ -124,27 +144,39 @@ func main() {
 		summaryTriggerTokens = n
 	}
 
+	// How long a completed idempotency response stays replayable in Redis
+	// -- see idempotency.Store's doc comment on why a real deployment
+	// needs a TTL here (InMemoryStore kept entries forever).
+	idempotencyTTL := 24 * time.Hour
+	if v := os.Getenv("IDEMPOTENCY_TTL"); v != "" {
+		d, err := time.ParseDuration(v)
+		if err != nil {
+			log.Fatalf("IDEMPOTENCY_TTL: %v", err)
+		}
+		idempotencyTTL = d
+	}
+
 	srv := &server.Server{
 		Router:     router.NewRouter(catalog, weights),
 		Classifier: classifier.New(openRouterClient, classifierModelID, systemPrompt),
 		Moderator:  moderation.New(openRouterClient, moderationModelID, moderationSystemPrompt),
-		// InMemoryBlockLog is a throwaway stand-in, same as
-		// limits.InMemorySpendStore below -- see moderation.BlockLog's doc
-		// comment for the swap-in procedure once a real database exists.
-		ModerationLog: moderation.NewInMemoryBlockLog(),
-		// Same throwaway-stand-in story as ModerationLog/Store -- see
-		// conversation.Store's doc comment for the Postgres swap-in
-		// procedure once there's a real database to justify it.
-		Conversations: conversation.NewInMemoryStore(),
-		Store:         limits.NewInMemorySpendStore(),
-		// Same throwaway-stand-in story as Conversations/Store above -- see
-		// idempotency.Store's doc comment for the Redis swap-in procedure
-		// once there's a real database to justify it.
-		Idempotency: idempotency.NewInMemoryStore(),
-		// Same throwaway-stand-in story again -- see costlog.Store's doc
-		// comment for the Postgres/Redis swap-in procedure once there's a
-		// real database to justify it.
-		CostLog:              costlog.NewInMemoryStore(),
+		// Postgres-backed, replacing InMemoryBlockLog -- see
+		// moderation.BlockLog's doc comment for the swap-in procedure this
+		// follows and README's "Current task" section.
+		ModerationLog: moderation.NewPostgresBlockLog(pgDB),
+		// Postgres-backed, replacing InMemoryStore -- see
+		// conversation.Store's doc comment.
+		Conversations: conversation.NewPostgresStore(pgDB),
+		// Redis-backed, replacing InMemorySpendStore -- see
+		// limits.SpendStore's doc comment.
+		Store: limits.NewRedisSpendStore(redisClient),
+		// Redis-backed, replacing InMemoryStore -- see idempotency.Store's
+		// doc comment. IDEMPOTENCY_TTL overrides how long a completed
+		// response stays replayable.
+		Idempotency: idempotency.NewRedisStore(redisClient, idempotencyTTL),
+		// Postgres-backed, replacing InMemoryStore -- see costlog.Store's
+		// doc comment.
+		CostLog:              costlog.NewPostgresStore(pgDB),
 		Plans:                plans,
 		SystemPrompts:        chatSystemPrompts,
 		Summarizer:           summarizer.New(openRouterClient, summarizerModelID, summarizerSystemPrompt),

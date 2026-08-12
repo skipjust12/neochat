@@ -78,14 +78,12 @@ func TestLoadSystemPrompt_MissingFile(t *testing.T) {
 	}
 }
 
-// TestLoadSystemPrompt_PlaceholderFileIsEmptyForNow documents the current
-// state of prompts/summarizer_system_prompt.md: it's an intentional empty
-// placeholder (real prompt text to be written later), which LoadSystemPrompt
-// correctly rejects the same way it would reject any other empty prompt
-// file -- cmd/server/main.go will fail to start until that file has real
-// content, same as it already does for classifier/moderation prompts.
-func TestLoadSystemPrompt_PlaceholderFileIsEmptyForNow(t *testing.T) {
-	if _, err := LoadSystemPrompt("../prompts/summarizer_system_prompt.md"); err == nil {
-		t.Fatal("expected an error for the still-empty placeholder prompt file -- update this test once it has real content")
+func TestLoadSystemPrompt(t *testing.T) {
+	prompt, err := LoadSystemPrompt("../prompts/summarizer_system_prompt.md")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if prompt == "" {
+		t.Error("expected a non-empty prompt")
 	}
 }
