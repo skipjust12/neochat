@@ -121,10 +121,13 @@ func TestHandle_HappyPath(t *testing.T) {
 }
 
 // TestHandle_RecordsCostLogEntry checks that a successful generation logs
-// exactly one costlog.Store record with the real token usage/cost --
-// distinct from Store's rolling-window spend accounting (checked above),
-// this is the per-request record for billing reconciliation and
-// unit-economics tracking (README pre-launch checklist item 7).
+// a costlog.Store record with the real token usage/cost -- distinct from
+// Store's rolling-window spend accounting (checked above), this is the
+// per-request record for billing reconciliation and unit-economics
+// tracking (README pre-launch checklist item 7). newTestServer's
+// classifier/moderator also log their own entries (see
+// TestHandle_LogsClassifyAndModerateCostEntries) -- this test picks out
+// the generation one specifically by Mode.
 func TestHandle_RecordsCostLogEntry(t *testing.T) {
 	s, _ := newTestServer(t, []provider.GenerateResult{
 		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
@@ -137,18 +140,15 @@ func TestHandle_RecordsCostLogEntry(t *testing.T) {
 	}
 
 	entries := s.CostLog.(*costlog.InMemoryStore).Entries()
-	if len(entries) != 1 {
-		t.Fatalf("len(CostLog.Entries()) = %d, want 1", len(entries))
+	got, ok := findCostLogEntry(entries, "thinking")
+	if !ok {
+		t.Fatalf("no cost_log entry with Mode=thinking among %+v", entries)
 	}
-	got := entries[0]
 	if got.UserID != "u1" {
 		t.Errorf("UserID = %q, want u1", got.UserID)
 	}
 	if got.ModelID != "test-thinking" {
 		t.Errorf("ModelID = %q, want test-thinking", got.ModelID)
-	}
-	if got.Mode != "thinking" {
-		t.Errorf("Mode = %q, want thinking", got.Mode)
 	}
 	if got.InputTokens != 1000 || got.OutputTokens != 500 {
 		t.Errorf("tokens = %d/%d, want 1000/500", got.InputTokens, got.OutputTokens)
@@ -161,23 +161,112 @@ func TestHandle_RecordsCostLogEntry(t *testing.T) {
 	}
 }
 
-// TestHandle_NoCostLogEntryWhenModerationBlocks checks that a
-// moderation-flagged request -- which never reaches generation -- doesn't
-// log a cost entry either. Mirrors TestHandle_ModerationFlaggedBlocksBeforeGeneration's
-// "no generate calls" assertion, one layer further down the pipeline.
-func TestHandle_NoCostLogEntryWhenModerationBlocks(t *testing.T) {
+// findCostLogEntry returns the first entry with the given Mode, and
+// whether one was found -- helper for tests that need to pick one
+// specific call's record out of a /chat request's several (classify,
+// moderate, generate).
+func findCostLogEntry(entries []router.CostLogEntry, mode string) (router.CostLogEntry, bool) {
+	for _, e := range entries {
+		if e.Mode == mode {
+			return e, true
+		}
+	}
+	return router.CostLogEntry{}, false
+}
+
+// TestHandle_LogsClassifyAndModerateCostEntries checks that both the
+// classifier and moderation calls log their own cost_log entry -- README
+// pre-launch checklist item 7's previously-open "classifier and
+// moderation calls" gap -- sharing the same RequestID as the eventual
+// generation entry so all three of one /chat call's billed model calls
+// tie together.
+func TestHandle_LogsClassifyAndModerateCostEntries(t *testing.T) {
+	s, _ := newTestServer(t, []provider.GenerateResult{
+		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
+	})
+	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{
+		{Text: classifierReply, InputTokens: 1570, OutputTokens: 150},
+	}}, "fake-classifier-model", "system prompt")
+	s.Classifier.CostInputPerMTok, s.Classifier.CostOutputPerMTok = 0.3, 2.5
+	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
+		{Text: notFlaggedReply, InputTokens: 170, OutputTokens: 20},
+	}}, "fake-moderation-model", "system prompt")
+	s.Moderator.CostInputPerMTok, s.Moderator.CostOutputPerMTok = 0.03, 0.17
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
+	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	entries := s.CostLog.(*costlog.InMemoryStore).Entries()
+	if len(entries) != 3 {
+		t.Fatalf("len(CostLog.Entries()) = %d, want 3 (classify, moderate, generate)", len(entries))
+	}
+
+	classifyEntry, ok := findCostLogEntry(entries, "classify")
+	if !ok {
+		t.Fatalf("no cost_log entry with Mode=classify among %+v", entries)
+	}
+	if classifyEntry.ModelID != "fake-classifier-model" {
+		t.Errorf("classify ModelID = %q, want fake-classifier-model", classifyEntry.ModelID)
+	}
+	if classifyEntry.CostUSD <= 0 {
+		t.Errorf("classify CostUSD = %.6f, want > 0", classifyEntry.CostUSD)
+	}
+
+	moderateEntry, ok := findCostLogEntry(entries, "moderate")
+	if !ok {
+		t.Fatalf("no cost_log entry with Mode=moderate among %+v", entries)
+	}
+	if moderateEntry.ModelID != "fake-moderation-model" {
+		t.Errorf("moderate ModelID = %q, want fake-moderation-model", moderateEntry.ModelID)
+	}
+	if moderateEntry.CostUSD <= 0 {
+		t.Errorf("moderate CostUSD = %.6f, want > 0", moderateEntry.CostUSD)
+	}
+
+	generateEntry, ok := findCostLogEntry(entries, "thinking")
+	if !ok {
+		t.Fatalf("no cost_log entry with Mode=thinking among %+v", entries)
+	}
+	if classifyEntry.RequestID == "" || classifyEntry.RequestID != moderateEntry.RequestID || classifyEntry.RequestID != generateEntry.RequestID {
+		t.Errorf("expected all three entries to share one RequestID, got classify=%q moderate=%q generate=%q",
+			classifyEntry.RequestID, moderateEntry.RequestID, generateEntry.RequestID)
+	}
+}
+
+// TestHandle_LogsClassifyAndModerateCostEntriesWhenModerationBlocks checks
+// that a moderation-flagged request -- which never reaches generation --
+// still logs the classify/moderate entries, since both calls happened
+// (and were billed) regardless of the verdict. Mirrors
+// TestHandle_ModerationFlaggedBlocksBeforeGeneration's "no generate calls"
+// assertion, one layer further down the pipeline: no generation entry,
+// but the two upstream ones are still expected.
+func TestHandle_LogsClassifyAndModerateCostEntriesWhenModerationBlocks(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
-		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
+		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`, InputTokens: 170, OutputTokens: 20},
 	}}, "fake-moderation-model", "system prompt")
+	s.Moderator.CostInputPerMTok, s.Moderator.CostOutputPerMTok = 0.03, 0.17
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "bad request", RequestedMode: "instant", EstimatedContextTokens: 100}
 	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if entries := s.CostLog.(*costlog.InMemoryStore).Entries(); len(entries) != 0 {
-		t.Errorf("len(CostLog.Entries()) = %d, want 0 (no generation happened)", len(entries))
+	entries := s.CostLog.(*costlog.InMemoryStore).Entries()
+	if len(entries) != 2 {
+		t.Fatalf("len(CostLog.Entries()) = %d, want 2 (classify + moderate, no generation)", len(entries))
+	}
+	if _, ok := findCostLogEntry(entries, "classify"); !ok {
+		t.Errorf("no cost_log entry with Mode=classify among %+v", entries)
+	}
+	moderateEntry, ok := findCostLogEntry(entries, "moderate")
+	if !ok {
+		t.Fatalf("no cost_log entry with Mode=moderate among %+v", entries)
+	}
+	if moderateEntry.InputTokens != 170 || moderateEntry.OutputTokens != 20 {
+		t.Errorf("moderate tokens = %d/%d, want 170/20", moderateEntry.InputTokens, moderateEntry.OutputTokens)
 	}
 }
 

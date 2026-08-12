@@ -310,9 +310,12 @@ type preparedRequest struct {
 	// comment for why the client-supplied number is no longer trusted).
 	estimatedContextTokens int
 
-	// requestID identifies this one generation attempt for
-	// costlog.Store.Record (see finalize) -- distinct from conversationID
-	// (spans every turn of a thread) and chatRequest.IdempotencyKey
+	// requestID identifies this one /chat call's costlog.Store.Record
+	// entries -- shared by the classify/moderate entries recordAuxCostLog
+	// logs partway through prepare and the generation entry finalize logs
+	// afterward, so all three of one call's billed model calls tie
+	// together for reconciliation. Distinct from conversationID (spans
+	// every turn of a thread) and chatRequest.IdempotencyKey
 	// (client-supplied, optional, for retry dedup). Generated fresh per
 	// prepare call the same way conversation.NewID mints one: 16 random
 	// bytes, hex-encoded.
@@ -329,6 +332,13 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	if conversationID == "" {
 		conversationID = conversation.NewID()
 	}
+
+	// Minted here rather than at the bottom of prepare (where it used to
+	// live) so the classify/moderate cost_log entries below and the
+	// eventual generation's entry (finalize) share one RequestID -- all
+	// three of a single /chat call's billed model calls tie together for
+	// reconciliation, not just the generation.
+	requestID := conversation.NewID()
 
 	// Layer 1 moderation (README "Moderation") runs concurrently with
 	// classification -- both are cheap-model calls on the same raw
@@ -355,22 +365,32 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	// not this one -- extending it here would make a softer fallback
 	// safe to add.
 	var (
-		classified  router.ClassifierOutput
-		classifyErr error
-		modResult   moderation.Result
-		modErr      error
+		classified    router.ClassifierOutput
+		classifyUsage *provider.GenerateResult
+		classifyErr   error
+		modResult     moderation.Result
+		modUsage      *provider.GenerateResult
+		modErr        error
 	)
 	var wg sync.WaitGroup
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
-		classified, classifyErr = s.Classifier.Classify(ctx, req.Message)
+		classified, classifyUsage, classifyErr = s.Classifier.Classify(ctx, req.Message)
 	}()
 	go func() {
 		defer wg.Done()
-		modResult, modErr = s.Moderator.Moderate(ctx, req.Message)
+		modResult, modUsage, modErr = s.Moderator.Moderate(ctx, req.Message)
 	}()
 	wg.Wait()
+
+	// Logged unconditionally here, before any of the branches below
+	// return early: both calls already happened (and were billed) by this
+	// point regardless of whether moderation flags/errors or classify
+	// errors afterward -- see README pre-launch checklist item 7
+	// ("classifier and moderation calls" were the still-open piece).
+	s.recordAuxCostLog(ctx, req.UserID, requestID, "classify", s.Classifier.APIModelID, s.Classifier.CostInputPerMTok, s.Classifier.CostOutputPerMTok, classifyUsage)
+	s.recordAuxCostLog(ctx, req.UserID, requestID, "moderate", s.Moderator.APIModelID, s.Moderator.CostInputPerMTok, s.Moderator.CostOutputPerMTok, modUsage)
 
 	if modErr != nil {
 		return preparedRequest{}, nil, fmt.Errorf("moderate: %w", modErr)
@@ -450,8 +470,36 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 		locked:                 locked,
 		messages:               messages,
 		estimatedContextTokens: tokenizer.EstimateMessages(messages),
-		requestID:              conversation.NewID(),
+		requestID:              requestID,
 	}, nil, nil
+}
+
+// recordAuxCostLog logs a cost_log entry for the classify/moderate call
+// identified by mode ("classify" or "moderate") -- the generation entry
+// itself is still logged separately by finalize, since it alone knows the
+// selected model/mode and needs RouteResult. usage nil means the
+// underlying Client.Generate call never completed (see
+// Classifier.Classify/Moderator.Moderate's doc comments), i.e. nothing
+// was billed, so there's nothing to log. Best-effort, matching
+// ModerationLog.Record just above: a logging failure costs one missing
+// analytics row, not the request itself.
+func (s *Server) recordAuxCostLog(ctx context.Context, userID, requestID, mode, apiModelID string, costInputPerMTok, costOutputPerMTok float64, usage *provider.GenerateResult) {
+	if usage == nil {
+		return
+	}
+	entry := router.CostLogEntry{
+		UserID:       userID,
+		RequestID:    requestID,
+		ModelID:      apiModelID,
+		Mode:         mode,
+		InputTokens:  usage.InputTokens,
+		OutputTokens: usage.OutputTokens,
+		CostUSD:      router.ComputeCostUSDRates(costInputPerMTok, costOutputPerMTok, usage.InputTokens, usage.OutputTokens),
+		Timestamp:    time.Now(),
+	}
+	if err := s.CostLog.Record(ctx, entry); err != nil {
+		log.Printf("server: failed to record %s cost log entry for user_id=%s: %v", mode, userID, err)
+	}
 }
 
 // maybeSummarize decides whether history is small enough to send as-is,

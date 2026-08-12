@@ -30,7 +30,7 @@ func TestClassify_ParsesReply(t *testing.T) {
 	fake := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: sampleReply}}}
 	c := New(fake, "gpt-5.6-luna", "system prompt text")
 
-	out, err := c.Classify(context.Background(), "write a function that sorts a list")
+	out, _, err := c.Classify(context.Background(), "write a function that sorts a list")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -54,7 +54,7 @@ func TestClassify_StripsCodeFence(t *testing.T) {
 	fake := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: "```json\n" + sampleReply + "\n```"}}}
 	c := New(fake, "gpt-5.6-luna", "system prompt text")
 
-	out, err := c.Classify(context.Background(), "hi")
+	out, _, err := c.Classify(context.Background(), "hi")
 	if err != nil {
 		t.Fatalf("unexpected error parsing a fenced reply: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestClassify_InvalidJSONReturnsError(t *testing.T) {
 	fake := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: "not json at all"}}}
 	c := New(fake, "gpt-5.6-luna", "system prompt text")
 
-	if _, err := c.Classify(context.Background(), "hi"); err == nil {
+	if _, _, err := c.Classify(context.Background(), "hi"); err == nil {
 		t.Fatal("expected an error for a non-JSON reply, got nil")
 	}
 }
