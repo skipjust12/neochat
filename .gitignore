@@ -1,0 +1,10 @@
+.env
+
+# Go build artifacts
+/bin/
+*.exe
+*.test
+*.out
+
+# Editor/OS cruft
+.DS_Store
