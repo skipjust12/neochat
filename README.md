@@ -342,6 +342,24 @@ Things to bake in now, because retrofitting them later on a live prod system is 
 - Idempotency: implemented (`idempotency/`, wired into `server.handle`/`handleStream`, see pre-launch checklist item 3 and "Next steps") — a client retry carrying the same `idempotency_key` replays the original response instead of triggering a second generate call and a second charge. `InMemoryStore` throwaway stand-in, same pattern as `limits.InMemorySpendStore`/`conversation.InMemoryStore`/`moderation.InMemoryBlockLog`.
 - Per-request cost logging: generation calls implemented (`costlog/`, wired into `server.finalize`, see pre-launch checklist item 7) — one `router.CostLogEntry` per completed generation, `InMemoryStore` throwaway stand-in, same pattern as the other stores above. Classifier/moderation calls still not logged per-request (their functions don't return token usage yet).
 
+## Current task: local dev infrastructure (Docker + Postgres + Redis)
+
+Top priority right now, ahead of the numbered list below. Goal: replace the throwaway `InMemory*` stores (`limits.InMemorySpendStore`, `conversation.InMemoryStore`, `moderation.InMemoryBlockLog`, `idempotency.InMemoryStore`, `costlog.InMemoryStore`) with real Postgres/Redis-backed implementations of the same interfaces — developed and run locally on a single low-resource host (dev SSH box, 2 GB RAM), not a production deploy.
+
+**Constraint driving every choice below:** the dev host has 2 GB RAM total, no GPU, no spare disk to burn on bloated images. Everything must fit alongside the OS with room to spare for `go build`.
+
+1. **Swap first, before anything else.** Add a 1–2 GB swap file on the host if one doesn't already exist. On 2 GB RAM, Postgres + Redis + Docker + a Go build without swap is a guaranteed OOM-killer hit sooner or later.
+2. **Docker + docker-compose**, containers for Postgres and Redis only — the Go server itself keeps running via `go run`/a locally built binary on the host, not in a container, to avoid paying image-build memory cost repeatedly. `docker-compose.yml` at repo root, two services:
+   - `postgres`: official `postgres:16-alpine` image (small footprint), with `mem_limit` set explicitly (don't trust defaults) and Postgres config tuned down for a small box — `shared_buffers=32MB`, `max_connections=20`, `effective_cache_size=128MB` — instead of the image's out-of-the-box autotuning, which assumes a real server.
+   - `redis`: official `redis:7-alpine`, `mem_limit` set explicitly, `maxmemory`/`maxmemory-policy` configured so Redis can't grow unbounded on a tiny box.
+   - Both `mem_limit`s sized so Postgres + Redis + Docker daemon overhead stays well under ~800 MB combined, leaving headroom for the OS and `go build`.
+3. **One store migration at a time**, same interface-swap pattern the README already documents per store (`SpendStore`, `ConversationStore`.Store, `BlockLog`, `idempotency.Store`, `costlog.Store` are each a 1–2 method interface) — implement a Postgres- or Redis-backed version, swap it in behind the existing interface, delete nothing else. Suggested order: `limits.SpendStore` and `moderation.BlockLog` first (both called out in "Next steps" items 3/9 as belonging to the same eventual migration), then `conversation.Store`, `idempotency.Store`, `costlog.Store`.
+4. **Migrations as plain SQL files**, applied by hand (`psql -f`) or a minimal migration tool — no need for anything heavyweight at this stage, this is a dev box, not a prod release pipeline.
+5. **`tmux`/`screen` on the host** for any long-running command (image pulls, builds) run over SSH from a phone — a dropped mobile SSH session shouldn't kill an in-progress `docker pull` or `go build`.
+6. **No secrets committed.** Local Postgres/Redis credentials go in a `.env` file (gitignored) or environment variables, read the same way `OPENROUTER_API_KEY` already is in `cmd/server/main.go` — this dev box is not where production secrets belong regardless.
+
+Explicitly out of scope for this task: exposing anything publicly, TLS, a real deploy target, CI. Those come later, once this local plumbing works.
+
 ## Next steps (execution)
 
 1. ~~Wire up real OpenRouter calls, or at minimum a first direct-vendor call~~ — done and confirmed live: `cmd/server` runs classify → check spend lock → route → generate → record spend end to end against OpenRouter (`provider.OpenRouterClient`).
