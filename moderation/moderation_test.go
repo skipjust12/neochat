@@ -14,7 +14,7 @@ func TestModerate_ParsesNotFlaggedReply(t *testing.T) {
 	fake := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}}}
 	m := New(fake, "gpt-oss-120b", "system prompt text")
 
-	out, err := m.Moderate(context.Background(), "how do I bake bread?")
+	out, _, err := m.Moderate(context.Background(), "how do I bake bread?")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -41,7 +41,7 @@ func TestModerate_ParsesFlaggedReply(t *testing.T) {
 	fake := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: flaggedReply}}}
 	m := New(fake, "gpt-oss-120b", "system prompt text")
 
-	out, err := m.Moderate(context.Background(), "bad request")
+	out, _, err := m.Moderate(context.Background(), "bad request")
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -57,7 +57,7 @@ func TestModerate_StripsCodeFence(t *testing.T) {
 	fake := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: "```json\n" + notFlaggedReply + "\n```"}}}
 	m := New(fake, "gpt-oss-120b", "system prompt text")
 
-	out, err := m.Moderate(context.Background(), "hi")
+	out, _, err := m.Moderate(context.Background(), "hi")
 	if err != nil {
 		t.Fatalf("unexpected error parsing a fenced reply: %v", err)
 	}
@@ -70,7 +70,7 @@ func TestModerate_InvalidJSONReturnsError(t *testing.T) {
 	fake := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: "not json at all"}}}
 	m := New(fake, "gpt-oss-120b", "system prompt text")
 
-	if _, err := m.Moderate(context.Background(), "hi"); err == nil {
+	if _, _, err := m.Moderate(context.Background(), "hi"); err == nil {
 		t.Fatal("expected an error for a non-JSON reply, got nil")
 	}
 }

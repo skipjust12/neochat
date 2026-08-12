@@ -40,6 +40,8 @@ All of these go in `.env` (gitignored) — `cmd/server` loads it automatically o
 | `OPENROUTER_API_KEY` | Required. No key, no real vendor calls — `cmd/server` refuses to start without it. |
 | `CLASSIFIER_API_MODEL_ID` | Optional, defaults to `google/gemini-3.5-flash-lite` (the model `prompts/classifier_system_prompt.md` was validated against). Override for a different OpenRouter slug. |
 | `MODERATION_API_MODEL_ID` | Optional, defaults to `openai/gpt-oss-120b` (the model `docs/unit-economics.md` assumed for moderation). Override for a different OpenRouter slug. |
+| `CLASSIFIER_COST_INPUT_PER_MTOK` / `CLASSIFIER_COST_OUTPUT_PER_MTOK` | Optional, default `0.3` / `2.5` (matches the `CLASSIFIER_API_MODEL_ID` default). Prices the classifier's `cost_log` entries -- override alongside `CLASSIFIER_API_MODEL_ID` if you change it, or logged cost keeps pricing the old model. |
+| `MODERATION_COST_INPUT_PER_MTOK` / `MODERATION_COST_OUTPUT_PER_MTOK` | Optional, default `0.03` / `0.17` (matches the `MODERATION_API_MODEL_ID` default). Same caveat as the classifier rates above. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Required. Must match what `docker-compose.yml` started Postgres with. |
 | `POSTGRES_HOST` / `POSTGRES_PORT` | Optional, default to `127.0.0.1` / `5432` (docker-compose's published address). |
 | `REDIS_PASSWORD` | Required. Must match what `docker-compose.yml` started Redis with. |

@@ -107,6 +107,22 @@ func main() {
 		moderationModelID = "openai/gpt-oss-120b"
 	}
 
+	// Per-Mtok rates for pricing classifier/moderation calls into cost_log
+	// (README pre-launch checklist item 7's "still not logged" gap,
+	// closed 2026-08-12) -- classifier.Classifier/moderation.Moderator
+	// have no catalog entry to price against the way a generation model
+	// does (moderation's default, gpt-oss-120b, was deliberately removed
+	// from configs/models.json entirely), so these are their own
+	// standalone rates. Defaults are docs/unit-economics.md's assumed
+	// figures for the *_API_MODEL_ID defaults just above
+	// (gemini-3.5-flash-lite $0.3/$2.5, gpt-oss-120b $0.03/$0.17); if you
+	// override either *_API_MODEL_ID, override its cost rates too, or
+	// logged cost will silently keep pricing the old model.
+	classifierCostInputPerMTok := getenvFloatDefault("CLASSIFIER_COST_INPUT_PER_MTOK", 0.3)
+	classifierCostOutputPerMTok := getenvFloatDefault("CLASSIFIER_COST_OUTPUT_PER_MTOK", 2.5)
+	moderationCostInputPerMTok := getenvFloatDefault("MODERATION_COST_INPUT_PER_MTOK", 0.03)
+	moderationCostOutputPerMTok := getenvFloatDefault("MODERATION_COST_OUTPUT_PER_MTOK", 0.17)
+
 	summarizerSystemPrompt, err := summarizer.LoadSystemPrompt("prompts/summarizer_system_prompt.md")
 	if err != nil {
 		log.Fatal(err)
@@ -156,10 +172,18 @@ func main() {
 		idempotencyTTL = d
 	}
 
+	classifierWithCost := classifier.New(openRouterClient, classifierModelID, systemPrompt)
+	classifierWithCost.CostInputPerMTok = classifierCostInputPerMTok
+	classifierWithCost.CostOutputPerMTok = classifierCostOutputPerMTok
+
+	moderatorWithCost := moderation.New(openRouterClient, moderationModelID, moderationSystemPrompt)
+	moderatorWithCost.CostInputPerMTok = moderationCostInputPerMTok
+	moderatorWithCost.CostOutputPerMTok = moderationCostOutputPerMTok
+
 	srv := &server.Server{
 		Router:     router.NewRouter(catalog, weights),
-		Classifier: classifier.New(openRouterClient, classifierModelID, systemPrompt),
-		Moderator:  moderation.New(openRouterClient, moderationModelID, moderationSystemPrompt),
+		Classifier: classifierWithCost,
+		Moderator:  moderatorWithCost,
 		// Postgres-backed, replacing InMemoryBlockLog -- see
 		// moderation.BlockLog's doc comment for the swap-in procedure this
 		// follows and README's "Current task" section.
@@ -221,4 +245,21 @@ func smallestContextWindow(catalog router.Catalog) int {
 		}
 	}
 	return min
+}
+
+// getenvFloatDefault returns the float64 value of the named env var, or
+// def if it's unset. A set-but-unparseable value fails startup loudly
+// (log.Fatal) rather than silently falling back to def, the same
+// treatment every other malformed override in this file gets (e.g.
+// SUMMARY_TAIL_MESSAGES above).
+func getenvFloatDefault(key string, def float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		log.Fatalf("%s: %v", key, err)
+	}
+	return f
 }

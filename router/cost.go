@@ -8,8 +8,19 @@ import "time"
 // NewCostLogEntry -- the two must agree on the formula, since abuse-defense
 // estimates and billed cost are compared against each other downstream.
 func ComputeCostUSD(model Model, inputTokens, outputTokens int) float64 {
-	return float64(inputTokens)/1_000_000*model.CostInputPerMTok +
-		float64(outputTokens)/1_000_000*model.CostOutputPerMTok
+	return ComputeCostUSDRates(model.CostInputPerMTok, model.CostOutputPerMTok, inputTokens, outputTokens)
+}
+
+// ComputeCostUSDRates is ComputeCostUSD's formula against raw per-Mtok
+// rates instead of a catalog Model -- for pricing a call that has no
+// catalog entry at all, e.g. classifier.Classifier/moderation.Moderator's
+// cost logging: their model is picked by CLASSIFIER_API_MODEL_ID/
+// MODERATION_API_MODEL_ID, an arbitrary OpenRouter slug that (see
+// moderation's default, gpt-oss-120b) may not be a chat-generation
+// catalog entry at all.
+func ComputeCostUSDRates(costInputPerMTok, costOutputPerMTok float64, inputTokens, outputTokens int) float64 {
+	return float64(inputTokens)/1_000_000*costInputPerMTok +
+		float64(outputTokens)/1_000_000*costOutputPerMTok
 }
 
 // CostLogEntry is a single per-request cost record, meant to be persisted
