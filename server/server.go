@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"sync"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
+	"neochat/ratelimit"
 	"neochat/router"
 	"neochat/summarizer"
 	"neochat/tokenizer"
@@ -37,6 +39,26 @@ const maxCircuitFailoverAttempts = 3
 // README's Moderation section ("the user sees nothing but a ToS violation
 // message").
 const tosViolationMessage = "This message was blocked because it violates our usage policies."
+
+// maxRequestBodyBytes bounds how large a POST /chat or /chat/stream body
+// decodeChatRequest will read before giving up -- without this,
+// json.Decode reads an attacker-supplied body of any size straight into
+// memory (see audit.md finding #3). 64KB is comfortably above any real
+// chat message (a message that long would blow every catalog model's
+// context window anyway, see router.applyHardFilters) while still
+// bounding worst-case memory use per in-flight request.
+const maxRequestBodyBytes = 64 * 1024
+
+// ErrInstantCapExceeded is returned by prepare (and surfaces from
+// handle/handleStream) when limits.CheckInstantOverCap reports this
+// user_id has crossed their plan's 30-day Instant-tier anti-bot ceiling
+// (limits.PlanLimits.InstantExtraCapUSD) -- see docs/unit-economics.md
+// section 6.5. Checked, and the whole request rejected, before classify/
+// moderate run at all: unlike CheckThinkingMaxLock (which only changes
+// which mode a request downgrades to), there is no cheaper tier to fall
+// back to here, so an over-cap request has nothing useful left to do.
+// handleChat/handleChatStream map this to HTTP 429.
+var ErrInstantCapExceeded = errors.New("server: instant-tier spend cap exceeded for this billing cycle, try again later")
 
 // Server holds everything one /chat request needs. All fields are
 // required; use New to build one with validation.
@@ -110,6 +132,18 @@ type Server struct {
 	// immediate back-and-forth the model is actively reasoning about
 	// intact even once older turns have been compressed.
 	SummaryTailMessages int
+
+	// IPRateLimiter throttles POST /chat and /chat/stream by client IP,
+	// checked in Mux's wrapping before decodeChatRequest even runs -- see
+	// audit.md finding #2. This is deliberately IP-keyed, not user_id-keyed:
+	// user_id is client-supplied and unauthenticated (see chatRequest.UserID's
+	// doc comment), so a limiter keyed on it would just move with whatever
+	// user_id an abusive client claims next request. Nil (the zero value)
+	// disables the guard entirely, same nil-disables convention as
+	// Idempotency -- a Server built without one (e.g. most tests, which call
+	// handle/handleStream directly and never go through Mux anyway) behaves
+	// exactly as it did before this field existed.
+	IPRateLimiter ratelimit.Limiter
 }
 
 // chatRequest is the wire format for POST /chat.
@@ -189,15 +223,55 @@ type chatResponse struct {
 	Blocked bool `json:"blocked,omitempty"`
 }
 
-// Mux returns an http.ServeMux with routes registered.
+// Mux returns an http.ServeMux with routes registered. POST /chat and
+// POST /chat/stream go through rateLimited first (GET /health does not --
+// container/orchestrator health checks shouldn't compete with real
+// traffic for the same quota).
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /chat", s.handleChat)
-	mux.HandleFunc("POST /chat/stream", s.handleChatStream)
+	mux.HandleFunc("POST /chat", s.rateLimited(s.handleChat))
+	mux.HandleFunc("POST /chat/stream", s.rateLimited(s.handleChatStream))
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 	return mux
+}
+
+// rateLimited wraps next with s.IPRateLimiter, if one is configured. A
+// request from an IP that has exceeded its quota gets a 429 and next
+// never runs. A limiter error (e.g. Redis unreachable) fails open --
+// logged and the request let through -- rather than turning a Redis blip
+// into a chat outage; see IPRateLimiter's doc comment for why this check
+// is IP-keyed rather than user_id-keyed.
+func (s *Server) rateLimited(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		if s.IPRateLimiter != nil {
+			ip := clientIP(r)
+			allowed, err := s.IPRateLimiter.Allow(r.Context(), ip)
+			if err != nil {
+				log.Printf("server: rate limiter check failed for ip=%s, failing open: %v", ip, err)
+			} else if !allowed {
+				http.Error(w, "too many requests", http.StatusTooManyRequests)
+				return
+			}
+		}
+		next(w, r)
+	}
+}
+
+// clientIP extracts the connecting IP from r.RemoteAddr (host:port).
+// Falls back to the raw RemoteAddr string if it isn't in that form --
+// still a usable (if coarser) rate-limit key rather than a hard failure.
+// Does not consult X-Forwarded-For/X-Real-IP: those are only trustworthy
+// behind a reverse proxy that sets them itself, which this repo doesn't
+// have yet (see README "Next steps") -- trusting a client-supplied header
+// here would let the rate limit itself be spoofed per request.
+func clientIP(r *http.Request) string {
+	host, _, err := net.SplitHostPort(r.RemoteAddr)
+	if err != nil {
+		return r.RemoteAddr
+	}
+	return host
 }
 
 // decodeChatRequest parses and validates the POST /chat and POST
@@ -206,8 +280,15 @@ func (s *Server) Mux() *http.ServeMux {
 // delivered, so their input handling is shared here rather than
 // duplicated per handler.
 func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]limits.PlanLimits) (chatRequest, limits.PlanLimits, bool) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+
 	var req chatRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		var maxBytesErr *http.MaxBytesError
+		if errors.As(err, &maxBytesErr) {
+			http.Error(w, fmt.Sprintf("request body exceeds %d byte limit", maxRequestBodyBytes), http.StatusRequestEntityTooLarge)
+			return chatRequest{}, limits.PlanLimits{}, false
+		}
 		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
 		return chatRequest{}, limits.PlanLimits{}, false
 	}
@@ -236,7 +317,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	resp, err := s.handle(r.Context(), req, plan)
 	if err != nil {
 		log.Printf("server: /chat error for user_id=%s: %v", req.UserID, err)
-		http.Error(w, err.Error(), http.StatusBadGateway)
+		status := http.StatusBadGateway
+		if errors.Is(err, ErrInstantCapExceeded) {
+			status = http.StatusTooManyRequests
+		}
+		http.Error(w, err.Error(), status)
 		return
 	}
 
@@ -328,6 +413,20 @@ type preparedRequest struct {
 // the request, blocked is non-nil and the caller must return it as-is
 // without running anything below (no route, no generate).
 func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanLimits) (prepared preparedRequest, blocked *chatResponse, err error) {
+	// Checked first, before anything else in prepare runs: classify/
+	// moderate are themselves billed calls (see recordAuxCostLog below), so
+	// an already-over-the-anti-bot-ceiling request should never reach even
+	// those, let alone routing/generation -- see ErrInstantCapExceeded's
+	// doc comment and audit.md finding #2. limits.CheckInstantOverCap
+	// existed before this but was never wired into the request pipeline.
+	overInstantCap, err := limits.CheckInstantOverCap(ctx, s.Store, plan, req.UserID)
+	if err != nil {
+		return preparedRequest{}, nil, fmt.Errorf("check instant cap: %w", err)
+	}
+	if overInstantCap {
+		return preparedRequest{}, nil, ErrInstantCapExceeded
+	}
+
 	conversationID := req.ConversationID
 	if conversationID == "" {
 		conversationID = conversation.NewID()

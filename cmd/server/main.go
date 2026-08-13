@@ -22,6 +22,7 @@ import (
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
+	"neochat/ratelimit"
 	"neochat/router"
 	"neochat/server"
 	"neochat/summarizer"
@@ -78,6 +79,17 @@ func main() {
 		log.Fatal("OPENROUTER_API_KEY is required (no key, no real vendor calls -- see provider.OpenRouterClient)")
 	}
 	openRouterClient := provider.NewOpenRouterClient(openRouterKey)
+
+	// Hard ceiling on output tokens for every generation call, regardless
+	// of which catalog model gets selected -- see
+	// provider.OpenRouterClient.MaxTokens's doc comment and audit.md
+	// finding #4. 16000 is comfortably above any real chat reply while
+	// staying well under the priciest catalog models' own
+	// max_output_tokens (128000+, see configs/models.json), which is what
+	// every call was implicitly allowed to run up to before this existed.
+	// Override with OPENROUTER_MAX_TOKENS; 0 disables the cap entirely
+	// (falls back to each model's own default).
+	openRouterClient.MaxTokens = getenvIntDefault("OPENROUTER_MAX_TOKENS", 16000)
 
 	// Generation goes through a circuit breaker so a model that starts
 	// failing en masse (README pre-launch checklist) gets excluded for
@@ -180,6 +192,18 @@ func main() {
 	moderatorWithCost.CostInputPerMTok = moderationCostInputPerMTok
 	moderatorWithCost.CostOutputPerMTok = moderationCostOutputPerMTok
 
+	// Per-IP request throttle on POST /chat and /chat/stream -- see
+	// server.Server.IPRateLimiter's doc comment and audit.md finding #2.
+	// Deliberately IP-keyed rather than user_id-keyed: user_id is
+	// client-supplied and unauthenticated today (see chatRequest.UserID's
+	// doc comment), so this is the one layer that can't be sidestepped by
+	// just claiming a different user_id on the next request.
+	// RATE_LIMIT_PER_MINUTE overrides the per-IP request count; 60/min is a
+	// generous placeholder for a service with no real traffic patterns
+	// measured yet -- tighten once there's usage data to tune against.
+	rateLimitPerMinute := getenvIntDefault("RATE_LIMIT_PER_MINUTE", 60)
+	ipRateLimiter := ratelimit.NewRedisLimiter(redisClient, "chat_ip", rateLimitPerMinute, time.Minute)
+
 	srv := &server.Server{
 		Router:     router.NewRouter(catalog, weights),
 		Classifier: classifierWithCost,
@@ -219,14 +243,34 @@ func main() {
 			"moonshot":  generationClient,
 			"deepseek":  generationClient,
 		},
+		IPRateLimiter: ipRateLimiter,
 	}
 
 	addr := os.Getenv("ADDR")
 	if addr == "" {
 		addr = ":8080"
 	}
+
+	// Explicit http.Server instead of http.ListenAndServe's zero-value one
+	// -- the zero value leaves ReadTimeout/ReadHeaderTimeout/IdleTimeout
+	// unset (no limit), which lets a client that opens a connection and
+	// then sends data arbitrarily slowly (or never) hold it open forever,
+	// exhausting server resources one slow connection at a time (a
+	// Slowloris-style DoS -- see audit.md finding #3). WriteTimeout is
+	// deliberately left unset: /chat/stream can legitimately take minutes
+	// on a long "max" mode generation, and a blanket WriteTimeout would cut
+	// those responses off mid-stream. maxRequestBodyBytes (server package)
+	// already bounds how much a slow client can make the server buffer
+	// regardless of how long ReadTimeout gives it to send that body.
+	srvHTTP := &http.Server{
+		Addr:              addr,
+		Handler:           srv.Mux(),
+		ReadHeaderTimeout: 10 * time.Second,
+		ReadTimeout:       30 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
 	log.Printf("listening on %s", addr)
-	log.Fatal(http.ListenAndServe(addr, srv.Mux()))
+	log.Fatal(srvHTTP.ListenAndServe())
 }
 
 // smallestContextWindow returns the smallest ContextWindow across every
@@ -262,4 +306,19 @@ func getenvFloatDefault(key string, def float64) float64 {
 		log.Fatalf("%s: %v", key, err)
 	}
 	return f
+}
+
+// getenvIntDefault is getenvFloatDefault's int counterpart -- same
+// "unset falls back to def, set-but-unparseable fails startup loudly"
+// contract.
+func getenvIntDefault(key string, def int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		log.Fatalf("%s: %v", key, err)
+	}
+	return n
 }

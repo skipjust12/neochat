@@ -1,10 +1,10 @@
 # Аудит безопасности — neochat
 
-Дата: 2026-08-13
+Дата: 2026-08-13 (обновлено 2026-08-13 — находки №2/№3/№4 частично закрыты, см. пометки "✅ Исправлено" в каждом разделе).
 Объём: весь репозиторий (Go-код, `docker-compose.yml`/`Dockerfile`, конфиги в `configs/`, git-история, README/`docs/`).
 Не проверялось: живой запущенный стенд (аудит статический, по коду), сторонние сервисы (OpenRouter) как таковые.
 
-Ничего в репозитории этим коммитом не менялось — только сам этот файл. Ниже — находки от критичных к информационным, с указанием файла/строки, сути проблемы, сценария эксплуатации и рекомендуемого фикса.
+Ниже — находки от критичных к информационным, с указанием файла/строки, сути проблемы, сценария эксплуатации и рекомендуемого фикса. Статус "✅ Исправлено" означает, что фикс реализован и покрыт тестами в этом же PR; без пометки — находка ещё актуальна.
 
 ---
 
@@ -41,7 +41,7 @@
 
 ---
 
-### 2. Rate limiting нигде не подключён к реальному пайплайну
+### 2. Rate limiting нигде не подключён к реальному пайплайну — ✅ Исправлено (частично)
 
 **Где:** `limits/limits.go:36-49` — `CheckInstantOverCap` определена, но `grep` по всему репозиторию показывает, что она вызывается только из своего юнит-теста (`limits/limits_test.go:68`) и нигде из `server/`. В самом репозитории также нет ни reverse-proxy, ни gateway-компонента — весь HTTP-стек это `cmd/server/main.go:229` (`http.ListenAndServe`) напрямую.
 
@@ -51,11 +51,16 @@
 1. Подключить `limits.CheckInstantOverCap` в `server.prepare`/`server.handle` — сейчас там есть вызов только `limits.CheckThinkingMaxLock` (`server.go:418`), рядом нужно добавить проверку `CheckInstantOverCap` и либо отклонять запрос (429), либо ставить его в очередь/задерживать, как и описано в `docs/unit-economics.md`.
 2. Добавить общий rate limiter (per-`user_id` после фикса №1, и per-IP как defense-in-depth) — например, Redis-based sliding window/token-bucket перед `Mux()`, либо `golang.org/x/time/rate` на процесс, если один инстанс.
 
+**Сделано:**
+- `limits.CheckInstantOverCap` теперь вызывается первым делом в `server.prepare` (`server/server.go`), до classify/moderate — превышение анти-бот-потолка отклоняет запрос целиком (`server.ErrInstantCapExceeded`, HTTP 429), не тратя деньги ещё и на classify/moderate. Это "reject", а не "queue/delay" из исходного дизайна в `docs/unit-economics.md` — очереди в репозитории нет, а для анти-бот-потолка простой отказ достаточен и не меняет продуктовую семантику Thinking+Max-капа (тот по-прежнему никогда не блокирует, только даунгрейдит).
+- Новый пакет `ratelimit/` (`Limiter` интерфейс + `InMemoryLimiter`/`RedisLimiter`, по образу `limits.SpendStore`) добавляет **per-IP** троттлинг `POST /chat`/`POST /chat/stream` через `server.Server.IPRateLimiter`, включаемый в `server.Mux()` до `decodeChatRequest`. Специально IP-based, а не по `user_id` — `user_id` всё ещё не аутентифицирован (находка №1 не закрыта), лимитер по нему тривиально обходится сменой `user_id` на каждый запрос, а по IP — нет. Настраивается через `RATE_LIMIT_PER_MINUTE` (по умолчанию 60/мин), подключено в `cmd/server/main.go`.
+- **Не закрыто:** per-`user_id` компонент из рекомендации всё ещё отсутствует (не имеет смысла без находки №1 — см. её описание), и per-IP лимит сам по себе обходится распределением запросов по многим IP.
+
 ---
 
 ## 🟠 Высокий
 
-### 3. Нет ограничения размера тела запроса и таймаутов HTTP-сервера
+### 3. Нет ограничения размера тела запроса и таймаутов HTTP-сервера — ✅ Исправлено
 
 **Где:**
 - `server/server.go:210` — `json.NewDecoder(r.Body).Decode(&req)` без `http.MaxBytesReader`: тело запроса ничем не ограничено по размеру.
@@ -67,13 +72,19 @@
 1. В `decodeChatRequest` обернуть `r.Body` в `http.MaxBytesReader(w, r.Body, <лимит, например 64KB>)` перед декодированием.
 2. Заменить `http.ListenAndServe(addr, srv.Mux())` на явный `&http.Server{Addr: addr, Handler: srv.Mux(), ReadHeaderTimeout: 5*time.Second, ReadTimeout: 30*time.Second, WriteTimeout: 120*time.Second /* стриминг может занимать долго */, IdleTimeout: 120*time.Second}` и вызывать `.ListenAndServe()` на нём. Для `/chat/stream` подобрать `WriteTimeout` с учётом реальной длительности генерации, либо не задавать `WriteTimeout` глобально и ограничивать долгие соединения отдельно (например, через `http.TimeoutHandler` только на не-стриминговом маршруте).
 
-### 4. Нет верхней границы токенов ответа в запросах к провайдеру
+**Сделано:**
+- `decodeChatRequest` оборачивает `r.Body` в `http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)` (64KB); превышение лимита теперь явно отдаёт 413, а не 400 от общей ошибки декодирования.
+- `cmd/server/main.go` использует явный `&http.Server{ReadHeaderTimeout: 10s, ReadTimeout: 30s, IdleTimeout: 120s}` вместо голого `http.ListenAndServe`. `WriteTimeout` осознанно не выставлен — `/chat/stream` может легитимно генерировать несколько минут (режим "max"), и глобальный `WriteTimeout` оборвал бы поток ответа на середине; кандидат для отдельного, более узкого ограничения на не-стриминговом пути позже.
+
+### 4. Нет верхней границы токенов ответа в запросах к провайдеру — ✅ Исправлено
 
 **Где:** `provider/openrouter.go:49-52` (`openRouterChatRequest`) и `provider/openrouter.go:135-142` (`openRouterStreamRequest`) — оба содержат только `Model`/`Messages`(/`Stream`), поля `max_tokens` нет вообще.
 
 **Суть:** Ни один вызов генерации не сообщает вендору верхнюю границу токенов ответа. Фактическая стоимость одного запроса ограничена только собственным `max_output_tokens` модели у вендора (до 128k–384k у моделей из `configs/models.json`), а не тем, что реально нужно приложению/классифицировано `input.EstimatedOutputTokens`. Это усиливает финансовый риск из находки №1/№2 — единичный запрос может обойтись существенно дороже, чем предполагает `RouteResult.EstimatedCostUSD`.
 
 **Как фиксить:** Добавить `MaxTokens int \`json:"max_tokens,omitempty"\`` в оба реквест-стейта и передавать в `Generate`/`GenerateStream` значение, производное от `router.Model.MaxOutputTokens` и/или `input.EstimatedOutputTokens` с разумным жёстким потолком, а не полагаться на дефолт вендора.
+
+**Сделано:** `provider.OpenRouterClient` получил поле `MaxTokens`, отправляемое как `max_tokens` в обоих реквест-стейтах (`Generate`/`GenerateStream`), когда > 0. Это фиксированный глобальный потолок (`OPENROUTER_MAX_TOKENS`, по умолчанию 16000), не per-модельный/per-запросный расчёт от `router.Model.MaxOutputTokens`/`input.EstimatedOutputTokens`, как предлагалось изначально — сознательный компромисс в пользу простоты на этапе "просто строим": он уже убирает главный риск (запрос, который свободно докручивается до 128k+ токенов на самой дорогой модели), но не даёт точной калибровки под конкретную модель/запрос. Стоит доработать до per-модельного расчёта, когда появится время.
 
 ---
 
@@ -126,15 +137,15 @@
 
 ## Сводная таблица
 
-| № | Находка | Серьёзность | Файл(ы) |
-|---|---|---|---|
-| 1 | Нет аутентификации/авторизации на `/chat`, `/chat/stream` | Критично | `server/server.go` |
-| 2 | Rate limiting нигде не подключён к реальному пайплайну | Критично | `limits/limits.go`, `server/server.go` |
-| 3 | Нет лимита размера тела запроса и таймаутов HTTP-сервера | Высокий | `server/server.go`, `cmd/server/main.go` |
-| 4 | Нет верхней границы токенов ответа при вызове провайдера | Высокий | `provider/openrouter.go` |
-| 5 | IDOR (следствие №1) | Средний | `conversation/postgres_store.go` |
-| 6 | Модерация не покрывает всю историю и не проверяет вывод | Средний | `server/server.go` |
-| 7 | Плейсхолдер-пароли в `.env.example` | Низкий | `.env.example` |
-| 8 | Нет явной политики CORS | Низкий | `server/server.go` |
+| № | Находка | Серьёзность | Статус | Файл(ы) |
+|---|---|---|---|---|
+| 1 | Нет аутентификации/авторизации на `/chat`, `/chat/stream` | Критично | Открыто | `server/server.go` |
+| 2 | Rate limiting нигде не подключён к реальному пайплайну | Критично | ✅ Частично (IP-лимитер + Instant-кап; per-user_id невозможен без №1) | `limits/limits.go`, `server/server.go`, `ratelimit/` |
+| 3 | Нет лимита размера тела запроса и таймаутов HTTP-сервера | Высокий | ✅ Исправлено | `server/server.go`, `cmd/server/main.go` |
+| 4 | Нет верхней границы токенов ответа при вызове провайдера | Высокий | ✅ Исправлено (глобальный потолок, не per-модельный) | `provider/openrouter.go` |
+| 5 | IDOR (следствие №1) | Средний | Открыто (закроется вместе с №1) | `conversation/postgres_store.go` |
+| 6 | Модерация не покрывает всю историю и не проверяет вывод | Средний | Открыто | `server/server.go` |
+| 7 | Плейсхолдер-пароли в `.env.example` | Низкий | Открыто | `.env.example` |
+| 8 | Нет явной политики CORS | Низкий | Открыто | `server/server.go` |
 
-Этот коммит только добавляет файл `audit.md` — код не менялся.
+Реализованные фиксы (№2 частично, №3, №4) покрыты тестами: `server/server_test.go` (`TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate`, `TestServeHTTP_InstantCapExceededReturns429`, `TestServeHTTP_RequestBodyTooLarge`, `TestServeHTTP_RateLimitedIPReturns429`), `ratelimit/memory_limiter_test.go`, `ratelimit/redis_limiter_test.go` (integration-tagged), `provider/openrouter_test.go` (`TestOpenRouterClient_Generate_MaxTokens`, `TestOpenRouterClient_Generate_MaxTokensOmittedWhenUnset`). Полная модель безопасности сервиса всё ещё зависит от находки №1 — она осознанно не тронута в этом PR по просьбе автора.
