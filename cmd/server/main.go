@@ -7,10 +7,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 
 	"neochat/classifier"
@@ -41,10 +44,12 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer pgDB.Close()
 	redisClient, err := db.ConnectRedis(ctx)
 	if err != nil {
 		log.Fatal(err)
 	}
+	defer redisClient.Close()
 
 	catalog, err := router.LoadCatalog("configs/models.json")
 	if err != nil {
@@ -269,8 +274,48 @@ func main() {
 		ReadTimeout:       30 * time.Second,
 		IdleTimeout:       120 * time.Second,
 	}
-	log.Printf("listening on %s", addr)
-	log.Fatal(srvHTTP.ListenAndServe())
+
+	// Run the listener in a goroutine so main can watch for either it
+	// failing outright or a shutdown signal arriving, whichever comes
+	// first.
+	serveErrs := make(chan error, 1)
+	go func() {
+		log.Printf("listening on %s", addr)
+		serveErrs <- srvHTTP.ListenAndServe()
+	}()
+
+	// SIGTERM is what `docker stop`/most orchestrators send before
+	// escalating to SIGKILL after their grace period (docker-compose.yml
+	// sets stop_grace_period: 30s on the server service to match
+	// shutdownGracePeriod below); SIGINT covers a local Ctrl-C. Without
+	// this, the previous log.Fatal(srvHTTP.ListenAndServe()) meant any
+	// deploy/restart killed in-flight requests outright -- including a
+	// /chat/stream generation that could legitimately be running for
+	// minutes (see srvHTTP's WriteTimeout comment above) -- instead of
+	// letting them finish.
+	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	select {
+	case err := <-serveErrs:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("server: %v", err)
+		}
+	case <-stopCtx.Done():
+		// Restore default signal behavior so a second Ctrl-C/SIGTERM
+		// force-kills immediately instead of the process ignoring it while
+		// stuck waiting out shutdownGracePeriod.
+		stop()
+		log.Print("shutdown signal received, draining in-flight requests...")
+
+		const shutdownGracePeriod = 25 * time.Second
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGracePeriod)
+		defer cancel()
+		if err := srvHTTP.Shutdown(shutdownCtx); err != nil {
+			log.Printf("server: graceful shutdown did not finish cleanly: %v", err)
+		}
+	}
+	log.Print("server stopped")
 }
 
 // smallestContextWindow returns the smallest ContextWindow across every

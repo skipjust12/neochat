@@ -1,6 +1,6 @@
 # Аудит безопасности — neochat
 
-Дата: 2026-08-13 (обновлено 2026-08-13 — находки №2/№3/№4 частично закрыты, см. пометки "✅ Исправлено" в каждом разделе).
+Дата: 2026-08-13 (обновлено 2026-08-13 — находки №2/№3/№4 частично закрыты, добавлены и закрыты №9/№10, см. пометки "✅ Исправлено" в каждом разделе).
 Объём: весь репозиторий (Go-код, `docker-compose.yml`/`Dockerfile`, конфиги в `configs/`, git-история, README/`docs/`).
 Не проверялось: живой запущенный стенд (аудит статический, по коду), сторонние сервисы (OpenRouter) как таковые.
 
@@ -104,6 +104,14 @@
 1. Периодически/по порогу токенов прогонять модерацию не только по последнему сообщению, а по недавнему окну диалога (можно связать с уже существующим `SummaryTriggerTokens`/`maybeSummarize`, чтобы не удваивать стоимость на каждом шаге).
 2. Добавить Layer 2 — постфактум-проверку сгенерированного ответа перед тем как отдать его клиенту (для не-стримингового `/chat` это относительно дёшево реализовать уже сейчас, поскольку весь текст и так есть в памяти до отправки).
 
+### 9. Утечка деталей внутренних ошибок клиенту — ✅ Исправлено
+
+**Где было:** `server/server.go` — `handleChat`/`handleChatStream` отдавали `err.Error()` клиенту напрямую (в HTTP-теле или в SSE `"error"`-событии).
+
+**Суть:** Ошибки из `prepare`/`routeAndCall`/`finalize` — это обёрнутые ошибки нижних слоёв: сырой текст ответа вендора от OpenRouter (`provider: openrouter error (status 401...)`), ID моделей/провайдеров, детали отказа Postgres/Redis. Всё это утекало наружу любому вызывающему `/chat`, без какой-либо фильтрации — классическое избыточное раскрытие информации (information disclosure), полезное атакующему для разведки инфраструктуры (в том числе для находки №1: например, зная, что ключ OpenRouter невалиден или упёрся в rate limit, легче подгадать момент для злоупотребления).
+
+**Сделано:** Добавлена `clientErrorMessage(err error) string` — allowlist из двух безопасных, специально предназначенных для клиента ошибок (`ErrInstantCapExceeded`, `idempotency.ErrInFlight`, теперь корректно обёрнутая через `%w` в `reserveIdempotent`), их текст показывается как есть; всё остальное заменяется на общее сообщение "an internal error occurred processing this request". Полная ошибка по-прежнему пишется в серверный лог (`log.Printf` перед вызовом `clientErrorMessage`) — теряется только то, что видит вызывающий по HTTP/SSE. Покрыто тестами (`TestClientErrorMessage`, `TestServeHTTP_InternalErrorDoesNotLeakDetails`, `TestServeHTTP_InstantCapExceededMessageNotGeneric`).
+
 ---
 
 ## 🟢 Низкий / информационные
@@ -121,6 +129,14 @@
 **Где:** `server/server.go:193-201` (`Mux()`) — заголовки `Access-Control-*` нигде не выставляются.
 
 **Суть:** Пока нет веб-фронтенда (см. README — UI ещё не существует), это не создаёт немедленного риска, поскольку нет браузерного JS-клиента с куки-based сессией, который можно было бы атаковать через чужой сайт. Но её стоит спроектировать явно (allow-list origin'ов, а не `*`) до появления браузерного клиента, особенно если аутентификация в итоге будет куки-based, а не Bearer-токен — в последнем случае CSRF-поверхность отсутствует по конструкции.
+
+### 10. Не было graceful shutdown — ✅ Исправлено
+
+**Где было:** `cmd/server/main.go` — `log.Fatal(http.ListenAndServe(...))`, процесс убивался немедленно по SIGTERM/SIGKILL от Docker/оркестратора.
+
+**Суть:** В первую очередь это надёжность, не классическая "дыра", но с прицелом на безопасность/целостность данных есть конкретный сценарий: `/chat/stream` в режиме "max" может генерировать минуты; если процесс убит между тем, как апстрим-вызов к OpenRouter уже состоялся (и, значит, уже был оплачен), и тем, как `finalize` успел записать `cost_log`/спенд в Redis, получается реально потраченная у вендора сумма, которая никогда не попадёт в собственный учёт трат — тихий, необнаружимый разъезд биллинга.
+
+**Сделано:** `cmd/server/main.go` слушает SIGINT/SIGTERM (`signal.NotifyContext`) и вызывает `srvHTTP.Shutdown(ctx)` с 25-секундным грейс-периодом вместо мгновенного убийства — новые соединения перестают приниматься, но начатые запросы успевают доработать. `docker-compose.yml` получил `stop_grace_period: 30s` на сервисе `server`, чтобы Docker не добивал процесс SIGKILL раньше, чем истечёт собственный грейс-период приложения. `pgDB`/`redisClient` теперь закрываются через `defer` при штатном завершении. Проверено вручную отдельным smoke-тестом: SIGTERM, отправленный посреди медленного запроса, не обрывает его — сервер дожидается ответа (200, полное тело) и только потом останавливается.
 
 ---
 
@@ -147,5 +163,7 @@
 | 6 | Модерация не покрывает всю историю и не проверяет вывод | Средний | Открыто | `server/server.go` |
 | 7 | Плейсхолдер-пароли в `.env.example` | Низкий | Открыто | `.env.example` |
 | 8 | Нет явной политики CORS | Низкий | Открыто | `server/server.go` |
+| 9 | Утечка деталей внутренних ошибок клиенту | Средний | ✅ Исправлено | `server/server.go` |
+| 10 | Нет graceful shutdown | Низкий (надёжность/учёт трат) | ✅ Исправлено | `cmd/server/main.go`, `docker-compose.yml` |
 
-Реализованные фиксы (№2 частично, №3, №4) покрыты тестами: `server/server_test.go` (`TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate`, `TestServeHTTP_InstantCapExceededReturns429`, `TestServeHTTP_RequestBodyTooLarge`, `TestServeHTTP_RateLimitedIPReturns429`), `ratelimit/memory_limiter_test.go`, `ratelimit/redis_limiter_test.go` (integration-tagged), `provider/openrouter_test.go` (`TestOpenRouterClient_Generate_MaxTokens`, `TestOpenRouterClient_Generate_MaxTokensOmittedWhenUnset`). Полная модель безопасности сервиса всё ещё зависит от находки №1 — она осознанно не тронута в этом PR по просьбе автора.
+Реализованные фиксы (№2 частично, №3, №4, №9, №10) покрыты тестами: `server/server_test.go` (`TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate`, `TestServeHTTP_InstantCapExceededReturns429`, `TestServeHTTP_RequestBodyTooLarge`, `TestServeHTTP_RateLimitedIPReturns429`, `TestClientErrorMessage`, `TestServeHTTP_InternalErrorDoesNotLeakDetails`, `TestServeHTTP_InstantCapExceededMessageNotGeneric`), `ratelimit/memory_limiter_test.go`, `ratelimit/redis_limiter_test.go` (integration-tagged), `provider/openrouter_test.go` (`TestOpenRouterClient_Generate_MaxTokens`, `TestOpenRouterClient_Generate_MaxTokensOmittedWhenUnset`); graceful shutdown additionally verified manually with a standalone smoke test (SIGTERM mid-request, in-flight request completes before the process exits). Полная модель безопасности сервиса всё ещё зависит от находки №1 — она осознанно не тронута в этом PR по просьбе автора.

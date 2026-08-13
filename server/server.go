@@ -308,6 +308,26 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 	return req, plan, true
 }
 
+// clientErrorMessage returns the text safe to send back to a POST /chat
+// or /chat/stream caller for an error out of handle/handleStream --
+// always logged in full server-side first (see handleChat's/
+// handleChatStream's log.Printf right before each call site below), but
+// only a small allowlist of errors this package builds specifically to
+// be user-facing get their own Error() text quoted back verbatim.
+// Everything else -- prepare's classify/moderate/route/generate/
+// persistence failures -- gets replaced with a generic message instead:
+// those can carry a vendor's raw response text, a model/provider
+// identifier, or a database/Redis failure detail that a caller who just
+// sent a chat message has no business seeing (audit.md's error-leakage
+// finding). Add a new case here, not a bare error string at the call
+// site, for any future error that's genuinely meant to reach the client.
+func clientErrorMessage(err error) string {
+	if errors.Is(err, ErrInstantCapExceeded) || errors.Is(err, idempotency.ErrInFlight) {
+		return err.Error()
+	}
+	return "an internal error occurred processing this request"
+}
+
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	req, plan, ok := decodeChatRequest(w, r, s.Plans)
 	if !ok {
@@ -321,7 +341,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		if errors.Is(err, ErrInstantCapExceeded) {
 			status = http.StatusTooManyRequests
 		}
-		http.Error(w, err.Error(), status)
+		http.Error(w, clientErrorMessage(err), status)
 		return
 	}
 
@@ -375,7 +395,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
 
 	if err := s.handleStream(r.Context(), req, plan, send); err != nil {
 		log.Printf("server: /chat/stream error for user_id=%s: %v", req.UserID, err)
-		send("error", map[string]string{"message": err.Error()})
+		send("error", map[string]string{"message": clientErrorMessage(err)})
 	}
 }
 
@@ -824,7 +844,11 @@ func (s *Server) reserveIdempotent(ctx context.Context, req chatRequest) (chatRe
 	rec, found, err := s.Idempotency.Reserve(ctx, req.UserID, req.IdempotencyKey)
 	if err != nil {
 		if errors.Is(err, idempotency.ErrInFlight) {
-			return chatResponse{}, false, fmt.Errorf("a request with idempotency_key %q is already in progress for this user", req.IdempotencyKey)
+			// Wrapped with %w (not just formatted in) so clientErrorMessage
+			// can still recognize this as idempotency.ErrInFlight and treat
+			// its text as safe to show the caller -- see that function's
+			// doc comment.
+			return chatResponse{}, false, fmt.Errorf("a request with idempotency_key %q is already in progress for this user: %w", req.IdempotencyKey, idempotency.ErrInFlight)
 		}
 		return chatResponse{}, false, fmt.Errorf("idempotency reserve: %w", err)
 	}

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -812,6 +813,71 @@ func TestHandle_ModerationErrorFailsClosed(t *testing.T) {
 // TestServeHTTP_UnknownPlanID covers the plan_id lookup that lives in
 // handleChat (the HTTP layer), not in handle -- unlike the other tests
 // here, this one goes through the real ServeMux to exercise that check.
+// TestClientErrorMessage pins down clientErrorMessage's allowlist
+// directly: the two sentinel errors it's meant to expose verbatim, and
+// an arbitrary internal error it must not.
+func TestClientErrorMessage(t *testing.T) {
+	if got := clientErrorMessage(ErrInstantCapExceeded); got != ErrInstantCapExceeded.Error() {
+		t.Errorf("clientErrorMessage(ErrInstantCapExceeded) = %q, want the sentinel's own message", got)
+	}
+
+	wrapped := fmt.Errorf("a request with idempotency_key %q is already in progress for this user: %w", "k1", idempotency.ErrInFlight)
+	if got := clientErrorMessage(wrapped); got != wrapped.Error() {
+		t.Errorf("clientErrorMessage(wrapped ErrInFlight) = %q, want %q", got, wrapped.Error())
+	}
+
+	internal := fmt.Errorf("generate: provider: openrouter error (status 401): invalid api key")
+	if got := clientErrorMessage(internal); got == internal.Error() {
+		t.Errorf("clientErrorMessage(unrecognized internal error) returned the raw error text verbatim: %q", got)
+	}
+}
+
+// TestServeHTTP_InternalErrorDoesNotLeakDetails checks that a failure
+// inside the pipeline (here, moderation's vendor call erroring out) never
+// reaches the HTTP caller as raw error text -- only a generic message,
+// with the real error only in the server log (audit.md's error-leakage
+// finding). "moderation api down" standing in for anything an internal
+// error could carry: vendor response text, model IDs, database/Redis
+// failure details.
+func TestServeHTTP_InternalErrorDoesNotLeakDetails(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.Moderator = moderation.New(&provider.FakeClient{Err: errors.New("moderation api down")}, "fake-moderation-model", "system prompt")
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+	}
+	if got := rec.Body.String(); strings.Contains(got, "moderation api down") {
+		t.Errorf("response body leaked the internal error text: %q", got)
+	}
+}
+
+// TestServeHTTP_InstantCapExceededMessageNotGeneric checks the one
+// allowlisted case: ErrInstantCapExceeded's own message (safe,
+// user-actionable) still reaches the caller verbatim instead of being
+// replaced by clientErrorMessage's generic fallback.
+func TestServeHTTP_InstantCapExceededMessageNotGeneric(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	if err := limits.RecordInstantSpend(context.Background(), s.Store, "u1", 3.0, time.Now()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if got := rec.Body.String(); !strings.Contains(got, "instant-tier spend cap exceeded") {
+		t.Errorf("response body = %q, want it to contain ErrInstantCapExceeded's own message", got)
+	}
+}
+
 func TestServeHTTP_UnknownPlanID(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 

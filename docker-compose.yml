@@ -43,6 +43,12 @@ services:
       dockerfile: Dockerfile
     container_name: neochat-server
     restart: unless-stopped
+    # Docker's default is 10s before SIGKILL, shorter than cmd/server's own
+    # 25s graceful-shutdown grace period (see main.go) -- without this, a
+    # `docker stop`/`docker compose down` could SIGKILL an in-flight
+    # /chat/stream generation before the server ever gets to finish
+    # draining it.
+    stop_grace_period: 30s
     env_file:
       - .env
     environment:
