@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"neochat/conversation"
@@ -29,7 +30,7 @@ func TestMaybeSummarize_DisabledWhenTriggerTokensUnset(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 	// SummaryTriggerTokens left at its zero value -- feature is off.
 
-	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", longHistory(30))
+	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", conversation.Summary{}, longHistory(30))
 	if summaryText != "" {
 		t.Errorf("summaryText = %q, want empty when the feature is unconfigured", summaryText)
 	}
@@ -46,7 +47,7 @@ func TestMaybeSummarize_BelowThresholdReturnsHistoryUnchanged(t *testing.T) {
 	s.Summarizer = summarizer.New(fakeSummarizer, "fake-summarizer-model", "system prompt")
 
 	history := longHistory(10)
-	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", history)
+	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", conversation.Summary{}, history)
 	if summaryText != "" {
 		t.Errorf("summaryText = %q, want empty below the trigger threshold", summaryText)
 	}
@@ -66,7 +67,7 @@ func TestMaybeSummarize_AboveThresholdFoldsOlderMessagesAndKeepsTail(t *testing.
 	s.Summarizer = summarizer.New(fakeSummarizer, "fake-summarizer-model", "system prompt")
 
 	history := longHistory(10)
-	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", history)
+	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", conversation.Summary{}, history)
 
 	if summaryText != "folded summary" {
 		t.Errorf("summaryText = %q, want %q", summaryText, "folded summary")
@@ -104,12 +105,14 @@ func TestMaybeSummarize_ReusesStoredSummaryWhenNothingNewToFold(t *testing.T) {
 
 	history := longHistory(10)
 	tailStart := len(history) - s.SummaryTailMessages
-	must(t, s.Conversations.SetSummary(context.Background(), "u1", "c1", conversation.Summary{
-		Text:          "already up to date",
-		CoversThrough: tailStart,
-	}))
+	state := conversation.Summary{Text: "already up to date", CoversThrough: tailStart}
+	must(t, s.Conversations.SetSummary(context.Background(), "u1", "c1", state))
 
-	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", history)
+	// The window is what loadHistory would have read given that stored
+	// state -- only the messages after CoversThrough, not the whole
+	// history. Everything before it is already inside state.Text.
+	window := history[state.CoversThrough:]
+	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", state, window)
 
 	if summaryText != "already up to date" {
 		t.Errorf("summaryText = %q, want the already-stored summary reused as-is", summaryText)
@@ -130,7 +133,7 @@ func TestMaybeSummarize_SummarizerErrorFallsBackToFullHistory(t *testing.T) {
 	s.Summarizer = summarizer.New(fakeSummarizer, "fake-summarizer-model", "system prompt")
 
 	history := longHistory(10)
-	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", history)
+	got, summaryText := s.maybeSummarize(context.Background(), "u1", "c1", conversation.Summary{}, history)
 
 	if summaryText != "" {
 		t.Errorf("summaryText = %q, want empty on summarizer failure", summaryText)
@@ -144,6 +147,77 @@ func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+// offsetSpyStore records the offset every History call was made with, so
+// a test can assert on how much of a conversation was actually read back
+// rather than only on what came out the far end.
+type offsetSpyStore struct {
+	*conversation.InMemoryStore
+	offsets []int
+}
+
+func (s *offsetSpyStore) History(ctx context.Context, userID, conversationID string, offset int) ([]conversation.Message, error) {
+	s.offsets = append(s.offsets, offset)
+	return s.InMemoryStore.History(ctx, userID, conversationID, offset)
+}
+
+// TestPrepare_DoesNotReadAlreadySummarizedMessages is the regression test
+// for audit.md's unbounded-history finding: messages a stored summary
+// already covers must not be read back from the store at all, on any
+// turn. Before the fix, prepare read the entire conversation every single
+// turn and threw away all but the tail -- O(stored messages) database and
+// memory work per request, growing without bound as a conversation ages.
+func TestPrepare_DoesNotReadAlreadySummarizedMessages(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.SummaryTriggerTokens = 1_000_000 // unreachable: no new folding this turn
+	s.SummaryTailMessages = 4
+	spy := &offsetSpyStore{InMemoryStore: conversation.NewInMemoryStore()}
+	s.Conversations = spy
+
+	ctx := context.Background()
+	conversationID := "c1"
+	for _, m := range longHistory(50) {
+		must(t, s.Conversations.Append(ctx, "u1", conversationID, m))
+	}
+	// A summary already covering the first 46 of those 50 messages.
+	coversThrough := 46
+	must(t, s.Conversations.SetSummary(ctx, "u1", conversationID, conversation.Summary{
+		Text:          "everything before the last four messages",
+		CoversThrough: coversThrough,
+	}))
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: conversationID, Message: "next question", RequestedMode: "instant"}
+	prepared, blocked, err := s.prepare(ctx, req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if blocked != nil {
+		t.Fatalf("unexpected block: %+v", blocked)
+	}
+
+	if len(spy.offsets) != 1 {
+		t.Fatalf("History called %d times, want exactly 1 (offsets=%v)", len(spy.offsets), spy.offsets)
+	}
+	if spy.offsets[0] != coversThrough {
+		t.Errorf("History read from offset %d, want %d -- the already-summarized prefix must not be read back", spy.offsets[0], coversThrough)
+	}
+
+	// The stored summary has to survive a turn that folds nothing new,
+	// since it stands in for the 46 messages deliberately left unread.
+	var sawSummary bool
+	for _, m := range prepared.messages {
+		if m.Role == "system" && strings.Contains(m.Content, "everything before the last four messages") {
+			sawSummary = true
+		}
+	}
+	if !sawSummary {
+		t.Errorf("expected the stored summary to still be sent, got messages: %+v", prepared.messages)
+	}
+	// 4 tail + summary system message + the new user message.
+	if len(prepared.messages) != s.SummaryTailMessages+2 {
+		t.Errorf("len(prepared.messages) = %d, want %d", len(prepared.messages), s.SummaryTailMessages+2)
 	}
 }
 
@@ -169,7 +243,7 @@ func TestPrepare_FoldsHistoryIntoSummaryWhenOverTrigger(t *testing.T) {
 
 	// Sanity check: the full stored history really is over the trigger
 	// threshold before asserting prepare acted on that.
-	full, err := s.Conversations.History(ctx, "u1", conversationID)
+	full, err := s.Conversations.History(ctx, "u1", conversationID, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

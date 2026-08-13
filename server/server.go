@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"runtime/debug"
 	"sync"
 	"time"
 
@@ -226,15 +227,72 @@ type chatResponse struct {
 // Mux returns an http.ServeMux with routes registered. POST /chat and
 // POST /chat/stream go through rateLimited first (GET /health does not --
 // container/orchestrator health checks shouldn't compete with real
-// traffic for the same quota).
+// traffic for the same quota), and everything goes through recovered.
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /chat", s.rateLimited(s.handleChat))
-	mux.HandleFunc("POST /chat/stream", s.rateLimited(s.handleChatStream))
-	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) {
+	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.handleChat)))
+	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.handleChatStream)))
+	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-	})
+	}))
 	return mux
+}
+
+// recovered turns a panic in next into a logged 500 for that one request.
+// net/http already recovers handler panics per connection, so this is
+// partly belt-and-braces -- what it adds is a stack trace in the log and
+// an actual HTTP response, instead of net/http silently dropping the
+// connection and leaving the caller staring at a reset. The panics that
+// would genuinely take the whole process down are the ones in goroutines
+// this handler spawns, which no HTTP-level middleware can see; those are
+// handled at their own source (see recoverGoroutine).
+//
+// A response that has already started writing (notably /chat/stream,
+// which sends its headers before generating anything) can't be turned
+// into a clean 500 any more -- http.Error's status is ignored and its
+// body lands mid-stream. The log line is the real deliverable in that
+// case; the write is best-effort.
+func recovered(next http.HandlerFunc) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		defer func() {
+			rec := recover()
+			if rec == nil {
+				return
+			}
+			// http.ErrAbortHandler is net/http's own "abort this handler
+			// quietly" sentinel, not a bug -- re-panic so net/http handles
+			// it the way it expects to.
+			if err, ok := rec.(error); ok && errors.Is(err, http.ErrAbortHandler) {
+				panic(rec)
+			}
+			log.Printf("server: recovered panic handling %s %s: %v\n%s", r.Method, r.URL.Path, rec, debug.Stack())
+			http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		}()
+		next(w, r)
+	}
+}
+
+// recoverGoroutine converts a panic in a spawned goroutine into an error
+// stored through errp, instead of letting it unwind past the goroutine's
+// entry and take the entire process down with it.
+//
+// This is the case that actually matters (audit.md's panic finding):
+// net/http's per-connection recovery only covers the handler goroutine,
+// so before this, one panic anywhere in classify/moderate -- or in any
+// dependency they call -- dropped every in-flight request for every user,
+// not just the one request that tripped it.
+//
+// Must be deferred directly (defer recoverGoroutine(...)), since recover
+// only works when called by a deferred function of the panicking
+// goroutine itself. Register it after the goroutine's defer wg.Done() so
+// it runs before that Done and the error is visible to whoever waits.
+func recoverGoroutine(what string, errp *error) {
+	rec := recover()
+	if rec == nil {
+		return
+	}
+	log.Printf("server: recovered panic in %s: %v\n%s", what, rec, debug.Stack())
+	*errp = fmt.Errorf("server: panic in %s: %v", what, rec)
 }
 
 // rateLimited wraps next with s.IPRateLimiter, if one is configured. A
@@ -493,12 +551,19 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	)
 	var wg sync.WaitGroup
 	wg.Add(2)
+	// Both goroutines recover their own panics into their err variable
+	// (see recoverGoroutine): a panic escaping either one would otherwise
+	// take the whole process down, dropping every other user's in-flight
+	// request along with this one. Moderation failing closed then applies
+	// to a panic exactly as it does to an ordinary error below.
 	go func() {
 		defer wg.Done()
+		defer recoverGoroutine("classifier.Classify", &classifyErr)
 		classified, classifyUsage, classifyErr = s.Classifier.Classify(ctx, req.Message)
 	}()
 	go func() {
 		defer wg.Done()
+		defer recoverGoroutine("moderation.Moderate", &modErr)
 		modResult, modUsage, modErr = s.Moderator.Moderate(ctx, req.Message)
 	}()
 	wg.Wait()
@@ -539,22 +604,22 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 		return preparedRequest{}, nil, fmt.Errorf("check thinking_max lock: %w", err)
 	}
 
-	// Send the model everything stored for this conversation so far, plus
-	// the new message -- without this, /chat could never hold more than a
-	// single-turn exchange.
-	history, err := s.Conversations.History(ctx, req.UserID, conversationID)
+	// Send the model this conversation's stored history, plus the new
+	// message -- without this, /chat could never hold more than a
+	// single-turn exchange. Only the part not already folded into the
+	// rolling summary is read back (see loadHistory).
+	summaryState, history, err := s.loadHistory(ctx, req.UserID, conversationID)
 	if err != nil {
 		return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
 	}
 
 	// Fold the older part of a long conversation into a rolling summary
-	// once the full history gets big enough that sending it verbatim
-	// risks outgrowing every catalog model's ContextWindow. summaryText
-	// is "" when there's nothing to summarize yet (short conversation) or
-	// summarization failed -- either way tail equals history unchanged,
-	// so the rest of prepare behaves exactly as before this feature
-	// existed.
-	tail, summaryText := s.maybeSummarize(ctx, req.UserID, conversationID, history)
+	// once what's left unsummarized gets big enough that sending it
+	// verbatim risks outgrowing every catalog model's ContextWindow.
+	// summaryText is "" only when this conversation has never been
+	// summarized and isn't being summarized now -- an existing summary is
+	// always carried through even on the paths that fold nothing new.
+	tail, summaryText := s.maybeSummarize(ctx, req.UserID, conversationID, summaryState, history)
 
 	persona := req.Persona
 	if persona == "" {
@@ -621,71 +686,104 @@ func (s *Server) recordAuxCostLog(ctx context.Context, userID, requestID, mode, 
 	}
 }
 
-// maybeSummarize decides whether history is small enough to send as-is,
-// or whether its older part should be folded into a rolling summary
-// first. It returns the messages that should actually be sent verbatim
-// (either the whole of history, or just its most recent
-// SummaryTailMessages) and the summary text to inject alongside them
-// ("" if no summarization applies).
+// loadHistory reads the part of a conversation that still has to be sent
+// verbatim -- everything after what the stored Summary already covers --
+// together with that Summary itself.
 //
-// Failure to summarize (store error or the summarizer model call
-// failing) is not fatal: it logs and falls back to sending history
-// unchanged, exactly as if SummaryTriggerTokens had not been reached --
-// worst case a very large conversation still hits applyHardFilters'
-// context-window check, the same outcome as before this feature existed.
-func (s *Server) maybeSummarize(ctx context.Context, userID, conversationID string, history []conversation.Message) ([]conversation.Message, string) {
+// Reading from Summary.CoversThrough rather than from the beginning is
+// what keeps this bounded: once summarization is active, the unsummarized
+// remainder is re-folded (and CoversThrough advanced) every time it grows
+// past SummaryTriggerTokens, so the window this returns stays around that
+// threshold no matter how long the conversation gets. Reading the whole
+// history instead -- what this used to do -- meant a conversation with N
+// stored messages did O(N) database and memory work on every single turn,
+// forever, even though maybeSummarize discarded all but the last few (see
+// audit.md's unbounded-history finding).
+//
+// A GetSummary failure is not fatal, matching maybeSummarize's own
+// treatment of summarization trouble: it logs and falls back to the full
+// history with no summary, i.e. exactly the pre-summarization behavior.
+// The same fallback covers SummaryTriggerTokens <= 0 (feature off), where
+// there is no summary state to trust an offset from.
+func (s *Server) loadHistory(ctx context.Context, userID, conversationID string) (conversation.Summary, []conversation.Message, error) {
+	if s.SummaryTriggerTokens > 0 {
+		state, err := s.Conversations.GetSummary(ctx, userID, conversationID)
+		if err != nil {
+			log.Printf("server: get summary for user_id=%s conversation_id=%s: %v", userID, conversationID, err)
+		} else {
+			history, err := s.Conversations.History(ctx, userID, conversationID, state.CoversThrough)
+			return state, history, err
+		}
+	}
+
+	history, err := s.Conversations.History(ctx, userID, conversationID, 0)
+	return conversation.Summary{}, history, err
+}
+
+// maybeSummarize decides whether the unsummarized window loadHistory
+// returned is small enough to send as-is, or whether its older part
+// should now be folded into the rolling summary too. It returns the
+// messages to send verbatim (the whole window, or just its most recent
+// SummaryTailMessages) and the summary text to inject alongside them.
+//
+// state is the Summary those messages sit after, so index i of window is
+// absolute index state.CoversThrough+i -- that correspondence is what
+// makes the new CoversThrough written below correct.
+//
+// An already-stored summary is returned on every path, including the ones
+// that fold nothing new: it describes messages that were deliberately not
+// read back, so dropping it would silently amputate the conversation
+// rather than merely skip an optimization. Only a conversation that has
+// never been summarized yields "".
+//
+// Failure to summarize (the summarizer model call failing) is not fatal:
+// it logs and falls back to sending the window unchanged alongside
+// whatever summary already existed -- worst case a very large
+// conversation still hits applyHardFilters' context-window check, the
+// same outcome as before this feature existed.
+func (s *Server) maybeSummarize(ctx context.Context, userID, conversationID string, state conversation.Summary, window []conversation.Message) ([]conversation.Message, string) {
 	// SummaryTriggerTokens <= 0 means the feature is unconfigured (the
 	// zero-value Server, e.g. in tests that don't set it) rather than
 	// "summarize everything" -- a real deployment always sets a positive
-	// threshold, see cmd/server/main.go.
+	// threshold, see cmd/server/main.go. loadHistory already read the full
+	// history in that case, so there is no summary to carry either.
 	if s.SummaryTriggerTokens <= 0 {
-		return history, ""
+		return window, ""
 	}
-	if len(history) <= s.SummaryTailMessages {
-		return history, ""
-	}
-
-	historyAsMessages := make([]provider.Message, len(history))
-	for i, m := range history {
-		historyAsMessages[i] = provider.Message{Role: string(m.Role), Content: m.Content}
-	}
-	if tokenizer.EstimateMessages(historyAsMessages) < s.SummaryTriggerTokens {
-		return history, ""
+	if len(window) <= s.SummaryTailMessages {
+		return window, state.Text
 	}
 
-	state, err := s.Conversations.GetSummary(ctx, userID, conversationID)
+	windowAsMessages := make([]provider.Message, len(window))
+	for i, m := range window {
+		windowAsMessages[i] = provider.Message{Role: string(m.Role), Content: m.Content}
+	}
+	if tokenizer.EstimateMessages(windowAsMessages) < s.SummaryTriggerTokens {
+		return window, state.Text
+	}
+
+	// Everything before the tail is unsummarized by construction (that's
+	// what loadHistory's offset guarantees), so the whole leading part of
+	// the window is what gets folded -- no intersecting with
+	// state.CoversThrough needed the way there was when this received the
+	// full history.
+	tailStart := len(window) - s.SummaryTailMessages
+	toFold := window[:tailStart]
+
+	newSummary, err := s.Summarizer.Summarize(ctx, state.Text, toFold)
 	if err != nil {
-		log.Printf("server: get summary for user_id=%s conversation_id=%s: %v", userID, conversationID, err)
-		return history, ""
+		log.Printf("server: summarize user_id=%s conversation_id=%s: %v", userID, conversationID, err)
+		return window, state.Text
+	}
+	if err := s.Conversations.SetSummary(ctx, userID, conversationID, conversation.Summary{
+		Text:          newSummary,
+		CoversThrough: state.CoversThrough + tailStart,
+		UpdatedAt:     time.Now(),
+	}); err != nil {
+		log.Printf("server: set summary for user_id=%s conversation_id=%s: %v", userID, conversationID, err)
 	}
 
-	tailStart := len(history) - s.SummaryTailMessages
-	if state.CoversThrough > tailStart {
-		// Stored state predates a shorter SummaryTailMessages/history
-		// shrink than currently configured -- clamp rather than slice
-		// with a negative-length range below.
-		state.CoversThrough = tailStart
-	}
-
-	toFold := history[state.CoversThrough:tailStart]
-	summaryText := state.Text
-	if len(toFold) > 0 {
-		newSummary, err := s.Summarizer.Summarize(ctx, state.Text, toFold)
-		if err != nil {
-			log.Printf("server: summarize user_id=%s conversation_id=%s: %v", userID, conversationID, err)
-			return history, ""
-		}
-		summaryText = newSummary
-		if err := s.Conversations.SetSummary(ctx, userID, conversationID, conversation.Summary{
-			Text:          summaryText,
-			CoversThrough: tailStart,
-			UpdatedAt:     time.Now(),
-		}); err != nil {
-			log.Printf("server: set summary for user_id=%s conversation_id=%s: %v", userID, conversationID, err)
-		}
-	}
-
-	return history[tailStart:], summaryText
+	return window[tailStart:], newSummary
 }
 
 // generateCaller performs one generation call against gen -- either

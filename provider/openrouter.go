@@ -232,6 +232,19 @@ func (c *OpenRouterClient) GenerateStream(ctx context.Context, apiModelID string
 			}
 		}
 
+		// A panic here -- malformed vendor data hitting an unexpected code
+		// path, say -- would otherwise escape this goroutine and take the
+		// whole server process down, since it belongs to no request's
+		// handler. Report it to the consumer as an ordinary stream error
+		// instead. Registered after the two defers above so it runs before
+		// them: the error goes out while ch is still open. send's ctx.Done
+		// arm keeps this from blocking forever if nobody is reading.
+		defer func() {
+			if rec := recover(); rec != nil {
+				send(StreamChunk{Err: fmt.Errorf("provider: panic in openrouter stream reader: %v", rec)})
+			}
+		}()
+
 		var text strings.Builder
 		var inputTokens, outputTokens int
 

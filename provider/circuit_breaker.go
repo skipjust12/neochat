@@ -112,6 +112,21 @@ func (c *CircuitBreakerClient) GenerateStream(ctx context.Context, apiModelID st
 	out := make(chan StreamChunk)
 	go func() {
 		defer close(out)
+		// Same reasoning as OpenRouterClient.GenerateStream's recover: a
+		// panic in a goroutine nobody is recovering for takes the process
+		// down, so it becomes a stream error for this one request instead.
+		// Counted as a failure against the model's circuit, like any other
+		// error from it would be.
+		defer func() {
+			if rec := recover(); rec != nil {
+				err := fmt.Errorf("provider: panic in circuit breaker stream relay for %q: %v", apiModelID, rec)
+				c.recordResult(apiModelID, err)
+				select {
+				case out <- StreamChunk{Err: err}:
+				case <-ctx.Done():
+				}
+			}
+		}()
 		for chunk := range upstream {
 			out <- chunk
 			if chunk.Err != nil {

@@ -13,7 +13,7 @@ func TestInMemoryStore_AppendAndHistoryPreserveOrder(t *testing.T) {
 	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "hi", CreatedAt: time.Now()}))
 	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: "hello", ModelID: "m1", CreatedAt: time.Now()}))
 
-	history, err := store.History(ctx, "u1", "c1")
+	history, err := store.History(ctx, "u1", "c1", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -28,11 +28,47 @@ func TestInMemoryStore_AppendAndHistoryPreserveOrder(t *testing.T) {
 	}
 }
 
+func TestInMemoryStore_HistoryOffsetSkipsOldestMessages(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+
+	for _, content := range []string{"m0", "m1", "m2", "m3"} {
+		must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: content, CreatedAt: time.Now()}))
+	}
+
+	history, err := store.History(ctx, "u1", "c1", 2)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(history) != 2 {
+		t.Fatalf("len(History(offset=2)) = %d, want 2", len(history))
+	}
+	// Index i of an offset-N read is absolute index N+i -- the property
+	// Summary.CoversThrough arithmetic depends on (see Store.History).
+	if history[0].Content != "m2" || history[1].Content != "m3" {
+		t.Errorf("History(offset=2) = %q/%q, want m2/m3", history[0].Content, history[1].Content)
+	}
+}
+
+func TestInMemoryStore_HistoryOffsetPastEndReturnsEmptyNotError(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "only", CreatedAt: time.Now()}))
+
+	history, err := store.History(ctx, "u1", "c1", 99)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(history) != 0 {
+		t.Errorf("len(History(offset past end)) = %d, want 0", len(history))
+	}
+}
+
 func TestInMemoryStore_UnknownConversationReturnsEmptyNotError(t *testing.T) {
 	ctx := context.Background()
 	store := NewInMemoryStore()
 
-	history, err := store.History(ctx, "u1", "does-not-exist")
+	history, err := store.History(ctx, "u1", "does-not-exist", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -49,7 +85,7 @@ func TestInMemoryStore_IsolatesByUserAndConversation(t *testing.T) {
 	must(t, store.Append(ctx, "u2", "c1", Message{Role: RoleUser, Content: "u2/c1"}))
 	must(t, store.Append(ctx, "u1", "c2", Message{Role: RoleUser, Content: "u1/c2"}))
 
-	h, err := store.History(ctx, "u1", "c1")
+	h, err := store.History(ctx, "u1", "c1", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -63,10 +99,10 @@ func TestInMemoryStore_HistoryReturnsACopy(t *testing.T) {
 	store := NewInMemoryStore()
 	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "original"}))
 
-	history, _ := store.History(ctx, "u1", "c1")
+	history, _ := store.History(ctx, "u1", "c1", 0)
 	history[0].Content = "mutated"
 
-	h2, _ := store.History(ctx, "u1", "c1")
+	h2, _ := store.History(ctx, "u1", "c1", 0)
 	if h2[0].Content != "original" {
 		t.Error("mutating the returned slice should not affect the store's internal state")
 	}
