@@ -171,6 +171,28 @@ docker exec -it neochat-redis redis-cli -a "$REDIS_PASSWORD" keys 'idem:*'
 
 Restart survival: `docker compose restart postgres redis` (no `-v`), then re-run the `conversation_messages` query above for the same `conversation_id` — the rows from before the restart should still be there (named volumes, not `down -v`).
 
+## Running the integration tests
+
+Most of the suite runs with no dependencies (`go test ./...`). The tests
+that exercise the real Postgres/Redis-backed stores instead of the
+`InMemory*` stand-ins are behind a build tag, so they only run when asked
+for — and they skip themselves (rather than fail) if the environment
+variables they need aren't exported:
+
+```bash
+docker compose up -d --wait postgres redis
+set -a && source .env && set +a
+go test -tags=integration ./...
+```
+
+Watch for `SKIP` in the output: it means the `POSTGRES_*`/`REDIS_*`
+variables didn't reach the test process, not that everything passed.
+
+CI runs exactly this on every push and pull request (`.github/workflows/ci.yml`),
+against the same `docker-compose.yml` services, and fails the run if any
+of these tests skip — so a broken store implementation can't reach `main`
+just because nobody remembered to run the tagged suite by hand.
+
 ## After testing
 
 Rotate any key that was ever pasted anywhere outside your own shell (chat, a shared doc, etc.) — treat a key that touched a chat transcript as compromised, regardless of whether the test succeeded.

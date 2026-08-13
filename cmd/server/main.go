@@ -96,16 +96,28 @@ func main() {
 	// (falls back to each model's own default).
 	openRouterClient.MaxTokens = getenvIntDefault("OPENROUTER_MAX_TOKENS", 16000)
 
-	// Generation goes through a circuit breaker so a model that starts
-	// failing en masse (README pre-launch checklist) gets excluded for
-	// everyone for a cooldown, instead of every request separately
-	// discovering the same failure via its own timeout. State is tracked
-	// per apiModelID inside the breaker, so one instance shared across
-	// every catalog provider (Generators below) still isolates each
-	// model's health independently. Not wired into classifier/moderation
-	// calls yet -- same wrapper would apply trivially, just lower
-	// priority than the generation path this protects first.
-	generationClient := provider.NewCircuitBreakerClient(openRouterClient, 5, 30*time.Second)
+	// Every vendor call -- generation, classify, moderate, summarize --
+	// goes through the retry wrapper: OpenRouter really does hand out 429s
+	// (README's Status section records hitting them during live testing),
+	// and before this a single one failed the user's request outright. The
+	// policy is deliberately narrow about what it resends, since a chat
+	// completion is not idempotent -- see provider.StatusError.Retryable.
+	retryingClient := provider.NewRetryClient(openRouterClient)
+
+	// Generation additionally goes through a circuit breaker so a model
+	// that starts failing en masse (README pre-launch checklist) gets
+	// excluded for everyone for a cooldown, instead of every request
+	// separately discovering the same failure via its own timeout. State
+	// is tracked per apiModelID inside the breaker, so one instance shared
+	// across every catalog provider (Generators below) still isolates each
+	// model's health independently.
+	//
+	// The breaker wraps the retrier, not the other way round: a failure
+	// should count against a model once the request has genuinely given
+	// up, not once per intermediate attempt. Inverted, one burst of rate
+	// limiting would trip the breaker and pull the model for everyone --
+	// converting a recoverable blip into an outage.
+	generationClient := provider.NewCircuitBreakerClient(retryingClient, 5, 30*time.Second)
 
 	// google/gemini-3.5-flash-lite is the default: it's the model
 	// prompts/classifier_system_prompt.md was validated against (see
@@ -189,11 +201,11 @@ func main() {
 		idempotencyTTL = d
 	}
 
-	classifierWithCost := classifier.New(openRouterClient, classifierModelID, systemPrompt)
+	classifierWithCost := classifier.New(retryingClient, classifierModelID, systemPrompt)
 	classifierWithCost.CostInputPerMTok = classifierCostInputPerMTok
 	classifierWithCost.CostOutputPerMTok = classifierCostOutputPerMTok
 
-	moderatorWithCost := moderation.New(openRouterClient, moderationModelID, moderationSystemPrompt)
+	moderatorWithCost := moderation.New(retryingClient, moderationModelID, moderationSystemPrompt)
 	moderatorWithCost.CostInputPerMTok = moderationCostInputPerMTok
 	moderatorWithCost.CostOutputPerMTok = moderationCostOutputPerMTok
 
@@ -232,7 +244,7 @@ func main() {
 		CostLog:              costlog.NewPostgresStore(pgDB),
 		Plans:                plans,
 		SystemPrompts:        chatSystemPrompts,
-		Summarizer:           summarizer.New(openRouterClient, summarizerModelID, summarizerSystemPrompt),
+		Summarizer:           summarizer.New(retryingClient, summarizerModelID, summarizerSystemPrompt),
 		SummaryTriggerTokens: summaryTriggerTokens,
 		SummaryTailMessages:  summaryTailMessages,
 		// Every catalog provider tag routes through the same
