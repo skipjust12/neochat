@@ -1,6 +1,8 @@
 # neochat
 # NeoChat (working title)
 
+[![CI](https://github.com/skipjust12/neochat/actions/workflows/ci.yml/badge.svg)](https://github.com/skipjust12/neochat/actions/workflows/ci.yml)
+
 AI aggregator with depth-based modes, not model-based modes.
 
 > **"You choose how deep to think. We choose who does the thinking."**

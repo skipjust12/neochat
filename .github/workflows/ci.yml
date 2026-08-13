@@ -1,0 +1,176 @@
+# CI for neochat. Three jobs, deliberately separate so a failure names
+# itself: "check" is everything that needs nothing but a Go toolchain,
+# "integration" is the //go:build integration suite against a real
+# Postgres/Redis, and "govulncheck" is dependency vulnerability scanning.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Read-only: nothing here comments, pushes, or publishes.
+permissions:
+  contents: read
+
+# A new push to the same branch makes the previous run's result
+# irrelevant -- cancel it rather than queueing behind it.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: build, vet, gofmt, unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          # Tracks go.mod instead of pinning a version here that would
+          # silently drift from it.
+          go-version-file: go.mod
+
+      - name: go build
+        run: go build ./...
+
+      - name: go vet
+        run: go vet ./...
+
+      # The //go:build integration files are invisible to a plain vet or
+      # build, so without this they rot silently -- a signature change
+      # elsewhere breaks them and nobody finds out until someone runs the
+      # integration suite by hand. This costs a second and catches that.
+      - name: go vet (integration build tag)
+        run: go vet -tags=integration ./...
+
+      - name: gofmt
+        run: |
+          unformatted="$(gofmt -l .)"
+          if [ -n "$unformatted" ]; then
+            echo "These files are not gofmt'd:"
+            echo "$unformatted"
+            echo
+            gofmt -d .
+            exit 1
+          fi
+
+      # -race because most of what has been added recently is concurrent
+      # (the classify/moderate goroutines, the streaming relays, the
+      # circuit breaker's shared state, the in-memory stores' mutexes).
+      - name: go test -race
+        run: go test -race ./...
+
+  integration:
+    name: integration tests (Postgres + Redis)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # The repo's own docker-compose.yml is used rather than GitHub
+      # service containers so CI runs against the same Postgres/Redis
+      # configuration a developer gets locally (docs/running-locally.md) --
+      # including the Redis password, which service containers cannot set
+      # on the official image, and which db.ConnectRedis requires. A drift
+      # between compose and CI therefore shows up as a CI failure, which
+      # is the point.
+      #
+      # These credentials are throwaway CI-only values for a container
+      # that lives for one job and is never reachable from outside the
+      # runner -- not secrets, and deliberately not the .env.example
+      # placeholders, so nothing here doubles as an example to copy.
+      - name: Write .env for docker-compose
+        run: |
+          cat > .env <<'EOF'
+          POSTGRES_USER=neochat_ci
+          POSTGRES_PASSWORD=ci-ephemeral-pg-pw
+          POSTGRES_DB=neochat_ci
+          POSTGRES_HOST=127.0.0.1
+          POSTGRES_PORT=5432
+          POSTGRES_SSLMODE=disable
+          REDIS_HOST=127.0.0.1
+          REDIS_PORT=6379
+          REDIS_PASSWORD=ci-ephemeral-redis-pw
+          EOF
+
+      # --wait blocks until both services report healthy via the
+      # healthchecks already defined in docker-compose.yml, so the tests
+      # never race the database coming up. Only postgres and redis are
+      # named: the server service isn't needed and would trigger an image
+      # build.
+      - name: Start Postgres and Redis
+        run: docker compose up -d --wait postgres redis
+
+      # shell: bash is load-bearing, not decoration: the default runner
+      # shell is `bash -e` without pipefail, so `go test | tee` would exit
+      # with tee's status and a failing test suite would report success.
+      # An explicit `shell: bash` gets `-eo pipefail`.
+      - name: Run integration tests
+        shell: bash
+        run: |
+          set -a
+          . ./.env
+          set +a
+          go test -tags=integration -count=1 -v ./... 2>&1 | tee integration.log
+
+      # internal/dbtest skips its tests when POSTGRES_USER/REDIS_PASSWORD
+      # are unset, and a skipped test still reports ok -- so a broken env
+      # export here would leave CI green while testing nothing at all.
+      # Nothing in this job has any business skipping, so any SKIP fails
+      # the job.
+      - name: Fail if any integration test skipped
+        run: |
+          if grep -E '^[[:space:]]*--- SKIP' integration.log; then
+            echo
+            echo "An integration test skipped. In this job that means the Postgres/Redis"
+            echo "env vars did not reach the test process -- the suite silently tested nothing."
+            exit 1
+          fi
+
+      - name: Service logs on failure
+        if: failure()
+        run: docker compose logs postgres redis
+
+  docker:
+    name: docker build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # cmd/server ships as a container (docs/running-locally.md), and the
+      # Dockerfile copies configs/ and prompts/ by name -- so renaming or
+      # adding a config file the server reads at startup can break the
+      # image while every Go check above stays green. Building it here
+      # means that surfaces on the PR instead of at deploy time. Only
+      # builds; nothing is pushed anywhere.
+      - name: docker build
+        run: docker build -t neochat-ci-check .
+
+  govulncheck:
+    name: govulncheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # Reports known vulnerabilities in the module graph and the Go
+      # toolchain itself, filtered to code actually reachable from this
+      # module -- so it stays quiet about CVEs in dependency paths neochat
+      # never calls. This job can legitimately turn red without anything
+      # in the repo changing (a new disclosure lands in pgx/go-redis/Go
+      # itself); that is the intended signal, not noise, but if it ever
+      # blocks unrelated work, make it non-blocking with
+      # continue-on-error: true rather than deleting it.
+      - name: Install govulncheck
+        run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
+      - name: govulncheck
+        run: govulncheck ./...
