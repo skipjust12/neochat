@@ -1,6 +1,14 @@
 module neochat
 
-go 1.25.0
+// Pinned to a patch release, not a bare "1.25", on purpose: CI resolves
+// its toolchain from this line (go-version-file in .github/workflows/ci.yml),
+// so whatever is written here is what the vulnerability scan and the
+// build actually run on. At 1.25.0 govulncheck reported 23 reachable
+// standard-library vulnerabilities -- TLS, x509, net/url, net/http --
+// every one of them fixed in a 1.25.x patch. Keep this at a current
+// patch release and bump it when govulncheck says to; dropping it back
+// to "1.25.0" silently reintroduces all of them.
+go 1.25.10
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
