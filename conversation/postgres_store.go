@@ -29,13 +29,22 @@ func (s *PostgresStore) Append(ctx context.Context, userID, conversationID strin
 	return err
 }
 
-func (s *PostgresStore) History(ctx context.Context, userID, conversationID string) ([]Message, error) {
+func (s *PostgresStore) History(ctx context.Context, userID, conversationID string, offset int) ([]Message, error) {
+	if offset < 0 {
+		offset = 0
+	}
+	// OFFSET (not a "newest N" LIMIT) because the caller's offset is an
+	// index into this exact ordering -- see Store.History's doc comment on
+	// why that correspondence has to hold for Summary.CoversThrough to
+	// stay meaningful. The (user_id, conversation_id, id) index in
+	// db/migrations/0002_conversation.sql covers this scan.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT role, content, model_id, is_summary, created_at
 		FROM conversation_messages
 		WHERE user_id = $1 AND conversation_id = $2
 		ORDER BY id
-	`, userID, conversationID)
+		OFFSET $3
+	`, userID, conversationID, offset)
 	if err != nil {
 		return nil, err
 	}

@@ -19,7 +19,7 @@ func TestPostgresStore_AppendAndHistoryPreserveOrder(t *testing.T) {
 	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "hi", CreatedAt: time.Now().UTC()}))
 	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: "hello", ModelID: "m1", CreatedAt: time.Now().UTC()}))
 
-	history, err := store.History(ctx, "u1", "c1")
+	history, err := store.History(ctx, "u1", "c1", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -40,7 +40,7 @@ func TestPostgresStore_UnknownConversationReturnsEmptyNotError(t *testing.T) {
 	store := NewPostgresStore(pgDB)
 	ctx := context.Background()
 
-	history, err := store.History(ctx, "u1", "does-not-exist")
+	history, err := store.History(ctx, "u1", "does-not-exist", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -59,7 +59,7 @@ func TestPostgresStore_IsolatesByUserAndConversation(t *testing.T) {
 	must(t, store.Append(ctx, "u2", "c1", Message{Role: RoleUser, Content: "u2/c1", CreatedAt: time.Now().UTC()}))
 	must(t, store.Append(ctx, "u1", "c2", Message{Role: RoleUser, Content: "u1/c2", CreatedAt: time.Now().UTC()}))
 
-	h, err := store.History(ctx, "u1", "c1")
+	h, err := store.History(ctx, "u1", "c1", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

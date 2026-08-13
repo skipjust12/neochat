@@ -10,6 +10,8 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"net"
+	"net/url"
 	"os"
 	"time"
 
@@ -38,9 +40,17 @@ func Connect(ctx context.Context) (*sql.DB, error) {
 	host := getenvDefault("POSTGRES_HOST", "127.0.0.1")
 	port := getenvDefault("POSTGRES_PORT", "5432")
 
-	dsn := fmt.Sprintf("postgres://%s:%s@%s:%s/%s?sslmode=disable", user, password, host, port, dbname)
+	// POSTGRES_SSLMODE defaults to disable because the docker-compose
+	// Postgres (docs/running-locally.md) serves no TLS at all, so anything
+	// stricter breaks the default local setup. It is a variable rather
+	// than a hardcoded string so that moving Postgres off the local box --
+	// where "disable" would silently put credentials and every stored
+	// conversation on the wire in cleartext -- is a config change and not
+	// a code change nobody remembers to make. Set require (or stronger)
+	// for any non-local database.
+	sslmode := getenvDefault("POSTGRES_SSLMODE", "disable")
 
-	pgDB, err := sql.Open("pgx", dsn)
+	pgDB, err := sql.Open("pgx", postgresDSN(user, password, host, port, dbname, sslmode))
 	if err != nil {
 		return nil, fmt.Errorf("db: open postgres: %w", err)
 	}
@@ -76,7 +86,10 @@ func ConnectRedis(ctx context.Context) (*redis.Client, error) {
 	port := getenvDefault("REDIS_PORT", "6379")
 
 	rdb := redis.NewClient(&redis.Options{
-		Addr:     fmt.Sprintf("%s:%s", host, port),
+		// JoinHostPort rather than "%s:%s" so an IPv6 literal host gets
+		// its required brackets instead of producing an unparseable
+		// address.
+		Addr:     net.JoinHostPort(host, port),
 		Password: password,
 	})
 
@@ -88,6 +101,26 @@ func ConnectRedis(ctx context.Context) (*redis.Client, error) {
 	}
 
 	return rdb, nil
+}
+
+// postgresDSN builds the connection URL Connect hands to sql.Open.
+//
+// Built through net/url rather than fmt.Sprintf so credentials are
+// percent-encoded: a password containing @ or / (entirely legal, and what
+// a password generator will eventually produce) silently reparses an
+// interpolated DSN -- "p@ss/word" makes everything after the first @ look
+// like the host -- so the connection either fails obscurely or is aimed
+// somewhere it shouldn't be. Split out from Connect so exactly that
+// property can be tested without a live database.
+func postgresDSN(user, password, host, port, dbname, sslmode string) string {
+	dsn := url.URL{
+		Scheme:   "postgres",
+		User:     url.UserPassword(user, password),
+		Host:     net.JoinHostPort(host, port),
+		Path:     "/" + dbname,
+		RawQuery: url.Values{"sslmode": []string{sslmode}}.Encode(),
+	}
+	return dsn.String()
 }
 
 func requireGetenv(key string) (string, error) {

@@ -21,6 +21,14 @@ type FakeClient struct {
 	// healthy, that one isn't" in failover tests.
 	PerModel map[string]GenerateResult
 
+	// Panic, if non-empty, makes Generate/GenerateStream panic with this
+	// value instead of returning anything -- for tests that verify a panic
+	// raised inside a spawned goroutine is recovered into an ordinary
+	// error rather than unwinding past the goroutine and killing the
+	// process (see server.recoverGoroutine). Empty (the zero value) means
+	// "don't panic", so existing tests are unaffected.
+	Panic string
+
 	// Block, if non-nil, makes Generate wait on this channel (or on ctx
 	// being done, whichever comes first) before doing anything else --
 	// simulates a slow/hung upstream call for tests that need to verify
@@ -45,6 +53,9 @@ type FakeRequest struct {
 
 func (f *FakeClient) Generate(ctx context.Context, apiModelID string, messages []Message) (GenerateResult, error) {
 	f.Requests = append(f.Requests, FakeRequest{APIModelID: apiModelID, Messages: messages})
+	if f.Panic != "" {
+		panic(f.Panic)
+	}
 	if f.Block != nil {
 		select {
 		case <-ctx.Done():
@@ -78,6 +89,9 @@ func (f *FakeClient) GenerateStream(ctx context.Context, apiModelID string, mess
 	go func() {
 		defer close(ch)
 
+		if f.Panic != "" {
+			panic(f.Panic)
+		}
 		if f.Block != nil {
 			select {
 			case <-ctx.Done():

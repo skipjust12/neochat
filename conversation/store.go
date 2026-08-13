@@ -22,10 +22,24 @@ type Store interface {
 	// order.
 	Append(ctx context.Context, userID, conversationID string, msg Message) error
 
-	// History returns every message recorded for (userID, conversationID),
-	// oldest first. An unknown conversation returns an empty slice, not
-	// an error -- a brand new conversation simply has no history yet.
-	History(ctx context.Context, userID, conversationID string) ([]Message, error)
+	// History returns messages recorded for (userID, conversationID),
+	// oldest first, skipping the first offset of them. An unknown
+	// conversation returns an empty slice, not an error -- a brand new
+	// conversation simply has no history yet; so does an offset past the
+	// end.
+	//
+	// offset exists so a caller that already knows the oldest messages are
+	// folded into a Summary can avoid reading them back at all: passing
+	// Summary.CoversThrough returns exactly the not-yet-summarized
+	// remainder (see server.prepare). Without it, every turn of a long
+	// conversation read the entire history into memory just to discard
+	// most of it -- unbounded work per request, growing with conversation
+	// length. Pass 0 for "everything".
+	//
+	// Because offset is an index into the same oldest-first ordering
+	// Summary.CoversThrough counts in, the two stay directly comparable:
+	// index i of a result fetched at offset N is absolute index N+i.
+	History(ctx context.Context, userID, conversationID string, offset int) ([]Message, error)
 
 	// GetSummary returns the current rolling Summary for (userID,
 	// conversationID). An unknown conversation, or one that has never
@@ -73,12 +87,23 @@ func (s *InMemoryStore) Append(_ context.Context, userID, conversationID string,
 	return nil
 }
 
-func (s *InMemoryStore) History(_ context.Context, userID, conversationID string) ([]Message, error) {
+func (s *InMemoryStore) History(_ context.Context, userID, conversationID string, offset int) ([]Message, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := conversationKey{userID: userID, conversationID: conversationID}
-	out := make([]Message, len(s.history[key]))
-	copy(out, s.history[key])
+	stored := s.history[key]
+	// Clamp rather than slice out of range: an offset past the end means
+	// "nothing left after what's already summarized", which is an ordinary
+	// state (see Store.History's doc comment), not a caller error.
+	if offset < 0 {
+		offset = 0
+	}
+	if offset > len(stored) {
+		offset = len(stored)
+	}
+	stored = stored[offset:]
+	out := make([]Message, len(stored))
+	copy(out, stored)
 	return out, nil
 }
 

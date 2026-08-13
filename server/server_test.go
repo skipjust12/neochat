@@ -471,7 +471,7 @@ func TestHandle_ConversationHistoryCarriesToNextTurn(t *testing.T) {
 		t.Errorf("turn2Messages[2] = %+v, want the new user message", turn2Messages[2])
 	}
 
-	history, err := s.Conversations.History(context.Background(), "u1", resp1.ConversationID)
+	history, err := s.Conversations.History(context.Background(), "u1", resp1.ConversationID, 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -498,7 +498,7 @@ func TestHandle_ModerationFlaggedResponseStillCarriesConversationID(t *testing.T
 		t.Errorf("ConversationID = %q, want existing-thread (unchanged by a block)", resp.ConversationID)
 	}
 
-	history, err := s.Conversations.History(context.Background(), "u1", "existing-thread")
+	history, err := s.Conversations.History(context.Background(), "u1", "existing-thread", 0)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -813,6 +813,68 @@ func TestHandle_ModerationErrorFailsClosed(t *testing.T) {
 // TestServeHTTP_UnknownPlanID covers the plan_id lookup that lives in
 // handleChat (the HTTP layer), not in handle -- unlike the other tests
 // here, this one goes through the real ServeMux to exercise that check.
+// TestHandle_ClassifierPanicBecomesErrorNotProcessCrash is the regression
+// test for audit.md's panic finding. The panic is raised inside the
+// goroutine prepare spawns for Classify -- the case net/http's own
+// per-connection recovery cannot see. Before recoverGoroutine, this test
+// binary would die outright rather than fail; that it can report a normal
+// error at all is the assertion.
+func TestHandle_ClassifierPanicBecomesErrorNotProcessCrash(t *testing.T) {
+	s, genClient := newTestServer(t, nil)
+	s.Classifier = classifier.New(&provider.FakeClient{Panic: "classifier exploded"}, "fake-classifier-model", "system prompt")
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
+	_, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err == nil {
+		t.Fatal("expected an error when the classifier panics, got nil")
+	}
+	if !strings.Contains(err.Error(), "classifier exploded") {
+		t.Errorf("err = %v, want it to carry the panic value", err)
+	}
+	if len(genClient.Requests) != 0 {
+		t.Errorf("expected no generate calls after a classifier panic, got %d", len(genClient.Requests))
+	}
+}
+
+// TestHandle_ModeratorPanicFailsClosed checks the other spawned goroutine,
+// and that a panicking moderator fails the request closed -- exactly like
+// a moderator returning an error does -- rather than letting an
+// unmoderated message through to generation.
+func TestHandle_ModeratorPanicFailsClosed(t *testing.T) {
+	s, genClient := newTestServer(t, nil)
+	s.Moderator = moderation.New(&provider.FakeClient{Panic: "moderator exploded"}, "fake-moderation-model", "system prompt")
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
+	_, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err == nil {
+		t.Fatal("expected an error when the moderator panics, got nil")
+	}
+	if len(genClient.Requests) != 0 {
+		t.Errorf("expected no generate calls after a moderator panic, got %d", len(genClient.Requests))
+	}
+}
+
+// TestServeHTTP_PanicInHandlerReturns500 covers the HTTP-level half of the
+// same fix: recovered() turns a handler panic into a logged 500 with a
+// generic body, rather than net/http dropping the connection with no
+// response at all.
+func TestServeHTTP_PanicInHandlerReturns500(t *testing.T) {
+	h := recovered(func(http.ResponseWriter, *http.Request) {
+		panic("handler exploded")
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/boom", nil)
+	rec := httptest.NewRecorder()
+	h(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusInternalServerError)
+	}
+	if got := rec.Body.String(); strings.Contains(got, "handler exploded") {
+		t.Errorf("response body leaked the panic value: %q", got)
+	}
+}
+
 // TestClientErrorMessage pins down clientErrorMessage's allowlist
 // directly: the two sentinel errors it's meant to expose verbatim, and
 // an arbitrary internal error it must not.
