@@ -875,6 +875,115 @@ func TestServeHTTP_PanicInHandlerReturns500(t *testing.T) {
 	}
 }
 
+// abortingStreamClient streams a few deltas and then fails, standing in
+// for the case that matters: a generation the vendor really did run (and
+// bill for) whose result never reached the user -- a client that closed
+// the tab mid-answer, or an upstream that dropped the connection.
+type abortingStreamClient struct {
+	deltas []string
+}
+
+func (c *abortingStreamClient) Generate(context.Context, string, []provider.Message) (provider.GenerateResult, error) {
+	return provider.GenerateResult{}, errors.New("upstream died")
+}
+
+func (c *abortingStreamClient) GenerateStream(_ context.Context, _ string, _ []provider.Message) (<-chan provider.StreamChunk, error) {
+	ch := make(chan provider.StreamChunk)
+	go func() {
+		defer close(ch)
+		for _, d := range c.deltas {
+			ch <- provider.StreamChunk{Delta: d}
+		}
+		ch <- provider.StreamChunk{Err: errors.New("upstream died mid-stream")}
+	}()
+	return ch, nil
+}
+
+// TestHandleStream_AbortedGenerationIsStillBilled is the regression test
+// for audit.md's aborted-spend finding. finalize is what records spend,
+// and it only runs on success -- so before this, a generation that
+// streamed most of an answer and then died left no cost_log row and no
+// movement in the rolling spend window, while the vendor had very much
+// billed for the tokens. Repeatable on purpose by a client that
+// disconnects just before completion.
+func TestHandleStream_AbortedGenerationIsStillBilled(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.Generators = map[string]provider.Client{
+		"openai": &abortingStreamClient{deltas: []string{"here is ", "most of the ", "answer "}},
+	}
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
+	err := s.handleStream(context.Background(), req, s.Plans["pro"], func(string, any) {})
+	if err == nil {
+		t.Fatal("expected the aborted stream to surface as an error")
+	}
+
+	entries := s.CostLog.(*costlog.InMemoryStore).Entries()
+	if len(entries) != 3 {
+		t.Fatalf("cost_log has %d entries, want 3 (classify, moderate, and the aborted generation)", len(entries))
+	}
+	var aborted *router.CostLogEntry
+	for i := range entries {
+		if strings.HasSuffix(entries[i].Mode, "_aborted") {
+			aborted = &entries[i]
+		}
+	}
+	if aborted == nil {
+		t.Fatalf("no _aborted cost_log entry recorded, got modes: %v", entries)
+	}
+	if aborted.OutputTokens <= 0 {
+		t.Errorf("aborted entry OutputTokens = %d, want > 0 (estimated from the text that actually streamed)", aborted.OutputTokens)
+	}
+	if aborted.CostUSD <= 0 {
+		t.Errorf("aborted entry CostUSD = %f, want > 0", aborted.CostUSD)
+	}
+
+	// The rolling spend window has to move too, or the cap can be bypassed
+	// indefinitely by disconnecting every time.
+	spent, err := s.Store.Sum(context.Background(), "u1", limits.PoolInstant, 30*24*time.Hour)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if spent <= 0 {
+		t.Errorf("instant spend = %f, want > 0 -- an aborted generation must still count against the cap", spent)
+	}
+}
+
+// TestHandleStream_AbortedGenerationBilledAfterClientDisconnect is the
+// same guarantee under the condition that actually triggers it in
+// production: the request context is already cancelled. The accounting
+// writes must not be made against that dead context, or every one of them
+// fails and the hole is right back.
+func TestHandleStream_AbortedGenerationBilledAfterClientDisconnect(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.Generators = map[string]provider.Client{
+		"openai": &abortingStreamClient{deltas: []string{"partial answer text "}},
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
+
+	// Cancel as soon as the first delta reaches the client, mimicking a
+	// browser tab closing mid-answer.
+	err := s.handleStream(ctx, req, s.Plans["pro"], func(event string, _ any) {
+		if event == "delta" {
+			cancel()
+		}
+	})
+	defer cancel()
+	if err == nil {
+		t.Fatal("expected an error once the stream aborted")
+	}
+
+	spent, sumErr := s.Store.Sum(context.Background(), "u1", limits.PoolInstant, 30*24*time.Hour)
+	if sumErr != nil {
+		t.Fatalf("unexpected error: %v", sumErr)
+	}
+	if spent <= 0 {
+		t.Errorf("instant spend = %f, want > 0 -- billing must survive the request context being cancelled", spent)
+	}
+}
+
 // TestClientErrorMessage pins down clientErrorMessage's allowlist
 // directly: the two sentinel errors it's meant to expose verbatim, and
 // an arbitrary internal error it must not.

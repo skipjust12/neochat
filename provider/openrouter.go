@@ -42,18 +42,58 @@ type OpenRouterClient struct {
 	// sets this.
 	MaxTokens int
 
+	// RequestTimeout bounds one non-streaming Generate call end to end.
+	// Zero uses defaultRequestTimeout.
+	RequestTimeout time.Duration
+
+	// StreamTimeout bounds one GenerateStream call end to end -- from the
+	// request going out to the final chunk arriving, not per chunk. It
+	// exists only to stop a wedged stream from holding a connection and a
+	// goroutine forever, so it is deliberately far more generous than
+	// RequestTimeout: a "max"-tier generation legitimately runs for
+	// minutes. Zero uses defaultStreamTimeout.
+	StreamTimeout time.Duration
+
 	httpClient *http.Client
 }
+
+// Timeouts are applied per call, through the request context, rather than
+// with http.Client.Timeout. Client.Timeout covers reading the response
+// body too, which for a streamed generation means the whole generation --
+// so the 60s Client.Timeout this replaced silently cut off any stream
+// running longer than a minute, which is exactly what "max" mode is for.
+// Connection-level protection (dial, TLS handshake, expect-continue) is
+// unaffected: those come from http.DefaultTransport, which a nil
+// Transport uses.
+const (
+	defaultRequestTimeout = 60 * time.Second
+	defaultStreamTimeout  = 10 * time.Minute
+)
 
 // NewOpenRouterClient builds a client against the real OpenRouter API.
 // apiKey must be non-empty -- callers get it from an environment variable
 // (OPENROUTER_API_KEY), never a hardcoded string or a committed file.
 func NewOpenRouterClient(apiKey string) *OpenRouterClient {
 	return &OpenRouterClient{
-		apiKey:     apiKey,
-		baseURL:    "https://openrouter.ai/api/v1",
-		httpClient: &http.Client{Timeout: 60 * time.Second},
+		apiKey:  apiKey,
+		baseURL: "https://openrouter.ai/api/v1",
+		// No Client.Timeout on purpose -- see the constants above.
+		httpClient: &http.Client{},
 	}
+}
+
+func (c *OpenRouterClient) requestTimeout() time.Duration {
+	if c.RequestTimeout > 0 {
+		return c.RequestTimeout
+	}
+	return defaultRequestTimeout
+}
+
+func (c *OpenRouterClient) streamTimeout() time.Duration {
+	if c.StreamTimeout > 0 {
+		return c.StreamTimeout
+	}
+	return defaultStreamTimeout
 }
 
 // OpenRouter's request/response shapes are OpenAI-compatible, so these
@@ -95,7 +135,13 @@ func (c *OpenRouterClient) Generate(ctx context.Context, apiModelID string, mess
 		return GenerateResult{}, fmt.Errorf("provider: marshal openrouter request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
+	// Deadline on the caller's context rather than on the shared
+	// http.Client, so it bounds this one call without also bounding
+	// streamed ones (see defaultRequestTimeout).
+	reqCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
+	defer cancel()
+
+	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
 		return GenerateResult{}, fmt.Errorf("provider: build openrouter request: %w", err)
 	}
@@ -119,15 +165,25 @@ func (c *OpenRouterClient) Generate(ctx context.Context, apiModelID string, mess
 		return GenerateResult{}, fmt.Errorf("provider: read openrouter response: %w", err)
 	}
 
+	// A non-2xx status becomes a *StatusError before anything else is
+	// inspected, so RetryClient can tell a rate limit (worth another
+	// attempt) from a bad request (never worth one) without parsing error
+	// text -- and so an unparseable error body doesn't hide the status
+	// that actually matters.
+	if httpResp.StatusCode != http.StatusOK {
+		return GenerateResult{}, &StatusError{
+			StatusCode: httpResp.StatusCode,
+			RetryAfter: parseRetryAfter(httpResp.Header),
+			Body:       string(respBody),
+		}
+	}
+
 	var resp openRouterChatResponse
 	if err := json.Unmarshal(respBody, &resp); err != nil {
 		return GenerateResult{}, fmt.Errorf("provider: parse openrouter response (status %d): %w, body=%s", httpResp.StatusCode, err, respBody)
 	}
 	if resp.Error != nil {
 		return GenerateResult{}, fmt.Errorf("provider: openrouter error (status %d, code=%v): %s", httpResp.StatusCode, resp.Error.Code, resp.Error.Message)
-	}
-	if httpResp.StatusCode != http.StatusOK {
-		return GenerateResult{}, fmt.Errorf("provider: openrouter request failed with status %d: %s", httpResp.StatusCode, respBody)
 	}
 	if len(resp.Choices) == 0 {
 		return GenerateResult{}, fmt.Errorf("provider: openrouter response has no choices (status %d): %s", httpResp.StatusCode, respBody)
@@ -194,8 +250,15 @@ func (c *OpenRouterClient) GenerateStream(ctx context.Context, apiModelID string
 		return nil, fmt.Errorf("provider: marshal openrouter stream request: %w", err)
 	}
 
-	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
+	// streamCtx outlives this function -- the reader goroutine below owns
+	// it -- so cancel is deferred inside that goroutine, not here. Every
+	// early return between here and launching it has to cancel explicitly
+	// or the context leaks until the timeout fires.
+	streamCtx, cancel := context.WithTimeout(ctx, c.streamTimeout())
+
+	httpReq, err := http.NewRequestWithContext(streamCtx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("provider: build openrouter stream request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
@@ -210,16 +273,25 @@ func (c *OpenRouterClient) GenerateStream(ctx context.Context, apiModelID string
 
 	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {
+		cancel()
 		return nil, fmt.Errorf("provider: openrouter stream request failed: %w", err)
 	}
 	if httpResp.StatusCode != http.StatusOK {
 		defer httpResp.Body.Close()
 		respBody, _ := io.ReadAll(httpResp.Body)
-		return nil, fmt.Errorf("provider: openrouter stream request failed with status %d: %s", httpResp.StatusCode, respBody)
+		retryAfter := parseRetryAfter(httpResp.Header)
+		cancel()
+		// Same typed error as Generate's -- and returned before the stream
+		// channel exists, which is exactly the window RetryClient is
+		// allowed to retry a stream in.
+		return nil, &StatusError{StatusCode: httpResp.StatusCode, RetryAfter: retryAfter, Body: string(respBody)}
 	}
 
 	ch := make(chan StreamChunk)
 	go func() {
+		// Registered first so it runs last: the stream's context stays
+		// alive for as long as the goroutine reading it does.
+		defer cancel()
 		defer close(ch)
 		defer httpResp.Body.Close()
 
@@ -227,7 +299,7 @@ func (c *OpenRouterClient) GenerateStream(ctx context.Context, apiModelID string
 			select {
 			case ch <- chunk:
 				return true
-			case <-ctx.Done():
+			case <-streamCtx.Done():
 				return false
 			}
 		}

@@ -244,6 +244,99 @@ func TestOpenRouterClient_GenerateStream(t *testing.T) {
 // TestOpenRouterClient_GenerateStream_APIError checks a mid-stream error
 // chunk (OpenRouter reports moderation/vendor failures this way even after
 // a 200 has already started streaming) surfaces as a StreamChunk.Err.
+// TestOpenRouterClient_GenerateStream_OutlivesRequestTimeout is the
+// regression test for audit.md's stream-timeout finding. A streamed
+// generation legitimately runs far longer than a single non-streaming
+// call, and the http.Client.Timeout this replaced applied to reading the
+// response body -- so it killed any stream still going after 60s
+// regardless of how healthy it was. RequestTimeout is set well below the
+// time this stream takes: it must not apply here, while StreamTimeout
+// (generous) must.
+func TestOpenRouterClient_GenerateStream_OutlivesRequestTimeout(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		flusher := w.(http.Flusher)
+		// Three chunks spread over ~300ms, i.e. 6x the RequestTimeout set
+		// below. Under the old shared Client.Timeout this stream would be
+		// cut off partway through.
+		for _, line := range []string{
+			`data: {"choices":[{"delta":{"content":"slow "}}]}`,
+			`data: {"choices":[{"delta":{"content":"but "}}]}`,
+			`data: {"choices":[{"delta":{"content":"fine"}}]}`,
+			`data: {"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":3}}`,
+			`data: [DONE]`,
+		} {
+			time.Sleep(75 * time.Millisecond)
+			fmt.Fprintf(w, "%s\n\n", line)
+			flusher.Flush()
+		}
+	}))
+	defer srv.Close()
+
+	c := NewOpenRouterClient("test-key")
+	c.baseURL = srv.URL
+	c.RequestTimeout = 50 * time.Millisecond
+	c.StreamTimeout = 30 * time.Second
+
+	ch, err := c.GenerateStream(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var text string
+	var final GenerateResult
+	for chunk := range ch {
+		if chunk.Err != nil {
+			t.Fatalf("stream errored -- RequestTimeout must not bound a streamed call: %v", chunk.Err)
+		}
+		text += chunk.Delta
+		if chunk.Done {
+			final = chunk.Final
+		}
+	}
+	if text != "slow but fine" {
+		t.Errorf("streamed text = %q, want %q", text, "slow but fine")
+	}
+	if final.OutputTokens != 3 {
+		t.Errorf("final.OutputTokens = %d, want 3 (the usage chunk must still arrive)", final.OutputTokens)
+	}
+}
+
+// TestOpenRouterClient_GenerateStream_StreamTimeoutStillApplies checks the
+// replacement bound is real: a stream that never finishes is cut off by
+// StreamTimeout rather than hanging forever.
+func TestOpenRouterClient_GenerateStream_StreamTimeoutStillApplies(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		w.(http.Flusher).Flush()
+		<-r.Context().Done() // never sends a terminal chunk
+	}))
+	defer srv.Close()
+
+	c := NewOpenRouterClient("test-key")
+	c.baseURL = srv.URL
+	c.StreamTimeout = 150 * time.Millisecond
+
+	ch, err := c.GenerateStream(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range ch {
+		}
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("stream never ended -- StreamTimeout did not bound it")
+	}
+}
+
 func TestOpenRouterClient_GenerateStream_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")

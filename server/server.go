@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/http"
 	"runtime/debug"
+	"strings"
 	"sync"
 	"time"
 
@@ -870,7 +871,12 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 
 		var circuitErr *provider.CircuitOpenError
 		if !errors.As(err, &circuitErr) || attempt >= maxCircuitFailoverAttempts-1 {
-			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("generate: %w", err)
+			// result and model are returned even though this failed: the
+			// call reached a specific model, so the vendor may already
+			// have generated (and charged for) tokens. recordAbortedSpend
+			// needs to know which model to price that against -- returning
+			// zero values here is what made that cost invisible.
+			return result, model, provider.GenerateResult{}, fmt.Errorf("generate: %w", err)
 		}
 		log.Printf("server: circuit open for model_id=%s (api_model_id=%s), rerouting: %v", result.SelectedModelID, model.ResolveAPIModelID(), err)
 		excludedModelIDs[result.SelectedModelID] = true
@@ -923,6 +929,79 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		ActualCostUSD:    actualCost,
 		ResponseText:     genResult.Text,
 	}, nil
+}
+
+// abortedSpendTimeout bounds the accounting writes recordAbortedSpend
+// makes after a request has already failed. Short on purpose: the user is
+// gone, nothing is waiting on this, and it must not keep a connection
+// tied up on the way out.
+const abortedSpendTimeout = 5 * time.Second
+
+// recordAbortedSpend books the vendor cost of a generation that started
+// but never produced a result the user received -- overwhelmingly, a
+// client that disconnected mid-stream.
+//
+// This closes a hole in the spend accounting (audit.md's aborted-spend
+// finding): finalize is the only thing that writes to costlog.Store and
+// limits.SpendStore, and it only runs on success. So a generation that
+// ran for twenty seconds and was then cancelled cost real money at the
+// vendor while leaving no cost_log row and no movement in the rolling
+// spend window -- invisible to unit economics, and deliberately
+// repeatable by a client that disconnects just before completion.
+//
+// partialText is what the client actually received before the failure
+// (streaming only -- see handleStreamOnce). Cost is priced from
+// server-side estimates rather than vendor-reported usage, because a
+// failed call reports none: the input side is prepared.estimatedContextTokens,
+// already computed for routing, and the output side is
+// tokenizer.EstimateText over the delta text that genuinely arrived. The
+// entry is marked with a "_aborted" mode suffix so reconciliation can
+// tell measured billing apart from this estimated kind.
+//
+// Nothing is recorded when there is no measured output (the
+// non-streaming path, where a failed call yields no observable tokens at
+// all). Guessing a charge there could bill a user for a request that
+// produced nothing, so it logs loudly instead -- the request_id and model
+// are enough to reconcile against the vendor's invoice by hand.
+func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepared preparedRequest, result router.RouteResult, model router.Model, partialText string, cause error) {
+	if model.ID == "" {
+		// Never reached a model (routing failed, no generator configured,
+		// every circuit open) -- nothing was sent, so nothing was billed.
+		return
+	}
+
+	outputTokens := tokenizer.EstimateText(partialText)
+	if outputTokens == 0 {
+		log.Printf("server: generation aborted with no measurable output, possible unbilled vendor cost: request_id=%s user_id=%s model_id=%s: %v",
+			prepared.requestID, req.UserID, model.ID, cause)
+		return
+	}
+
+	// WithoutCancel because the usual cause of getting here is precisely
+	// that ctx is already dead: billing against it would fail every write
+	// and reinstate the very hole this exists to close.
+	billCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), abortedSpendTimeout)
+	defer cancel()
+
+	now := time.Now()
+	cost := router.ComputeCostUSD(model, prepared.estimatedContextTokens, outputTokens)
+	log.Printf("server: recording aborted generation: request_id=%s user_id=%s model_id=%s estimated_output_tokens=%d estimated_cost_usd=%.6f: %v",
+		prepared.requestID, req.UserID, model.ID, outputTokens, cost, cause)
+
+	var err error
+	if result.SelectedMode == "instant" {
+		err = limits.RecordInstantSpend(billCtx, s.Store, req.UserID, cost, now)
+	} else {
+		err = limits.RecordThinkingMaxSpend(billCtx, s.Store, req.UserID, cost, now)
+	}
+	if err != nil {
+		log.Printf("server: failed to record aborted spend for request_id=%s: %v", prepared.requestID, err)
+	}
+
+	entry := router.NewCostLogEntry(req.UserID, prepared.requestID, model, result.SelectedMode+"_aborted", prepared.estimatedContextTokens, outputTokens, now)
+	if err := s.CostLog.Record(billCtx, entry); err != nil {
+		log.Printf("server: failed to record aborted cost log entry for request_id=%s: %v", prepared.requestID, err)
+	}
 }
 
 // reserveIdempotent claims req's idempotency key, if it has one and
@@ -1025,6 +1104,10 @@ func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.Pl
 
 	result, model, genResult, err := s.routeAndCall(ctx, req, prepared, nil, directGenerate)
 	if err != nil {
+		// No partial text to price: a failed non-streaming call reports no
+		// usage at all, so this only logs the possible unbilled cost -- see
+		// recordAbortedSpend.
+		s.recordAbortedSpend(ctx, req, prepared, result, model, "", err)
 		return chatResponse{}, err
 	}
 
@@ -1072,7 +1155,13 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 		return *blocked, nil
 	}
 
+	// Deltas are accumulated as they go out, not just forwarded: if the
+	// stream then dies (client disconnect, vendor error), this is the only
+	// record of how much the vendor actually generated and billed for --
+	// the failed call itself reports no usage. See recordAbortedSpend.
+	var streamed strings.Builder
 	call := streamingGenerate(func(delta string) {
+		streamed.WriteString(delta)
 		send("delta", map[string]string{"text": delta})
 	})
 	onRoute := func(result router.RouteResult) {
@@ -1086,6 +1175,7 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 
 	result, model, genResult, err := s.routeAndCall(ctx, req, prepared, onRoute, call)
 	if err != nil {
+		s.recordAbortedSpend(ctx, req, prepared, result, model, streamed.String(), err)
 		return chatResponse{}, err
 	}
 
