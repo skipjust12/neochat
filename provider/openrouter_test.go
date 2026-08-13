@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -51,6 +53,48 @@ func TestOpenRouterClient_Generate(t *testing.T) {
 	}
 	if result.InputTokens != 12 || result.OutputTokens != 4 {
 		t.Errorf("tokens = %d/%d, want 12/4", result.InputTokens, result.OutputTokens)
+	}
+}
+
+func TestOpenRouterClient_Generate_MaxTokens(t *testing.T) {
+	var gotReq openRouterChatRequest
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&gotReq); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices": [{"message": {"role": "assistant", "content": "ok"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}`))
+	}))
+	defer srv.Close()
+
+	c := NewOpenRouterClient("test-key")
+	c.baseURL = srv.URL
+	c.MaxTokens = 4096
+
+	if _, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotReq.MaxTokens != 4096 {
+		t.Errorf("request max_tokens = %d, want 4096", gotReq.MaxTokens)
+	}
+}
+
+func TestOpenRouterClient_Generate_MaxTokensOmittedWhenUnset(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), "max_tokens") {
+			t.Errorf("request body contains max_tokens when OpenRouterClient.MaxTokens was never set: %s", body)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"choices": [{"message": {"role": "assistant", "content": "ok"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}`))
+	}))
+	defer srv.Close()
+
+	c := NewOpenRouterClient("test-key")
+	c.baseURL = srv.URL
+
+	if _, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/provider"
+	"neochat/ratelimit"
 	"neochat/router"
 	"neochat/tokenizer"
 )
@@ -532,6 +534,111 @@ func TestHandle_ThinkingMaxLockedDowngradesAndSkipsGeneratorButStillGenerates(t 
 	}
 }
 
+// TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate checks that
+// once a user_id's Instant-pool spend has crossed their plan's
+// InstantExtraCapUSD anti-bot ceiling, handle rejects the request with
+// ErrInstantCapExceeded before running classify/moderate at all -- both
+// are themselves billed calls, so an over-cap request should never reach
+// them (see prepare's doc comment on ErrInstantCapExceeded).
+func TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate(t *testing.T) {
+	s, genClient := newTestServer(t, nil)
+
+	// Push this user's recorded instant spend over the $3 pro cap.
+	if err := limits.RecordInstantSpend(context.Background(), s.Store, "u1", 3.0, time.Now()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
+	_, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if !errors.Is(err, ErrInstantCapExceeded) {
+		t.Fatalf("err = %v, want ErrInstantCapExceeded", err)
+	}
+
+	classifierClient := s.Classifier.Client.(*provider.FakeClient)
+	if len(classifierClient.Requests) != 0 {
+		t.Errorf("classifier was called %d times, want 0 (over-cap request must reject before classify)", len(classifierClient.Requests))
+	}
+	moderationClient := s.Moderator.Client.(*provider.FakeClient)
+	if len(moderationClient.Requests) != 0 {
+		t.Errorf("moderator was called %d times, want 0 (over-cap request must reject before moderate)", len(moderationClient.Requests))
+	}
+	if len(genClient.Requests) != 0 {
+		t.Errorf("generator was called %d times, want 0", len(genClient.Requests))
+	}
+}
+
+// TestServeHTTP_InstantCapExceededReturns429 checks the HTTP layer maps
+// ErrInstantCapExceeded to 429, not the generic 502 every other handle
+// error gets.
+func TestServeHTTP_InstantCapExceededReturns429(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	if err := limits.RecordInstantSpend(context.Background(), s.Store, "u1", 3.0, time.Now()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusTooManyRequests {
+		t.Errorf("status = %d, want %d, body = %s", rec.Code, http.StatusTooManyRequests, rec.Body.String())
+	}
+}
+
+// TestServeHTTP_RequestBodyTooLarge checks decodeChatRequest's
+// http.MaxBytesReader guard actually rejects an oversized body with 413,
+// instead of json.Decode reading it into memory in full (audit.md finding
+// #3).
+func TestServeHTTP_RequestBodyTooLarge(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+
+	oversized := chatRequest{
+		UserID: "u1", PlanID: "pro",
+		Message: strings.Repeat("a", maxRequestBodyBytes+1),
+	}
+	body, _ := json.Marshal(oversized)
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusRequestEntityTooLarge {
+		t.Errorf("status = %d, want %d, body = %s", rec.Code, http.StatusRequestEntityTooLarge, rec.Body.String())
+	}
+}
+
+// TestServeHTTP_RateLimitedIPReturns429 checks Mux's rateLimited wrapping
+// actually rejects a request once IPRateLimiter says no, before
+// decodeChatRequest/handle ever run.
+func TestServeHTTP_RateLimitedIPReturns429(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "hello", InputTokens: 100, OutputTokens: 50},
+	})
+	s.IPRateLimiter = ratelimit.NewInMemoryLimiter(1, time.Minute)
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+
+	req1 := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec1 := httptest.NewRecorder()
+	s.Mux().ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("1st request status = %d, want %d, body = %s", rec1.Code, http.StatusOK, rec1.Body.String())
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec2 := httptest.NewRecorder()
+	s.Mux().ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Errorf("2nd request status = %d, want %d, body = %s", rec2.Code, http.StatusTooManyRequests, rec2.Body.String())
+	}
+
+	if len(genClient.Requests) != 1 {
+		t.Errorf("generator was called %d times, want 1 (2nd request must be rejected before reaching it)", len(genClient.Requests))
+	}
+}
+
 // TestHandle_CircuitBreakerOpenSurfacesAsGenerateError checks that once a
 // model's circuit is open and no other candidate model survives Route's
 // hard filters (a single-model catalog here), handle has nothing left to
@@ -706,6 +813,71 @@ func TestHandle_ModerationErrorFailsClosed(t *testing.T) {
 // TestServeHTTP_UnknownPlanID covers the plan_id lookup that lives in
 // handleChat (the HTTP layer), not in handle -- unlike the other tests
 // here, this one goes through the real ServeMux to exercise that check.
+// TestClientErrorMessage pins down clientErrorMessage's allowlist
+// directly: the two sentinel errors it's meant to expose verbatim, and
+// an arbitrary internal error it must not.
+func TestClientErrorMessage(t *testing.T) {
+	if got := clientErrorMessage(ErrInstantCapExceeded); got != ErrInstantCapExceeded.Error() {
+		t.Errorf("clientErrorMessage(ErrInstantCapExceeded) = %q, want the sentinel's own message", got)
+	}
+
+	wrapped := fmt.Errorf("a request with idempotency_key %q is already in progress for this user: %w", "k1", idempotency.ErrInFlight)
+	if got := clientErrorMessage(wrapped); got != wrapped.Error() {
+		t.Errorf("clientErrorMessage(wrapped ErrInFlight) = %q, want %q", got, wrapped.Error())
+	}
+
+	internal := fmt.Errorf("generate: provider: openrouter error (status 401): invalid api key")
+	if got := clientErrorMessage(internal); got == internal.Error() {
+		t.Errorf("clientErrorMessage(unrecognized internal error) returned the raw error text verbatim: %q", got)
+	}
+}
+
+// TestServeHTTP_InternalErrorDoesNotLeakDetails checks that a failure
+// inside the pipeline (here, moderation's vendor call erroring out) never
+// reaches the HTTP caller as raw error text -- only a generic message,
+// with the real error only in the server log (audit.md's error-leakage
+// finding). "moderation api down" standing in for anything an internal
+// error could carry: vendor response text, model IDs, database/Redis
+// failure details.
+func TestServeHTTP_InternalErrorDoesNotLeakDetails(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.Moderator = moderation.New(&provider.FakeClient{Err: errors.New("moderation api down")}, "fake-moderation-model", "system prompt")
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusBadGateway {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
+	}
+	if got := rec.Body.String(); strings.Contains(got, "moderation api down") {
+		t.Errorf("response body leaked the internal error text: %q", got)
+	}
+}
+
+// TestServeHTTP_InstantCapExceededMessageNotGeneric checks the one
+// allowlisted case: ErrInstantCapExceeded's own message (safe,
+// user-actionable) still reaches the caller verbatim instead of being
+// replaced by clientErrorMessage's generic fallback.
+func TestServeHTTP_InstantCapExceededMessageNotGeneric(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	if err := limits.RecordInstantSpend(context.Background(), s.Store, "u1", 3.0, time.Now()); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if got := rec.Body.String(); !strings.Contains(got, "instant-tier spend cap exceeded") {
+		t.Errorf("response body = %q, want it to contain ErrInstantCapExceeded's own message", got)
+	}
+}
+
 func TestServeHTTP_UnknownPlanID(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 

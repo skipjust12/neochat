@@ -29,6 +29,19 @@ type OpenRouterClient struct {
 	Referer string
 	Title   string
 
+	// MaxTokens, if > 0, is sent as every request's max_tokens -- a hard
+	// ceiling on how many output tokens a single Generate/GenerateStream
+	// call can produce, regardless of the model's own (often much larger,
+	// see configs/models.json's max_output_tokens) default ceiling.
+	// Without this, one request against the priciest catalog model could
+	// run all the way to its own max_output_tokens (128k+) before the
+	// caller ever finds out, since router.RouteResult.EstimatedCostUSD is
+	// only a pre-flight estimate, not something enforced on the actual
+	// vendor call. Zero (the default) sends no max_tokens at all, i.e.
+	// today's behavior -- see cmd/server/main.go for how a real deployment
+	// sets this.
+	MaxTokens int
+
 	httpClient *http.Client
 }
 
@@ -47,8 +60,9 @@ func NewOpenRouterClient(apiKey string) *OpenRouterClient {
 // structs are unchanged from the earlier direct-OpenAI client -- only the
 // base URL, auth header value, and these two optional headers differ.
 type openRouterChatRequest struct {
-	Model    string                  `json:"model"`
-	Messages []openRouterChatMessage `json:"messages"`
+	Model     string                  `json:"model"`
+	Messages  []openRouterChatMessage `json:"messages"`
+	MaxTokens int                     `json:"max_tokens,omitempty"`
 }
 
 type openRouterChatMessage struct {
@@ -71,7 +85,7 @@ type openRouterChatResponse struct {
 }
 
 func (c *OpenRouterClient) Generate(ctx context.Context, apiModelID string, messages []Message) (GenerateResult, error) {
-	reqBody := openRouterChatRequest{Model: apiModelID}
+	reqBody := openRouterChatRequest{Model: apiModelID, MaxTokens: c.MaxTokens}
 	for _, m := range messages {
 		reqBody.Messages = append(reqBody.Messages, openRouterChatMessage{Role: m.Role, Content: m.Content})
 	}
@@ -136,6 +150,7 @@ type openRouterStreamRequest struct {
 	Model         string                  `json:"model"`
 	Messages      []openRouterChatMessage `json:"messages"`
 	Stream        bool                    `json:"stream"`
+	MaxTokens     int                     `json:"max_tokens,omitempty"`
 	StreamOptions struct {
 		IncludeUsage bool `json:"include_usage"`
 	} `json:"stream_options"`
@@ -168,7 +183,7 @@ type openRouterStreamChunk struct {
 // ends, one way or another -- see StreamChunk's doc comment for the exact
 // contract.
 func (c *OpenRouterClient) GenerateStream(ctx context.Context, apiModelID string, messages []Message) (<-chan StreamChunk, error) {
-	reqBody := openRouterStreamRequest{Model: apiModelID, Stream: true}
+	reqBody := openRouterStreamRequest{Model: apiModelID, Stream: true, MaxTokens: c.MaxTokens}
 	reqBody.StreamOptions.IncludeUsage = true
 	for _, m := range messages {
 		reqBody.Messages = append(reqBody.Messages, openRouterChatMessage{Role: m.Role, Content: m.Content})

@@ -36,10 +36,13 @@ func RecordThinkingMaxSpend(ctx context.Context, store SpendStore, userID string
 // CheckInstantOverCap reports whether userID's Instant spend over the
 // trailing 30 days has reached their plan's InstantExtraCapUSD. Unlike
 // CheckThinkingMaxLock, this is never wired into router.Route -- Instant
-// is already the cheapest tier, there is nothing to downgrade to. It
-// exists purely for a gateway-side throttle (queue/delay requests, do not
-// block them) as described in docs/unit-economics.md section 6.5; that
-// throttling behavior itself is out of scope for this package.
+// is already the cheapest tier, there is nothing to downgrade to. Wired
+// into server.prepare instead (checked before classify/moderate run, see
+// server.ErrInstantCapExceeded), which rejects the request outright
+// rather than the queue/delay behavior docs/unit-economics.md section 6.5
+// originally sketched -- this repo has no request queue to delay into,
+// and an outright reject is simple to reason about for what's meant to be
+// an anti-bot ceiling in the first place.
 func CheckInstantOverCap(ctx context.Context, store SpendStore, plan PlanLimits, userID string) (bool, error) {
 	spent, err := store.Sum(ctx, userID, PoolInstant, rollingWindow)
 	if err != nil {
