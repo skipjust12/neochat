@@ -2,8 +2,13 @@
 // calling a cheap model with the system prompt in
 // prompts/moderation_system_prompt.md. This is Layer 1 ("input") of the
 // two-layer design in README's "Moderation" section -- Layer 2 (checking
-// generated output incrementally during streaming) needs a streaming
-// response pipeline this repo doesn't have yet, so it isn't built here.
+// generated output incrementally during streaming) is a deliberate
+// product decision not to build, not a gap waiting on a streaming
+// pipeline (POST /chat/stream exists): every catalog model already
+// carries its own vendor-side safety tuning, so Layer 2 would only ever
+// catch a jailbreak that both slipped past this layer's input check and
+// got a frontier model to comply anyway -- a narrow case not worth a
+// second moderation-model call on every request. See README "Moderation".
 package moderation
 
 import (

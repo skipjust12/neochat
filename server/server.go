@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"neochat/auth"
 	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
@@ -136,22 +137,69 @@ type Server struct {
 	SummaryTailMessages int
 
 	// IPRateLimiter throttles POST /chat and /chat/stream by client IP,
-	// checked in Mux's wrapping before decodeChatRequest even runs -- see
-	// audit.md finding #2. This is deliberately IP-keyed, not user_id-keyed:
-	// user_id is client-supplied and unauthenticated (see chatRequest.UserID's
-	// doc comment), so a limiter keyed on it would just move with whatever
-	// user_id an abusive client claims next request. Nil (the zero value)
-	// disables the guard entirely, same nil-disables convention as
-	// Idempotency -- a Server built without one (e.g. most tests, which call
-	// handle/handleStream directly and never go through Mux anyway) behaves
-	// exactly as it did before this field existed.
+	// checked in Mux's wrapping before authentication even runs -- see
+	// audit.md finding #2. It is the outermost of the two limiters because
+	// it's the one that costs nothing to evaluate: an unauthenticated
+	// flood is rejected on a counter, without an Authenticate call (a
+	// database lookup) per request.
+	//
+	// Being IP-keyed is what makes it useful against callers with no valid
+	// credential at all -- the case UserRateLimiter structurally cannot
+	// see, since it only exists downstream of a successful Authenticate.
+	// The two cover opposite halves of the same problem; see
+	// UserRateLimiter for the half this one misses.
+	//
+	// Nil (the zero value) disables the guard entirely, same nil-disables
+	// convention as Idempotency -- a Server built without one (e.g. most
+	// tests, which call handle/handleStream directly and never go through
+	// Mux anyway) behaves exactly as it did before this field existed.
 	IPRateLimiter ratelimit.Limiter
+
+	// UserRateLimiter throttles POST /chat and /chat/stream by
+	// authenticated user_id, checked after authenticated resolves the
+	// caller's identity and before decodeChatRequest runs.
+	//
+	// This is the per-user_id half of audit.md finding #2's recommendation,
+	// which was impossible until finding #1 was fixed: while user_id came
+	// from the request body, a limiter keyed on it just moved with
+	// whatever user_id an abusive client claimed next request, so IP was
+	// the only key worth counting. Now that user_id comes from a bearer
+	// token this counts what it means to count -- and it catches exactly
+	// what IPRateLimiter cannot, namely one credential (leaked, shared, or
+	// scripted against) driving traffic from many source addresses, where
+	// no single IP's counter ever climbs high enough to trip.
+	//
+	// Nil (the zero value) disables it, same convention as IPRateLimiter.
+	UserRateLimiter ratelimit.Limiter
+
+	// Auth authenticates every POST /chat and POST /chat/stream call and
+	// resolves it to the real (user_id, plan_id) -- see the authenticated
+	// middleware and auth.Authenticator's doc comment. Required, unlike
+	// IPRateLimiter/Idempotency's nil-disables convention: an
+	// unauthenticated request pipeline is exactly audit.md finding #1
+	// (spend-cap bypass by claiming a fresh user_id per request, plan_id
+	// spoofing, IDOR on stored conversations), not an optional hardening
+	// layer to be skippable by a nil field.
+	Auth auth.Authenticator
 }
 
 // chatRequest is the wire format for POST /chat.
 type chatRequest struct {
-	UserID string `json:"user_id"`
-	PlanID string `json:"plan_id"`
+	// UserID and PlanID are never read from the client, even though a
+	// caller can still send "user_id"/"plan_id" in the JSON body -- json:"-"
+	// means json.Decode silently ignores both. decodeChatRequest fills
+	// them in itself right after decoding, from the auth.Identity the
+	// authenticated middleware resolved for this request's bearer token
+	// (see Server.Auth). This is the fix for audit.md finding #1: before
+	// this, these two fields came straight from client-supplied JSON, so
+	// any caller could claim to be any user_id on any plan_id. Still plain
+	// exported fields rather than a separate parameter threaded alongside
+	// chatRequest, because every step below (prepare, finalize,
+	// recordAbortedSpend, reserveIdempotent, ...) already reads
+	// req.UserID/req.PlanID -- only decodeChatRequest's source for them
+	// changed.
+	UserID string `json:"-"`
+	PlanID string `json:"-"`
 
 	// ConversationID threads this request onto an existing conversation's
 	// stored history (see conversation/). Empty starts a new one --
@@ -226,13 +274,24 @@ type chatResponse struct {
 }
 
 // Mux returns an http.ServeMux with routes registered. POST /chat and
-// POST /chat/stream go through rateLimited first (GET /health does not --
-// container/orchestrator health checks shouldn't compete with real
-// traffic for the same quota), and everything goes through recovered.
+// POST /chat/stream go through, outermost first: recovered ->
+// rateLimited (per client IP) -> authenticated -> userRateLimited (per
+// authenticated user_id) -> the handler. GET /health goes through
+// recovered only -- container/orchestrator health checks shouldn't
+// compete with real traffic for either quota, and have no credential to
+// check anyway.
+//
+// The ordering is the point: the cheapest check that can reject a
+// request runs first. A per-IP counter costs nothing and needs no
+// identity, so it goes ahead of the Authenticate call (a database
+// lookup) it would otherwise let an unauthenticated flood drive; the
+// per-user counter can only run after that call, since its key doesn't
+// exist until the token resolves. See IPRateLimiter/UserRateLimiter for
+// why both exist rather than either alone.
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.handleChat)))
-	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.handleChatStream)))
+	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
+	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
 	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -300,8 +359,8 @@ func recoverGoroutine(what string, errp *error) {
 // request from an IP that has exceeded its quota gets a 429 and next
 // never runs. A limiter error (e.g. Redis unreachable) fails open --
 // logged and the request let through -- rather than turning a Redis blip
-// into a chat outage; see IPRateLimiter's doc comment for why this check
-// is IP-keyed rather than user_id-keyed.
+// into a chat outage; see IPRateLimiter's doc comment for what this
+// check catches that userRateLimited's cannot.
 func (s *Server) rateLimited(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.IPRateLimiter != nil {
@@ -315,6 +374,37 @@ func (s *Server) rateLimited(next http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 		next(w, r)
+	}
+}
+
+// userRateLimited wraps next with s.UserRateLimiter, if one is
+// configured, keyed on the already-authenticated identity.UserID -- so it
+// must sit inside authenticated, which is what produces that identity
+// (see Mux). A user over quota gets a 429 and next never runs.
+//
+// Fails open on a limiter error for the same reason rateLimited does: a
+// Redis blip should not read as "everyone is over quota". Note this makes
+// the two limiters degrade together, since they share one Redis today --
+// acceptable because failing open on a throttle is a bounded loss of
+// defense, whereas failing closed would be a self-inflicted outage.
+//
+// The 429 body names the API key rather than reusing rateLimited's
+// generic "too many requests", so a caller who legitimately hit their own
+// per-key quota can tell that apart from being caught in an IP-wide
+// throttle they may share with others behind the same NAT. It reveals
+// nothing the caller doesn't already hold.
+func (s *Server) userRateLimited(next identityHandler) identityHandler {
+	return func(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+		if s.UserRateLimiter != nil {
+			allowed, err := s.UserRateLimiter.Allow(r.Context(), identity.UserID)
+			if err != nil {
+				log.Printf("server: user rate limiter check failed for user_id=%s, failing open: %v", identity.UserID, err)
+			} else if !allowed {
+				http.Error(w, "too many requests for this API key", http.StatusTooManyRequests)
+				return
+			}
+		}
+		next(w, r, identity)
 	}
 }
 
@@ -333,12 +423,58 @@ func clientIP(r *http.Request) string {
 	return host
 }
 
+// identityHandler is an HTTP handler that additionally receives the
+// caller's authenticated identity -- handleChat/handleChatStream's actual
+// signature once wrapped by authenticated below.
+type identityHandler func(w http.ResponseWriter, r *http.Request, identity auth.Identity)
+
+// authenticated verifies the request's "Authorization: Bearer <api-key>"
+// header via s.Auth before calling next, resolving it to the caller's
+// real auth.Identity instead of the client-supplied user_id/plan_id
+// decodeChatRequest used to trust directly out of the JSON body (audit.md
+// finding #1). A missing/malformed header and a token s.Auth doesn't
+// recognize both get the same 401 with the same message -- see
+// auth.ErrInvalidToken's doc comment for why they're not distinguished.
+func (s *Server) authenticated(next identityHandler) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		token, ok := bearerToken(r)
+		if !ok {
+			http.Error(w, "missing or malformed Authorization header, want: Bearer <api-key>", http.StatusUnauthorized)
+			return
+		}
+		identity, err := s.Auth.Authenticate(r.Context(), token)
+		if err != nil {
+			if !errors.Is(err, auth.ErrInvalidToken) {
+				log.Printf("server: auth check failed: %v", err)
+			}
+			http.Error(w, "invalid API key", http.StatusUnauthorized)
+			return
+		}
+		next(w, r, identity)
+	}
+}
+
+// bearerToken extracts the credential from an "Authorization: Bearer
+// <token>" request header, reporting false if the header is absent, uses
+// a different scheme, or the token portion is empty/all-whitespace.
+func bearerToken(r *http.Request) (string, bool) {
+	const prefix = "Bearer "
+	h := r.Header.Get("Authorization")
+	if !strings.HasPrefix(h, prefix) {
+		return "", false
+	}
+	token := strings.TrimSpace(h[len(prefix):])
+	return token, token != ""
+}
+
 // decodeChatRequest parses and validates the POST /chat and POST
 // /chat/stream request bodies -- both endpoints run the exact same
 // pipeline (see handle/handleStream) and differ only in how the result is
 // delivered, so their input handling is shared here rather than
-// duplicated per handler.
-func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]limits.PlanLimits) (chatRequest, limits.PlanLimits, bool) {
+// duplicated per handler. identity is the caller authenticated already
+// resolved; decodeChatRequest is what actually stamps it onto the
+// returned chatRequest (see chatRequest.UserID/PlanID's doc comment).
+func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]limits.PlanLimits, identity auth.Identity) (chatRequest, limits.PlanLimits, bool) {
 	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
 
 	var req chatRequest
@@ -351,13 +487,23 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 		http.Error(w, fmt.Sprintf("invalid request body: %v", err), http.StatusBadRequest)
 		return chatRequest{}, limits.PlanLimits{}, false
 	}
-	if req.UserID == "" || req.Message == "" || req.PlanID == "" {
-		http.Error(w, "user_id, plan_id, and message are required", http.StatusBadRequest)
+	req.UserID = identity.UserID
+	req.PlanID = identity.PlanID
+
+	if req.Message == "" {
+		http.Error(w, "message is required", http.StatusBadRequest)
 		return chatRequest{}, limits.PlanLimits{}, false
 	}
 	plan, ok := plans[req.PlanID]
 	if !ok {
-		http.Error(w, fmt.Sprintf("unknown plan_id %q", req.PlanID), http.StatusBadRequest)
+		// identity.PlanID came from api_keys (see auth.Store.IssueKey), not
+		// from this request -- landing here means the plan attached to this
+		// caller's key was since removed from configs/plans.json, a
+		// server-side data-integrity problem, not a mistake in this
+		// request. Logged with the user_id so it's traceable, but not
+		// phrased to the caller as their input being wrong.
+		log.Printf("server: authenticated user_id=%s has unknown plan_id %q, check configs/plans.json", req.UserID, req.PlanID)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
 		return chatRequest{}, limits.PlanLimits{}, false
 	}
 	if req.Persona != "" && !isValidPersona(req.Persona) {
@@ -387,8 +533,8 @@ func clientErrorMessage(err error) string {
 	return "an internal error occurred processing this request"
 }
 
-func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
-	req, plan, ok := decodeChatRequest(w, r, s.Plans)
+func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	req, plan, ok := decodeChatRequest(w, r, s.Plans, identity)
 	if !ok {
 		return
 	}
@@ -426,8 +572,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 //   - "blocked": Layer 1 moderation flagged the request -- the full
 //     chatResponse (Blocked=true), no "meta"/"delta" ever preceded it.
 //   - "error": the request failed -- {message}.
-func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request) {
-	req, plan, ok := decodeChatRequest(w, r, s.Plans)
+func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	req, plan, ok := decodeChatRequest(w, r, s.Plans, identity)
 	if !ok {
 		return
 	}

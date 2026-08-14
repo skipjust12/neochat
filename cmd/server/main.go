@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"neochat/auth"
 	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
@@ -209,17 +210,26 @@ func main() {
 	moderatorWithCost.CostInputPerMTok = moderationCostInputPerMTok
 	moderatorWithCost.CostOutputPerMTok = moderationCostOutputPerMTok
 
-	// Per-IP request throttle on POST /chat and /chat/stream -- see
-	// server.Server.IPRateLimiter's doc comment and audit.md finding #2.
-	// Deliberately IP-keyed rather than user_id-keyed: user_id is
-	// client-supplied and unauthenticated today (see chatRequest.UserID's
-	// doc comment), so this is the one layer that can't be sidestepped by
-	// just claiming a different user_id on the next request.
-	// RATE_LIMIT_PER_MINUTE overrides the per-IP request count; 60/min is a
-	// generous placeholder for a service with no real traffic patterns
-	// measured yet -- tighten once there's usage data to tune against.
+	// Two request throttles on POST /chat and /chat/stream, over different
+	// keys -- see server.Server.IPRateLimiter/UserRateLimiter and audit.md
+	// finding #2. The per-IP one catches a caller with no valid credential
+	// at all (the per-user one never sees those, since it runs after
+	// authentication); the per-user one follows a single key across many
+	// source addresses (which no per-IP counter can see). Distinct prefixes
+	// keep their Redis keyspaces apart.
+	//
+	// Both default to a deliberately generous 60/min: there are no measured
+	// traffic patterns to tune against yet, and a throttle that
+	// false-positives on real use is worse than a loose one at this stage.
+	// The per-user limit is the one worth tightening first once usage data
+	// exists -- a human sends single-digit messages per minute, so its
+	// real ceiling is far below 60, whereas the per-IP limit has to keep
+	// headroom for however many users share one NAT.
 	rateLimitPerMinute := getenvIntDefault("RATE_LIMIT_PER_MINUTE", 60)
 	ipRateLimiter := ratelimit.NewRedisLimiter(redisClient, "chat_ip", rateLimitPerMinute, time.Minute)
+
+	userRateLimitPerMinute := getenvIntDefault("USER_RATE_LIMIT_PER_MINUTE", 60)
+	userRateLimiter := ratelimit.NewRedisLimiter(redisClient, "chat_user", userRateLimitPerMinute, time.Minute)
 
 	srv := &server.Server{
 		Router:     router.NewRouter(catalog, weights),
@@ -260,7 +270,13 @@ func main() {
 			"moonshot":  generationClient,
 			"deepseek":  generationClient,
 		},
-		IPRateLimiter: ipRateLimiter,
+		IPRateLimiter:   ipRateLimiter,
+		UserRateLimiter: userRateLimiter,
+		// Postgres-backed -- see auth.Store's doc comment and audit.md
+		// finding #1. Keys are minted out of band via `go run
+		// ./cmd/issuekey` (see docs/running-locally.md); there is no HTTP
+		// signup endpoint yet.
+		Auth: auth.NewPostgresStore(pgDB),
 	}
 
 	addr := os.Getenv("ADDR")
