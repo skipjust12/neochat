@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"neochat/auth"
 	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
@@ -261,6 +262,11 @@ func main() {
 			"deepseek":  generationClient,
 		},
 		IPRateLimiter: ipRateLimiter,
+		// Postgres-backed -- see auth.Store's doc comment and audit.md
+		// finding #1. Keys are minted out of band via `go run
+		// ./cmd/issuekey` (see docs/running-locally.md); there is no HTTP
+		// signup endpoint yet.
+		Auth: auth.NewPostgresStore(pgDB),
 	}
 
 	addr := os.Getenv("ADDR")

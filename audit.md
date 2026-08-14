@@ -1,6 +1,6 @@
 # Аудит безопасности — neochat
 
-Дата: 2026-08-13 (обновлено 2026-08-13 — закрыты №2 частично, №3, №4, №9, №10; второй проход добавил и закрыл №11–№14; третий — №15–№17. См. пометки "✅ Исправлено" в каждом разделе).
+Дата: 2026-08-13 (обновлено 2026-08-13 — закрыты №2 частично, №3, №4, №9, №10; второй проход добавил и закрыл №11–№14; третий — №15–№17; 2026-08-14 — закрыты №1 и, как следствие, №5. См. пометки "✅ Исправлено" в каждом разделе).
 Объём: весь репозиторий (Go-код, `docker-compose.yml`/`Dockerfile`, конфиги в `configs/`, git-история, README/`docs/`).
 Не проверялось: живой запущенный стенд (аудит статический, по коду), сторонние сервисы (OpenRouter) как таковые.
 
@@ -10,7 +10,7 @@
 
 ## 🔴 Критично
 
-### 1. Полное отсутствие аутентификации/авторизации на `/chat` и `/chat/stream`
+### 1. Полное отсутствие аутентификации/авторизации на `/chat` и `/chat/stream` — ✅ Исправлено
 
 **Где:** `server/server.go:116-118` (поля `chatRequest.UserID`/`PlanID`), `server/server.go:208-228` (`decodeChatRequest` — только проверка "не пусто" и "существует в каталоге", без проверки принадлежности вызывающему).
 
@@ -39,6 +39,12 @@
 3. `plan_id` должен подтягиваться сервером из записи о подписке пользователя в БД (или из claim'а токена), а не приниматься от клиента как есть; клиентское поле `plan_id`, если оставлять, должно как минимум сверяться с этой записью, а не диктовать её.
 4. Добавить middleware в `server.Mux()` (`server.go:193-201`), которая до `decodeChatRequest` проверяет токен/ключ и прокидывает аутентифицированный `user_id`/`plan_id` через `context.Context`, а не через тело запроса.
 
+**Сделано (2026-08-14):** обязательная аутентификация на `/chat`/`/chat/stream` через заголовок `Authorization: Bearer <api-key>`. Новый пакет `auth/`: `Authenticator` (единственный метод, `Authenticate(ctx, token) (Identity, error)` — это всё, от чего зависит `server.Server`, специально узкий интерфейс, см. ниже) и `Store` (`Authenticator` + `IssueKey`), с двумя реализациями — `auth.PostgresStore` (таблица `api_keys`, `db/migrations/0004_api_keys.sql`: `token_hash` PK, `user_id`, `plan_id`, `created_at`; хранится только SHA-256 хэш токена, не сырое значение — утечка таблицы не отдаёт рабочие credentials) и `auth.InMemoryStore` (юнит-тесты, по образу `idempotency.InMemoryStore`). `server.Server.Mux()` оборачивает `/chat`/`/chat/stream` новым `authenticated` middleware, включённым между `rateLimited` и самим хендлером — отсутствующий/невалидный токен получает 401 до захода в БД по остальному пайплайну (classify/moderate — тоже billed-вызовы, см. находку №2's "Сделано"). `decodeChatRequest` больше не читает `user_id`/`plan_id` из JSON-тела вообще — `chatRequest.UserID`/`PlanID` теперь `json:"-"`, значение проставляется из `auth.Identity`, которую `authenticated` резолвит из токена и передаёт хендлеру параметром (не через `context.Context`, как предлагала рекомендация №4 — тот же эффект чуть проще, поскольку identity нужна ровно на один вызов вглубь, до `decodeChatRequest`, а не через несколько независимых слоёв, где `context.Context` обычно и оправдан). Рекомендации 1–4 закрыты по существу. PoC из этого пункта (слив бюджета: новый случайный `user_id`/`plan_id":"max"` на каждый запрос через `manual_model_id`) больше не воспроизводится — `user_id`/`plan_id` подставляются сервером из записи в `api_keys`, тело запроса на них больше не влияет.
+
+**Как выдаются ключи (сознательно временное решение, см. `auth` package doc comment):** нет ни signup, ни login — `cmd/issuekey` (`go run ./cmd/issuekey -user_id=... -plan_id=...`) вставляет строку в `api_keys` и печатает токен один раз, оператор передаёт его пользователю вручную вне системы. Замена на самообслуживаемую выдачу позже — это вызов того же `auth.Store.IssueKey` из HTTP-хендлера регистрации вместо CLI; `server.go`, `auth.Authenticator`, схема `api_keys` не меняются. Миграция на полноценный auth (JWT/сессии/OAuth) — это новая реализация `Authenticator`, а не переделка пайплайна: `server.Server.Auth` типизирован как `auth.Authenticator`, не как конкретный `*auth.PostgresStore`.
+
+**Не закрыто этим фиксом:** отзыв ключей (нет `revoked_at`/эндпоинта отзыва — сейчас единственный способ обезвредить утёкший ключ — вручную удалить его строку из `api_keys`); срок действия токенов (не истекают); per-`user_id` rate limiting (`IPRateLimiter` остаётся IP-based — теперь мог бы стать per-`user_id`, раз `user_id` больше не подделывается, но это отдельная, не запрошенная в этом заходе доработка — см. обновлённый статус находки №2 ниже).
+
 ---
 
 ### 2. Rate limiting нигде не подключён к реальному пайплайну — ✅ Исправлено (частично)
@@ -53,8 +59,8 @@
 
 **Сделано:**
 - `limits.CheckInstantOverCap` теперь вызывается первым делом в `server.prepare` (`server/server.go`), до classify/moderate — превышение анти-бот-потолка отклоняет запрос целиком (`server.ErrInstantCapExceeded`, HTTP 429), не тратя деньги ещё и на classify/moderate. Это "reject", а не "queue/delay" из исходного дизайна в `docs/unit-economics.md` — очереди в репозитории нет, а для анти-бот-потолка простой отказ достаточен и не меняет продуктовую семантику Thinking+Max-капа (тот по-прежнему никогда не блокирует, только даунгрейдит).
-- Новый пакет `ratelimit/` (`Limiter` интерфейс + `InMemoryLimiter`/`RedisLimiter`, по образу `limits.SpendStore`) добавляет **per-IP** троттлинг `POST /chat`/`POST /chat/stream` через `server.Server.IPRateLimiter`, включаемый в `server.Mux()` до `decodeChatRequest`. Специально IP-based, а не по `user_id` — `user_id` всё ещё не аутентифицирован (находка №1 не закрыта), лимитер по нему тривиально обходится сменой `user_id` на каждый запрос, а по IP — нет. Настраивается через `RATE_LIMIT_PER_MINUTE` (по умолчанию 60/мин), подключено в `cmd/server/main.go`.
-- **Не закрыто:** per-`user_id` компонент из рекомендации всё ещё отсутствует (не имеет смысла без находки №1 — см. её описание), и per-IP лимит сам по себе обходится распределением запросов по многим IP.
+- Новый пакет `ratelimit/` (`Limiter` интерфейс + `InMemoryLimiter`/`RedisLimiter`, по образу `limits.SpendStore`) добавляет **per-IP** троттлинг `POST /chat`/`POST /chat/stream` через `server.Server.IPRateLimiter`, включаемый в `server.Mux()` до `decodeChatRequest`. Изначально IP-based, а не по `user_id`, потому что на момент этого фикса `user_id` ещё не был аутентифицирован (находка №1 была не закрыта) — лимитер по нему тривиально обходился сменой `user_id` на каждый запрос, а по IP нет. Настраивается через `RATE_LIMIT_PER_MINUTE` (по умолчанию 60/мин), подключено в `cmd/server/main.go`.
+- **Не закрыто:** per-`user_id` компонент из рекомендации всё ещё отсутствует. Находка №1 (единственная причина, по которой per-`user_id` лимит раньше не имел смысла) закрыта 2026-08-14 — `user_id` теперь аутентифицирован и больше не подделывается, так что добавить `ratelimit.Limiter` ещё раз, keyed по `auth.Identity.UserID`, теперь осмысленно, но это самостоятельная, отдельно не запрошенная доработка, не сделанная в рамках фикса №1. Per-IP лимит сам по себе по-прежнему обходится распределением запросов по многим IP.
 
 ---
 
@@ -90,9 +96,11 @@
 
 ## 🟡 Средний
 
-### 5. IDOR как прямое следствие находки №1 (детализация)
+### 5. IDOR как прямое следствие находки №1 (детализация) — ✅ Исправлено вместе с №1
 
-Уже описан в п.1, выделяю отдельно, потому что фикс частично отличается: даже после ввода аутентификации имеет смысл на уровне `server.prepare`/`conversation.Store` явно проверять, что `conversation_id` из запроса действительно принадлежит аутентифицированному `user_id` (сейчас SQL-запрос и так фильтрует по обеим колонкам — `conversation/postgres_store.go:36` — так что после фикса №1 эта находка закрывается автоматически, но стоит покрыть тестом именно этот сценарий "чужой conversation_id под своим user_id не отдаёт данные").
+Уже описан в п.1, выделен отдельно, потому что фикс частично отличается: даже после ввода аутентификации имеет смысл на уровне `server.prepare`/`conversation.Store` явно проверять, что `conversation_id` из запроса действительно принадлежит аутентифицированному `user_id` (сейчас SQL-запрос и так фильтрует по обеим колонкам — `conversation/postgres_store.go:36` — так что после фикса №1 эта находка закрывается автоматически, но стоит покрыть тестом именно этот сценарий "чужой conversation_id под своим user_id не отдаёт данные").
+
+**Сделано:** закрыто фиксом находки №1, ровно как здесь и предполагалось — `conversation_id` из запроса теперь всегда просматривается под серверным (аутентифицированным) `user_id`, а не клиентским, так что `(user_id, conversation_id)`-фильтр в `conversation.Store.History`/`GetSummary` (`conversation/postgres_store.go:36`) больше не может быть обманут подставным `user_id`: единственный путь, которым атакующий раньше мог туда подставить чужой `user_id`, был сам JSON-тело запроса, и его больше нет. Отдельный regression-тест не добавлялся — сценарий "чужой `conversation_id` под своим `user_id` не отдаёт данные" уже покрыт на уровне хранилища `TestPostgresStore_IsolatesByUserAndConversation`/`TestInMemoryStore_IsolatesByUserAndConversation` (`conversation/`), а новые тесты `server/server_test.go`/`auth/` подтверждают, что `user_id` действительно берётся из токена, а не из тела — вместе эти два факта и есть доказательство закрытия.
 
 ### 6. Модерация видит только последнее сообщение; нет проверки исходящего текста
 
@@ -221,11 +229,11 @@
 
 | № | Находка | Серьёзность | Статус | Файл(ы) |
 |---|---|---|---|---|
-| 1 | Нет аутентификации/авторизации на `/chat`, `/chat/stream` | Критично | Открыто | `server/server.go` |
-| 2 | Rate limiting нигде не подключён к реальному пайплайну | Критично | ✅ Частично (IP-лимитер + Instant-кап; per-user_id невозможен без №1) | `limits/limits.go`, `server/server.go`, `ratelimit/` |
+| 1 | Нет аутентификации/авторизации на `/chat`, `/chat/stream` | Критично | ✅ Исправлено | `auth/`, `server/server.go`, `cmd/issuekey/` |
+| 2 | Rate limiting нигде не подключён к реальному пайплайну | Критично | ✅ Частично (IP-лимитер + Instant-кап; per-user_id теперь возможен после №1, но не сделан) | `limits/limits.go`, `server/server.go`, `ratelimit/` |
 | 3 | Нет лимита размера тела запроса и таймаутов HTTP-сервера | Высокий | ✅ Исправлено | `server/server.go`, `cmd/server/main.go` |
 | 4 | Нет верхней границы токенов ответа при вызове провайдера | Высокий | ✅ Исправлено (глобальный потолок, не per-модельный) | `provider/openrouter.go` |
-| 5 | IDOR (следствие №1) | Средний | Открыто (закроется вместе с №1) | `conversation/postgres_store.go` |
+| 5 | IDOR (следствие №1) | Средний | ✅ Исправлено вместе с №1 | `conversation/postgres_store.go` |
 | 6 | Модерация не покрывает всю историю и не проверяет вывод | Средний | Открыто | `server/server.go` |
 | 7 | Плейсхолдер-пароли в `.env.example` | Низкий | Открыто | `.env.example` |
 | 8 | Нет явной политики CORS | Низкий | Открыто | `server/server.go` |
@@ -239,4 +247,6 @@
 | 16 | Прерванная генерация не попадала в учёт трат | Высокий (утечка расходов) | ✅ Исправлено | `server/server.go` |
 | 17 | Нет ретраев на 429/5xx | Средний | ✅ Исправлено | `provider/retry.go` |
 
-Реализованные фиксы (№2 частично, №3, №4, №9, №10) покрыты тестами: `server/server_test.go` (`TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate`, `TestServeHTTP_InstantCapExceededReturns429`, `TestServeHTTP_RequestBodyTooLarge`, `TestServeHTTP_RateLimitedIPReturns429`, `TestClientErrorMessage`, `TestServeHTTP_InternalErrorDoesNotLeakDetails`, `TestServeHTTP_InstantCapExceededMessageNotGeneric`), `ratelimit/memory_limiter_test.go`, `ratelimit/redis_limiter_test.go` (integration-tagged), `provider/openrouter_test.go` (`TestOpenRouterClient_Generate_MaxTokens`, `TestOpenRouterClient_Generate_MaxTokensOmittedWhenUnset`); graceful shutdown additionally verified manually with a standalone smoke test (SIGTERM mid-request, in-flight request completes before the process exits). Полная модель безопасности сервиса всё ещё зависит от находки №1 — она осознанно не тронута в этом PR по просьбе автора.
+Реализованные фиксы (№2 частично, №3, №4, №9, №10) покрыты тестами: `server/server_test.go` (`TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate`, `TestServeHTTP_InstantCapExceededReturns429`, `TestServeHTTP_RequestBodyTooLarge`, `TestServeHTTP_RateLimitedIPReturns429`, `TestClientErrorMessage`, `TestServeHTTP_InternalErrorDoesNotLeakDetails`, `TestServeHTTP_InstantCapExceededMessageNotGeneric`), `ratelimit/memory_limiter_test.go`, `ratelimit/redis_limiter_test.go` (integration-tagged), `provider/openrouter_test.go` (`TestOpenRouterClient_Generate_MaxTokens`, `TestOpenRouterClient_Generate_MaxTokensOmittedWhenUnset`); graceful shutdown additionally verified manually with a standalone smoke test (SIGTERM mid-request, in-flight request completes before the process exits).
+
+Находки №1 и №5 (2026-08-14) покрыты тестами: `auth/memory_store_test.go` (issue → authenticate round-trip, unknown/empty token, uniqueness), `auth/token_test.go` (hash determinism, token uniqueness/prefix), `auth/postgres_store_test.go` (integration-tagged — тот же round-trip против реального Postgres, плюс явная проверка, что сырой токен нигде не хранится); `server/server_test.go` теперь требует `Authorization: Bearer` на каждом `TestServeHTTP_*`-тесте, включая новый `TestServeHTTP_UnknownPlanID` (проверяет, что plan_id теперь берётся из идентичности, а не из тела — несуществующий план у аутентифицированного ключа даёт 500, не 400). Полная модель безопасности сервиса больше не зависит от находки №1.

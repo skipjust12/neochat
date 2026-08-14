@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"neochat/auth"
 	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
@@ -81,7 +82,28 @@ func newTestServer(t *testing.T, genResponses []provider.GenerateResult) (*Serve
 			"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10.0, InstantExtraCapUSD: 3.0},
 		},
 		Generators: map[string]provider.Client{"openai": genClient},
+		Auth:       auth.NewInMemoryStore(),
 	}, genClient
+}
+
+// authHeader mints a fresh API key for (userID, planID) against s.Auth --
+// an *auth.InMemoryStore for every Server newTestServer builds -- and
+// returns the "Authorization" header value a test request needs to reach
+// handleChat/handleChatStream as that identity. Tests that call
+// s.handle/s.handleStream directly with a chatRequest{UserID: ...}
+// literal never go through authenticated at all, so they don't need this;
+// only the TestServeHTTP_* tests exercising the real net/http path do.
+func authHeader(t *testing.T, s *Server, userID, planID string) string {
+	t.Helper()
+	store, ok := s.Auth.(*auth.InMemoryStore)
+	if !ok {
+		t.Fatalf("authHeader: s.Auth is %T, want *auth.InMemoryStore", s.Auth)
+	}
+	token, err := store.IssueKey(context.Background(), userID, planID)
+	if err != nil {
+		t.Fatalf("authHeader: IssueKey: %v", err)
+	}
+	return "Bearer " + token
 }
 
 func TestHandle_HappyPath(t *testing.T) {
@@ -349,13 +371,14 @@ func TestHandle_NoSystemMessageWhenPersonaPromptNotWrittenYet(t *testing.T) {
 
 // TestServeHTTP_UnknownPersonaRejected checks an unrecognized persona name
 // (a typo, or a client not yet updated to a persona list change) is
-// rejected up front with 400, the same way an unknown plan_id is --
-// before any classify/moderate/route/generate work happens.
+// rejected up front with 400, before any classify/moderate/route/generate
+// work happens.
 func TestServeHTTP_UnknownPersonaRejected(t *testing.T) {
 	s, genClient := newTestServer(t, nil)
 
-	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", Persona: "Snarky"})
+	body, _ := json.Marshal(chatRequest{Message: "hi", Persona: "Snarky"})
 	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
 	rec := httptest.NewRecorder()
 
 	s.Mux().ServeHTTP(rec, req)
@@ -576,8 +599,9 @@ func TestServeHTTP_InstantCapExceededReturns429(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
 	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
 	rec := httptest.NewRecorder()
 
 	s.Mux().ServeHTTP(rec, req)
@@ -595,11 +619,11 @@ func TestServeHTTP_RequestBodyTooLarge(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 
 	oversized := chatRequest{
-		UserID: "u1", PlanID: "pro",
 		Message: strings.Repeat("a", maxRequestBodyBytes+1),
 	}
 	body, _ := json.Marshal(oversized)
 	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
 	rec := httptest.NewRecorder()
 
 	s.Mux().ServeHTTP(rec, req)
@@ -618,9 +642,11 @@ func TestServeHTTP_RateLimitedIPReturns429(t *testing.T) {
 	})
 	s.IPRateLimiter = ratelimit.NewInMemoryLimiter(1, time.Minute)
 
-	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	bearer := authHeader(t, s, "u1", "pro")
 
 	req1 := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req1.Header.Set("Authorization", bearer)
 	rec1 := httptest.NewRecorder()
 	s.Mux().ServeHTTP(rec1, req1)
 	if rec1.Code != http.StatusOK {
@@ -628,6 +654,7 @@ func TestServeHTTP_RateLimitedIPReturns429(t *testing.T) {
 	}
 
 	req2 := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req2.Header.Set("Authorization", bearer)
 	rec2 := httptest.NewRecorder()
 	s.Mux().ServeHTTP(rec2, req2)
 	if rec2.Code != http.StatusTooManyRequests {
@@ -810,9 +837,6 @@ func TestHandle_ModerationErrorFailsClosed(t *testing.T) {
 	}
 }
 
-// TestServeHTTP_UnknownPlanID covers the plan_id lookup that lives in
-// handleChat (the HTTP layer), not in handle -- unlike the other tests
-// here, this one goes through the real ServeMux to exercise that check.
 // TestHandle_ClassifierPanicBecomesErrorNotProcessCrash is the regression
 // test for audit.md's panic finding. The panic is raised inside the
 // goroutine prepare spawns for Classify -- the case net/http's own
@@ -1014,8 +1038,9 @@ func TestServeHTTP_InternalErrorDoesNotLeakDetails(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 	s.Moderator = moderation.New(&provider.FakeClient{Err: errors.New("moderation api down")}, "fake-moderation-model", "system prompt")
 
-	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
 	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
 	rec := httptest.NewRecorder()
 
 	s.Mux().ServeHTTP(rec, req)
@@ -1038,8 +1063,9 @@ func TestServeHTTP_InstantCapExceededMessageNotGeneric(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
 	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
 	rec := httptest.NewRecorder()
 
 	s.Mux().ServeHTTP(rec, req)
@@ -1049,17 +1075,25 @@ func TestServeHTTP_InstantCapExceededMessageNotGeneric(t *testing.T) {
 	}
 }
 
+// TestServeHTTP_UnknownPlanID checks the plan_id lookup in
+// decodeChatRequest for a plan_id that isn't a client mistake: plan_id
+// now comes from the authenticated identity (whatever cmd/issuekey wrote
+// into api_keys at issuance), not from the request body, so an unknown
+// value here means that key's stored plan was since removed from
+// configs/plans.json -- a server-side data-integrity problem, hence 500,
+// not the 400 a bad client input would get.
 func TestServeHTTP_UnknownPlanID(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 
-	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "bogus", Message: "hi"})
+	body, _ := json.Marshal(chatRequest{Message: "hi"})
 	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "bogus"))
 	rec := httptest.NewRecorder()
 
 	s.Mux().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusBadRequest {
-		t.Errorf("status = %d, want %d", rec.Code, http.StatusBadRequest)
+	if rec.Code != http.StatusInternalServerError {
+		t.Errorf("status = %d, want %d, body = %s", rec.Code, http.StatusInternalServerError, rec.Body.String())
 	}
 }
 
@@ -1070,8 +1104,9 @@ func TestServeHTTP_HappyPath(t *testing.T) {
 		{Text: "hello", InputTokens: 100, OutputTokens: 50},
 	})
 
-	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
 	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
 	rec := httptest.NewRecorder()
 
 	s.Mux().ServeHTTP(rec, req)
@@ -1237,8 +1272,9 @@ func TestServeHTTP_ChatStream(t *testing.T) {
 		{Text: "hi back", InputTokens: 10, OutputTokens: 5},
 	})
 
-	body, _ := json.Marshal(chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
 	req := httptest.NewRequest(http.MethodPost, "/chat/stream", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
 	rec := httptest.NewRecorder()
 
 	s.Mux().ServeHTTP(rec, req)

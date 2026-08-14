@@ -77,12 +77,26 @@ go run ./cmd/server
 
 This picks up `.env`'s `127.0.0.1` host defaults, which is exactly right here since the host process reaches the containers through their published ports, not the compose-internal network.
 
-## 4. Send a test request
+## 4. Mint yourself an API key
+
+`POST /chat`/`POST /chat/stream` require an `Authorization: Bearer <api-key>` header as of 2026-08-14 (see README "Authentication", `audit.md` finding #1) — `user_id`/`plan_id` come from this key server-side, not from the request body anymore. There's no signup/login flow yet, so `cmd/issuekey` is the entire way to get one: it writes a row straight into `api_keys` (the same Postgres this whole guide has been setting up) and prints the raw token once.
 
 ```bash
-curl -s localhost:8080/chat -X POST -d '{
-  "user_id": "test-user",
-  "plan_id": "pro",
+go run ./cmd/issuekey -user_id=test-user -plan_id=pro
+```
+
+`-plan_id` must be one of `configs/plans.json`'s `plan_id` values (`pro`, `pro_plus`, `max`) — `issuekey` validates this itself and refuses to mint a key for anything else. Copy the printed token; it's shown exactly once and isn't recoverable from the database afterward (only its hash is stored).
+
+```bash
+export NEOCHAT_API_KEY=nc_...   # paste what issuekey printed
+```
+
+## 5. Send a test request
+
+```bash
+curl -s localhost:8080/chat -X POST \
+  -H "Authorization: Bearer $NEOCHAT_API_KEY" \
+  -d '{
   "message": "привет",
   "requested_mode": "auto",
   "estimated_context_tokens": 200
@@ -121,9 +135,9 @@ Every request now also runs through Layer 1 moderation (`moderation/`, see READM
 To continue the same thread instead of starting a new one each time, pass the `conversation_id` the previous response returned:
 
 ```bash
-curl -s localhost:8080/chat -X POST -d '{
-  "user_id": "test-user",
-  "plan_id": "pro",
+curl -s localhost:8080/chat -X POST \
+  -H "Authorization: Bearer $NEOCHAT_API_KEY" \
+  -d '{
   "conversation_id": "PASTE_THE_ONE_FROM_THE_LAST_RESPONSE",
   "message": "а теперь объясни то же самое проще",
   "requested_mode": "auto",
@@ -133,7 +147,7 @@ curl -s localhost:8080/chat -X POST -d '{
 
 Leaving `conversation_id` out (or empty) always starts a brand new conversation — there's no way to "continue the most recent one implicitly," the client has to track and pass the ID itself.
 
-`plan_id` must be one of `configs/plans.json`'s `plan_id` values (`pro`, `pro_plus`, `max`).
+A request with no `Authorization` header, or a token `issuekey` never printed, gets a 401 before any of the above runs. `user_id`/`plan_id` in the JSON body (if you leave them in out of habit) are silently ignored either way -- both now come exclusively from the key.
 
 ## What to watch for
 
@@ -141,8 +155,9 @@ Leaving `conversation_id` out (or empty) always starts a brand new conversation 
 - **`db: POSTGRES_USER is required` / `db: REDIS_PASSWORD is required`** — `.env` is missing, in the wrong directory (must be repo root, next to `docker-compose.yml`), or a real exported env var is empty-stringed and shadowing what `.env` would have set. Check `cp .env.example .env` was actually done and filled in.
 - **`no provider.Client configured for provider "..."`** — the router selected a model from a catalog provider with no wired-up client. Shouldn't happen anymore: `cmd/server/main.go`'s `Generators` map now covers all five catalog providers (`anthropic`, `openai`, `google`, `moonshot`, `deepseek`) through the same `OpenRouterClient`. If you see this, either a new catalog entry added a provider tag not yet in that map, or there's a typo between the two.
 - **A 404 / "No endpoints found" error from OpenRouter** — `api_model_id` doesn't match a real OpenRouter slug; double-check the exact string on openrouter.ai's model page (copy-paste, don't retype). Every `configs/models.json` entry now sets `api_model_id` explicitly, sourced via search (this session can't reach `openrouter.ai` directly to fetch pages itself — see README "Status") rather than a live confirmed call per model, so a 404 here likely means one of those looked-up slugs is stale or wrong and needs a real check.
-- **429** — rate limit or exhausted free-tier quota on the key, not a bug here.
-- **401** — bad/expired key; double check the exact value in your shell, not a leftover from an earlier export.
+- **429** — rate limit or exhausted free-tier quota on the OpenRouter key, not a bug here.
+- **401 straight back from `curl localhost:8080/chat`, instant, no server-side classify/moderate log line** — this is neochat's own auth check (step 4 above), not OpenRouter: missing `Authorization` header, or a token `cmd/issuekey` never printed for this database. Re-run `issuekey` and re-export `NEOCHAT_API_KEY` if in doubt -- a stale value from an earlier `.env`/database reset looks identical to a typo.
+- **401 while testing against OpenRouter directly** (not through `/chat`) — bad/expired `OPENROUTER_API_KEY`; double check the exact value in your shell, not a leftover from an earlier export.
 - **The classifier reply fails to parse as JSON** — `classifier.Classify` already strips a wrapping ` ```json ` fence, but a genuinely different failure (the model refusing, adding prose, etc.) will surface as a clear parse error with the raw reply included — that's real signal about how the model behaves with this prompt through OpenRouter specifically, not necessarily a bug.
 - **`moderate: ...` error, every request fails** — the moderation model call itself failed (bad `MODERATION_API_MODEL_ID`, rate limit, JSON parse failure — same failure modes as the classifier, just in `moderation.Moderate`). Moderation fails closed on purpose (see README "Moderation"), so this takes down `/chat` entirely rather than letting requests through unmoderated — check the error for which of those it actually is.
 - **Every request comes back `"blocked": true`** — either genuinely correct (you're testing with a phrase that should trip a policy category) or the moderation model is being overly aggressive; check `docs/unit-economics.md`'s cost assumption still matches whichever model `MODERATION_API_MODEL_ID` resolves to, and see the flagged reason in the server log (`server: /chat blocked by moderation ...`) — it's logged server-side even though the client only sees the generic ToS message.
