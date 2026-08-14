@@ -1,6 +1,6 @@
 # Аудит безопасности — neochat
 
-Дата: 2026-08-13 (обновлено 2026-08-13 — закрыты №2 частично, №3, №4, №9, №10; второй проход добавил и закрыл №11–№14; третий — №15–№17; 2026-08-14 — закрыты №1 и, как следствие, №5. См. пометки "✅ Исправлено" в каждом разделе).
+Дата: 2026-08-13 (обновлено 2026-08-13 — закрыты №2 частично, №3, №4, №9, №10; второй проход добавил и закрыл №11–№14; третий — №15–№17; 2026-08-14 — закрыты №1 и, как следствие, №5, а также оставшаяся половина №2. См. пометки "✅ Исправлено" в каждом разделе).
 Объём: весь репозиторий (Go-код, `docker-compose.yml`/`Dockerfile`, конфиги в `configs/`, git-история, README/`docs/`).
 Не проверялось: живой запущенный стенд (аудит статический, по коду), сторонние сервисы (OpenRouter) как таковые.
 
@@ -47,7 +47,7 @@
 
 ---
 
-### 2. Rate limiting нигде не подключён к реальному пайплайну — ✅ Исправлено (частично)
+### 2. Rate limiting нигде не подключён к реальному пайплайну — ✅ Исправлено
 
 **Где:** `limits/limits.go:36-49` — `CheckInstantOverCap` определена, но `grep` по всему репозиторию показывает, что она вызывается только из своего юнит-теста (`limits/limits_test.go:68`) и нигде из `server/`. В самом репозитории также нет ни reverse-proxy, ни gateway-компонента — весь HTTP-стек это `cmd/server/main.go:229` (`http.ListenAndServe`) напрямую.
 
@@ -60,7 +60,9 @@
 **Сделано:**
 - `limits.CheckInstantOverCap` теперь вызывается первым делом в `server.prepare` (`server/server.go`), до classify/moderate — превышение анти-бот-потолка отклоняет запрос целиком (`server.ErrInstantCapExceeded`, HTTP 429), не тратя деньги ещё и на classify/moderate. Это "reject", а не "queue/delay" из исходного дизайна в `docs/unit-economics.md` — очереди в репозитории нет, а для анти-бот-потолка простой отказ достаточен и не меняет продуктовую семантику Thinking+Max-капа (тот по-прежнему никогда не блокирует, только даунгрейдит).
 - Новый пакет `ratelimit/` (`Limiter` интерфейс + `InMemoryLimiter`/`RedisLimiter`, по образу `limits.SpendStore`) добавляет **per-IP** троттлинг `POST /chat`/`POST /chat/stream` через `server.Server.IPRateLimiter`, включаемый в `server.Mux()` до `decodeChatRequest`. Изначально IP-based, а не по `user_id`, потому что на момент этого фикса `user_id` ещё не был аутентифицирован (находка №1 была не закрыта) — лимитер по нему тривиально обходился сменой `user_id` на каждый запрос, а по IP нет. Настраивается через `RATE_LIMIT_PER_MINUTE` (по умолчанию 60/мин), подключено в `cmd/server/main.go`.
-- **Не закрыто:** per-`user_id` компонент из рекомендации всё ещё отсутствует. Находка №1 (единственная причина, по которой per-`user_id` лимит раньше не имел смысла) закрыта 2026-08-14 — `user_id` теперь аутентифицирован и больше не подделывается, так что добавить `ratelimit.Limiter` ещё раз, keyed по `auth.Identity.UserID`, теперь осмысленно, но это самостоятельная, отдельно не запрошенная доработка, не сделанная в рамках фикса №1. Per-IP лимит сам по себе по-прежнему обходится распределением запросов по многим IP.
+- **Per-`user_id` компонент добавлен (2026-08-14, вслед за фиксом №1)** — `server.Server.UserRateLimiter` + middleware `server.userRateLimited`, keyed по `auth.Identity.UserID`. Это второй экземпляр того же `ratelimit.RedisLimiter` с отдельным префиксом (`chat_user` против `chat_ip`) и отдельной настройкой `USER_RATE_LIMIT_PER_MINUTE` (по умолчанию тоже 60/мин). Порядок middleware в `Mux()` теперь: `recovered` → `rateLimited` (per-IP) → `authenticated` → `userRateLimited` (per-user_id) → хендлер. Per-IP стоит снаружи, потому что это единственная проверка, которая не требует identity и потому может отбить неаутентифицированный флуд, не оплачивая на каждый запрос обращение к БД в `Authenticate`; per-user, наоборот, физически не может стоять раньше, поскольку до `Authenticate` его ключа просто не существует.
+- **Почему обе, а не одна.** Они ловят непересекающиеся половины проблемы: per-IP видит вызывающего вообще без валидного ключа (per-user такого никогда не увидит — он живёт после аутентификации), per-user видит один ключ, бьющий с многих адресов (ни один per-IP счётчик такого не увидит — каждый адрес у него на первом запросе). Оба намеренно **fail-open** при ошибке лимитера (Redis недоступен): логируем и пропускаем, потому что деградация троттла — ограниченная потеря защиты, а fail-closed превратил бы сбой Redis в отказ чата.
+- **Не закрыто:** оба лимита — фиксированное окно с заведомо щедрым потолком 60/мин, выбранным при полном отсутствии измеренных паттернов трафика; тюнить по реальным данным. Первым стоит ужимать именно per-user (живой человек шлёт единицы сообщений в минуту, тогда как per-IP обязан оставлять запас на несколько пользователей за одним NAT).
 
 ---
 
@@ -230,7 +232,7 @@
 | № | Находка | Серьёзность | Статус | Файл(ы) |
 |---|---|---|---|---|
 | 1 | Нет аутентификации/авторизации на `/chat`, `/chat/stream` | Критично | ✅ Исправлено | `auth/`, `server/server.go`, `cmd/issuekey/` |
-| 2 | Rate limiting нигде не подключён к реальному пайплайну | Критично | ✅ Частично (IP-лимитер + Instant-кап; per-user_id теперь возможен после №1, но не сделан) | `limits/limits.go`, `server/server.go`, `ratelimit/` |
+| 2 | Rate limiting нигде не подключён к реальному пайплайну | Критично | ✅ Исправлено (Instant-кап + per-IP и per-user_id лимитеры) | `limits/limits.go`, `server/server.go`, `ratelimit/` |
 | 3 | Нет лимита размера тела запроса и таймаутов HTTP-сервера | Высокий | ✅ Исправлено | `server/server.go`, `cmd/server/main.go` |
 | 4 | Нет верхней границы токенов ответа при вызове провайдера | Высокий | ✅ Исправлено (глобальный потолок, не per-модельный) | `provider/openrouter.go` |
 | 5 | IDOR (следствие №1) | Средний | ✅ Исправлено вместе с №1 | `conversation/postgres_store.go` |
@@ -250,3 +252,5 @@
 Реализованные фиксы (№2 частично, №3, №4, №9, №10) покрыты тестами: `server/server_test.go` (`TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate`, `TestServeHTTP_InstantCapExceededReturns429`, `TestServeHTTP_RequestBodyTooLarge`, `TestServeHTTP_RateLimitedIPReturns429`, `TestClientErrorMessage`, `TestServeHTTP_InternalErrorDoesNotLeakDetails`, `TestServeHTTP_InstantCapExceededMessageNotGeneric`), `ratelimit/memory_limiter_test.go`, `ratelimit/redis_limiter_test.go` (integration-tagged), `provider/openrouter_test.go` (`TestOpenRouterClient_Generate_MaxTokens`, `TestOpenRouterClient_Generate_MaxTokensOmittedWhenUnset`); graceful shutdown additionally verified manually with a standalone smoke test (SIGTERM mid-request, in-flight request completes before the process exits).
 
 Находки №1 и №5 (2026-08-14) покрыты тестами: `auth/memory_store_test.go` (issue → authenticate round-trip, unknown/empty token, uniqueness), `auth/token_test.go` (hash determinism, token uniqueness/prefix), `auth/postgres_store_test.go` (integration-tagged — тот же round-trip против реального Postgres, плюс явная проверка, что сырой токен нигде не хранится); `server/server_test.go` теперь требует `Authorization: Bearer` на каждом `TestServeHTTP_*`-тесте, включая новый `TestServeHTTP_UnknownPlanID` (проверяет, что plan_id теперь берётся из идентичности, а не из тела — несуществующий план у аутентифицированного ключа даёт 500, не 400). Полная модель безопасности сервиса больше не зависит от находки №1.
+
+Оставшаяся половина №2 (per-`user_id` лимит, 2026-08-14) покрыта в `server/server_test.go`: `TestServeHTTP_RateLimitedUserReturns429` (превышение → 429 до `decodeChatRequest`/`handle`), `TestServeHTTP_UserRateLimitFollowsKeyAcrossIPs` (ровно тот сценарий, ради которого лимитер и добавлен: один ключ с разных `RemoteAddr` при заведомо не срабатывающем per-IP лимите), `TestServeHTTP_UserRateLimitIsPerUserNotGlobal` (квота у каждого своя), `TestServeHTTP_UserRateLimiterErrorFailsOpen` (fail-open — стаб намеренно возвращает `allowed=false` вместе с ошибкой, так что реализация, проверяющая bool раньше ошибки, тест не пройдёт) и `TestServeHTTP_UnauthenticatedRequestNeverReachesUserRateLimiter` (порядок middleware: без ключа 401 и чужая квота не тратится).

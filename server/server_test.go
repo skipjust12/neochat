@@ -86,6 +86,23 @@ func newTestServer(t *testing.T, genResponses []provider.GenerateResult) (*Serve
 	}, genClient
 }
 
+// repeatableAuxClients replaces s.Classifier/s.Moderator with fakes that
+// answer the same scripted reply on every call, via
+// provider.FakeClient.PerModel (which, unlike Responses, is never
+// consumed). newTestServer's defaults script exactly one reply each and
+// panic once exhausted -- the right default for the common
+// single-request test, since it surfaces an unintended extra vendor call
+// loudly -- but it gets in the way of a test that has to push more than
+// one request all the way through the pipeline.
+func repeatableAuxClients(s *Server) {
+	s.Classifier = classifier.New(
+		&provider.FakeClient{PerModel: map[string]provider.GenerateResult{"fake-classifier-model": {Text: classifierReply}}},
+		"fake-classifier-model", "system prompt")
+	s.Moderator = moderation.New(
+		&provider.FakeClient{PerModel: map[string]provider.GenerateResult{"fake-moderation-model": {Text: notFlaggedReply}}},
+		"fake-moderation-model", "system prompt")
+}
+
 // authHeader mints a fresh API key for (userID, planID) against s.Auth --
 // an *auth.InMemoryStore for every Server newTestServer builds -- and
 // returns the "Authorization" header value a test request needs to reach
@@ -663,6 +680,176 @@ func TestServeHTTP_RateLimitedIPReturns429(t *testing.T) {
 
 	if len(genClient.Requests) != 1 {
 		t.Errorf("generator was called %d times, want 1 (2nd request must be rejected before reaching it)", len(genClient.Requests))
+	}
+}
+
+// TestServeHTTP_RateLimitedUserReturns429 is userRateLimited's
+// counterpart to the IP test above: once UserRateLimiter says no, the
+// request is rejected before decodeChatRequest/handle run at all.
+func TestServeHTTP_RateLimitedUserReturns429(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "hello", InputTokens: 100, OutputTokens: 50},
+	})
+	s.UserRateLimiter = ratelimit.NewInMemoryLimiter(1, time.Minute)
+
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	bearer := authHeader(t, s, "u1", "pro")
+
+	req1 := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req1.Header.Set("Authorization", bearer)
+	rec1 := httptest.NewRecorder()
+	s.Mux().ServeHTTP(rec1, req1)
+	if rec1.Code != http.StatusOK {
+		t.Fatalf("1st request status = %d, want %d, body = %s", rec1.Code, http.StatusOK, rec1.Body.String())
+	}
+
+	req2 := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req2.Header.Set("Authorization", bearer)
+	rec2 := httptest.NewRecorder()
+	s.Mux().ServeHTTP(rec2, req2)
+	if rec2.Code != http.StatusTooManyRequests {
+		t.Errorf("2nd request status = %d, want %d, body = %s", rec2.Code, http.StatusTooManyRequests, rec2.Body.String())
+	}
+
+	if len(genClient.Requests) != 1 {
+		t.Errorf("generator was called %d times, want 1 (2nd request must be rejected before reaching it)", len(genClient.Requests))
+	}
+}
+
+// TestServeHTTP_UserRateLimitFollowsKeyAcrossIPs is the whole reason
+// UserRateLimiter exists alongside IPRateLimiter (audit.md finding #2):
+// one credential driving traffic from many source addresses. Each
+// request here comes from a different IP, so a generous per-IP limiter
+// never trips -- every address is on its first request -- and only a
+// key-keyed counter can see that it's all one caller.
+func TestServeHTTP_UserRateLimitFollowsKeyAcrossIPs(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{
+		{Text: "hello", InputTokens: 100, OutputTokens: 50},
+	})
+	s.IPRateLimiter = ratelimit.NewInMemoryLimiter(100, time.Minute)
+	s.UserRateLimiter = ratelimit.NewInMemoryLimiter(1, time.Minute)
+
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	bearer := authHeader(t, s, "u1", "pro")
+
+	send := func(remoteAddr string) int {
+		req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+		req.Header.Set("Authorization", bearer)
+		req.RemoteAddr = remoteAddr
+		rec := httptest.NewRecorder()
+		s.Mux().ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	if code := send("198.51.100.1:1111"); code != http.StatusOK {
+		t.Fatalf("1st request status = %d, want %d", code, http.StatusOK)
+	}
+	if code := send("203.0.113.7:2222"); code != http.StatusTooManyRequests {
+		t.Errorf("2nd request from a different IP status = %d, want %d -- the per-key limit must not reset per source address", code, http.StatusTooManyRequests)
+	}
+
+	if len(genClient.Requests) != 1 {
+		t.Errorf("generator was called %d times, want 1", len(genClient.Requests))
+	}
+}
+
+// TestServeHTTP_UserRateLimitIsPerUserNotGlobal checks the limiter is
+// keyed on the identity rather than counting every authenticated request
+// into one shared bucket -- one user exhausting their quota must not
+// throttle everyone else.
+func TestServeHTTP_UserRateLimitIsPerUserNotGlobal(t *testing.T) {
+	s, _ := newTestServer(t, []provider.GenerateResult{
+		{Text: "a", InputTokens: 10, OutputTokens: 5},
+		{Text: "b", InputTokens: 10, OutputTokens: 5},
+	})
+	// Two requests reach the pipeline here (u1's first and u2's), so the
+	// classify/moderate fakes have to answer more than once.
+	repeatableAuxClients(s)
+	s.UserRateLimiter = ratelimit.NewInMemoryLimiter(1, time.Minute)
+
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+
+	send := func(bearer string) int {
+		req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+		req.Header.Set("Authorization", bearer)
+		rec := httptest.NewRecorder()
+		s.Mux().ServeHTTP(rec, req)
+		return rec.Code
+	}
+
+	u1, u2 := authHeader(t, s, "u1", "pro"), authHeader(t, s, "u2", "pro")
+	if code := send(u1); code != http.StatusOK {
+		t.Fatalf("u1's 1st request status = %d, want %d", code, http.StatusOK)
+	}
+	if code := send(u1); code != http.StatusTooManyRequests {
+		t.Fatalf("u1's 2nd request status = %d, want %d", code, http.StatusTooManyRequests)
+	}
+	if code := send(u2); code != http.StatusOK {
+		t.Errorf("u2's 1st request status = %d, want %d -- u1 exhausting their quota must not throttle u2", code, http.StatusOK)
+	}
+}
+
+// erroringLimiter stands in for a limiter whose backing store is
+// unreachable (Redis down), the case both limiters deliberately fail
+// open on.
+type erroringLimiter struct{}
+
+func (erroringLimiter) Allow(context.Context, string) (bool, error) {
+	return false, errors.New("redis unreachable")
+}
+
+// TestServeHTTP_UserRateLimiterErrorFailsOpen pins down the deliberate
+// choice in userRateLimited: a limiter that errors must not read as
+// "over quota". Note the stub returns allowed=false alongside its error,
+// so a naive implementation checking the bool before the error would
+// reject here -- failing open has to be explicit, and this catches it if
+// it stops being.
+func TestServeHTTP_UserRateLimiterErrorFailsOpen(t *testing.T) {
+	s, _ := newTestServer(t, []provider.GenerateResult{
+		{Text: "hello", InputTokens: 100, OutputTokens: 50},
+	})
+	s.UserRateLimiter = erroringLimiter{}
+
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
+	rec := httptest.NewRecorder()
+
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d -- a limiter error must fail open, not reject the request", rec.Code, http.StatusOK)
+	}
+}
+
+// TestServeHTTP_UnauthenticatedRequestNeverReachesUserRateLimiter checks
+// the middleware ordering holds: userRateLimited sits inside
+// authenticated, so a request with no valid credential is rejected with
+// 401 without consuming anyone's per-user quota. Were the order
+// inverted, an attacker with no key could burn a victim's quota by
+// naming them.
+func TestServeHTTP_UnauthenticatedRequestNeverReachesUserRateLimiter(t *testing.T) {
+	s, _ := newTestServer(t, []provider.GenerateResult{
+		{Text: "hello", InputTokens: 100, OutputTokens: 50},
+	})
+	s.UserRateLimiter = ratelimit.NewInMemoryLimiter(1, time.Minute)
+
+	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
+
+	unauth := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	unauthRec := httptest.NewRecorder()
+	s.Mux().ServeHTTP(unauthRec, unauth)
+	if unauthRec.Code != http.StatusUnauthorized {
+		t.Fatalf("unauthenticated request status = %d, want %d", unauthRec.Code, http.StatusUnauthorized)
+	}
+
+	// The one real request the quota allows must still be available.
+	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
+	rec := httptest.NewRecorder()
+	s.Mux().ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Errorf("authenticated request status = %d, want %d -- the rejected unauthenticated request must not have consumed quota", rec.Code, http.StatusOK)
 	}
 }
 

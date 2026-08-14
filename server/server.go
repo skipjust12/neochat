@@ -137,16 +137,40 @@ type Server struct {
 	SummaryTailMessages int
 
 	// IPRateLimiter throttles POST /chat and /chat/stream by client IP,
-	// checked in Mux's wrapping before decodeChatRequest even runs -- see
-	// audit.md finding #2. This is deliberately IP-keyed, not user_id-keyed:
-	// user_id is client-supplied and unauthenticated (see chatRequest.UserID's
-	// doc comment), so a limiter keyed on it would just move with whatever
-	// user_id an abusive client claims next request. Nil (the zero value)
-	// disables the guard entirely, same nil-disables convention as
-	// Idempotency -- a Server built without one (e.g. most tests, which call
-	// handle/handleStream directly and never go through Mux anyway) behaves
-	// exactly as it did before this field existed.
+	// checked in Mux's wrapping before authentication even runs -- see
+	// audit.md finding #2. It is the outermost of the two limiters because
+	// it's the one that costs nothing to evaluate: an unauthenticated
+	// flood is rejected on a counter, without an Authenticate call (a
+	// database lookup) per request.
+	//
+	// Being IP-keyed is what makes it useful against callers with no valid
+	// credential at all -- the case UserRateLimiter structurally cannot
+	// see, since it only exists downstream of a successful Authenticate.
+	// The two cover opposite halves of the same problem; see
+	// UserRateLimiter for the half this one misses.
+	//
+	// Nil (the zero value) disables the guard entirely, same nil-disables
+	// convention as Idempotency -- a Server built without one (e.g. most
+	// tests, which call handle/handleStream directly and never go through
+	// Mux anyway) behaves exactly as it did before this field existed.
 	IPRateLimiter ratelimit.Limiter
+
+	// UserRateLimiter throttles POST /chat and /chat/stream by
+	// authenticated user_id, checked after authenticated resolves the
+	// caller's identity and before decodeChatRequest runs.
+	//
+	// This is the per-user_id half of audit.md finding #2's recommendation,
+	// which was impossible until finding #1 was fixed: while user_id came
+	// from the request body, a limiter keyed on it just moved with
+	// whatever user_id an abusive client claimed next request, so IP was
+	// the only key worth counting. Now that user_id comes from a bearer
+	// token this counts what it means to count -- and it catches exactly
+	// what IPRateLimiter cannot, namely one credential (leaked, shared, or
+	// scripted against) driving traffic from many source addresses, where
+	// no single IP's counter ever climbs high enough to trip.
+	//
+	// Nil (the zero value) disables it, same convention as IPRateLimiter.
+	UserRateLimiter ratelimit.Limiter
 
 	// Auth authenticates every POST /chat and POST /chat/stream call and
 	// resolves it to the real (user_id, plan_id) -- see the authenticated
@@ -250,17 +274,24 @@ type chatResponse struct {
 }
 
 // Mux returns an http.ServeMux with routes registered. POST /chat and
-// POST /chat/stream go through rateLimited then authenticated (GET
-// /health goes through neither -- container/orchestrator health checks
-// shouldn't compete with real traffic for the same quota, and have no
-// credential to check anyway), and everything goes through recovered.
-// rateLimited runs before authenticated so a flood of garbage requests
-// gets rejected by a cheap per-IP counter before it can drive an
-// Authenticate call (a database lookup) per request.
+// POST /chat/stream go through, outermost first: recovered ->
+// rateLimited (per client IP) -> authenticated -> userRateLimited (per
+// authenticated user_id) -> the handler. GET /health goes through
+// recovered only -- container/orchestrator health checks shouldn't
+// compete with real traffic for either quota, and have no credential to
+// check anyway.
+//
+// The ordering is the point: the cheapest check that can reject a
+// request runs first. A per-IP counter costs nothing and needs no
+// identity, so it goes ahead of the Authenticate call (a database
+// lookup) it would otherwise let an unauthenticated flood drive; the
+// per-user counter can only run after that call, since its key doesn't
+// exist until the token resolves. See IPRateLimiter/UserRateLimiter for
+// why both exist rather than either alone.
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.handleChat))))
-	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.handleChatStream))))
+	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
+	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
 	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -328,8 +359,8 @@ func recoverGoroutine(what string, errp *error) {
 // request from an IP that has exceeded its quota gets a 429 and next
 // never runs. A limiter error (e.g. Redis unreachable) fails open --
 // logged and the request let through -- rather than turning a Redis blip
-// into a chat outage; see IPRateLimiter's doc comment for why this check
-// is IP-keyed rather than user_id-keyed.
+// into a chat outage; see IPRateLimiter's doc comment for what this
+// check catches that userRateLimited's cannot.
 func (s *Server) rateLimited(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.IPRateLimiter != nil {
@@ -343,6 +374,37 @@ func (s *Server) rateLimited(next http.HandlerFunc) http.HandlerFunc {
 			}
 		}
 		next(w, r)
+	}
+}
+
+// userRateLimited wraps next with s.UserRateLimiter, if one is
+// configured, keyed on the already-authenticated identity.UserID -- so it
+// must sit inside authenticated, which is what produces that identity
+// (see Mux). A user over quota gets a 429 and next never runs.
+//
+// Fails open on a limiter error for the same reason rateLimited does: a
+// Redis blip should not read as "everyone is over quota". Note this makes
+// the two limiters degrade together, since they share one Redis today --
+// acceptable because failing open on a throttle is a bounded loss of
+// defense, whereas failing closed would be a self-inflicted outage.
+//
+// The 429 body names the API key rather than reusing rateLimited's
+// generic "too many requests", so a caller who legitimately hit their own
+// per-key quota can tell that apart from being caught in an IP-wide
+// throttle they may share with others behind the same NAT. It reveals
+// nothing the caller doesn't already hold.
+func (s *Server) userRateLimited(next identityHandler) identityHandler {
+	return func(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+		if s.UserRateLimiter != nil {
+			allowed, err := s.UserRateLimiter.Allow(r.Context(), identity.UserID)
+			if err != nil {
+				log.Printf("server: user rate limiter check failed for user_id=%s, failing open: %v", identity.UserID, err)
+			} else if !allowed {
+				http.Error(w, "too many requests for this API key", http.StatusTooManyRequests)
+				return
+			}
+		}
+		next(w, r, identity)
 	}
 }
 
