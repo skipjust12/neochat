@@ -175,24 +175,31 @@ active_config.json:
 
 ```json
 {
-  "schema_version": "1.0",
-  "task_type": "code_generation",
+  "schema_version": "1.1",
+  "task_category": "software_engineering",
+  "task_intent": "generate",
   "language": "en",
   "modality_input": ["text", "code"],
   "modality_output_expected": ["text", "code"],
   "reasoning_depth": "moderate",
   "creativity_level": "low",
-  "needs_web_search": false,
-  "needs_code_execution": false,
+  "required_tools": ["code_execution"],
   "expected_output_length": "medium",
+  "estimated_output_tokens": 800,
+  "output_format": "markdown",
   "complexity_score": 0.6,
   "context_dependency": "light",
-  "confidence": 0.82
+  "confidence": 0.82,
+  "content_flags": [],
+  "safety_risk_score": 0.0
 }
 ```
 
 Design principle: the classifier returns **raw task features**, never a final model decision. The feature → model mapping lives entirely in `weights_*.json` on the router side — this keeps model reweighting a config change, not a classifier prompt rewrite.
 
+- `task_category` is the capability/domain axis: `general`, `writing`, `frontend`, `software_engineering`, `data_analysis`, `math`, `research`, `reasoning`, `knowledge`, `translation`, `vision`, or `image_generation`.
+- `task_intent` is the operation axis: `answer`, `generate`, `edit`, `debug`, `review`, `explain`, `summarize`, `compare`, `plan`, `extract`, `classify`, or `transform`.
+- The router combines the two against each model's `task_category_scores` and `task_intent_scores`. Within the selected mode it retains models close enough to the best task fit (`task_profile.minimum_score` and `task_profile.max_quality_gap`), then chooses the cheapest survivor. Unknown classifier values fall back to `general`/`answer` and are recorded in `RouteResult.Reason`.
 - `expected_output_length` is a bucketed enum, not a raw token estimate — small models are unreliable at precise token counts.
 - `confidence` drives the escalation rule directly: below a threshold, the router bumps the mode tier up (`instant → thinking`, `thinking → max`) regardless of what the other features say.
 - `context_dependency` feeds the prompt-caching-vs-routing tradeoff (see below): `heavy` should penalize mid-session model switches more aggressively.

@@ -29,6 +29,23 @@ func LoadWeights(path string) (Weights, error) {
 			path, w.ConfidenceEscalationThreshold,
 		)
 	}
+	if w.TaskProfile.CategoryWeight < 0 || w.TaskProfile.IntentWeight < 0 ||
+		w.TaskProfile.CategoryWeight+w.TaskProfile.IntentWeight == 0 {
+		return Weights{}, fmt.Errorf(
+			"router: weights file %q task_profile weights must be non-negative and have a positive sum", path,
+		)
+	}
+	for name, value := range map[string]float64{
+		"default_score":   w.TaskProfile.DefaultScore,
+		"minimum_score":   w.TaskProfile.MinimumScore,
+		"max_quality_gap": w.TaskProfile.MaxQualityGap,
+	} {
+		if value < 0 || value > 1 {
+			return Weights{}, fmt.Errorf(
+				"router: weights file %q task_profile.%s %.2f out of range [0,1]", path, name, value,
+			)
+		}
+	}
 
 	return w, nil
 }

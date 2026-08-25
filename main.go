@@ -33,8 +33,9 @@ func main() {
 	userID := "demo-user"
 
 	rawInput := `{
-		"schema_version": "1.0",
-		"task_type": "code_generation",
+		"schema_version": "1.1",
+		"task_category": "software_engineering",
+		"task_intent": "generate",
 		"language": "ru",
 		"modality_input": ["text", "code"],
 		"modality_output_expected": ["text", "code"],

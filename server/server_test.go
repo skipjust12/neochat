@@ -49,11 +49,15 @@ func testWeights() router.Weights {
 			ReasoningWeight: 1.0, ComplexityWeight: 2.0, CreativityWeight: 0.2,
 			InstantCeiling: 1.0, ThinkingCeiling: 2.5,
 		},
+		TaskProfile: router.TaskProfileWeights{
+			CategoryWeight: 0.8, IntentWeight: 0.2, DefaultScore: 0.5,
+			MinimumScore: 0.65, MaxQualityGap: 0.05,
+		},
 	}
 }
 
 const classifierReply = `{
-	"schema_version": "1.0", "task_type": "qa", "language": "en",
+	"schema_version": "1.1", "task_category": "general", "task_intent": "answer", "language": "en",
 	"modality_input": ["text"], "modality_output_expected": ["text"],
 	"reasoning_depth": "high", "creativity_level": "low", "required_tools": [],
 	"expected_output_length": "medium", "estimated_output_tokens": 300,

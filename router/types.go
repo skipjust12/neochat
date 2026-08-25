@@ -13,7 +13,8 @@ const (
 // model that inspects the incoming user request. It is parsed as-is.
 type ClassifierOutput struct {
 	SchemaVersion          string   `json:"schema_version"`
-	TaskType               string   `json:"task_type"`
+	TaskCategory           string   `json:"task_category"`
+	TaskIntent             string   `json:"task_intent"`
 	Language               string   `json:"language"`
 	ModalityInput          []string `json:"modality_input"`
 	ModalityOutputExpected []string `json:"modality_output_expected"`
@@ -80,6 +81,14 @@ type Model struct {
 	// reliably produce (e.g. "text", "markdown", "json", "function_call").
 	// Matched against ClassifierOutput.OutputFormat during hard filtering.
 	SupportsOutputFormats []string `json:"supports_output_formats"`
+
+	// TaskCategoryScores and TaskIntentScores describe model quality for
+	// the two task-classification axes on a normalized [0,1] scale. The
+	// router uses them to build a quality-preserving candidate set before
+	// minimizing cost. Missing entries fall back to the model's general or
+	// answer score, then to weights.task_profile.default_score.
+	TaskCategoryScores map[string]float64 `json:"task_category_scores"`
+	TaskIntentScores   map[string]float64 `json:"task_intent_scores"`
 }
 
 // Catalog is the full set of models loaded from models.json.
@@ -104,18 +113,28 @@ type AutoModeWeights struct {
 	ThinkingCeiling  float64 `json:"thinking_ceiling"`
 }
 
+// TaskProfileWeights controls task-aware selection within a mode tier.
+// The best task-fit score establishes the reference quality. Models remain
+// eligible when they meet MinimumScore and are no more than MaxQualityGap
+// behind that best score; cost is minimized only among those survivors.
+type TaskProfileWeights struct {
+	CategoryWeight float64 `json:"category_weight"`
+	IntentWeight   float64 `json:"intent_weight"`
+	DefaultScore   float64 `json:"default_score"`
+	MinimumScore   float64 `json:"minimum_score"`
+	MaxQualityGap  float64 `json:"max_quality_gap"`
+}
+
 // Weights holds the scoring weights and thresholds loaded from weights.json.
 // Field meanings and units are documented alongside the JSON file itself.
 //
-// Model selection within an already-chosen tier is deliberately not
-// weighted by anything here: once a tier is picked, every survivor in it
-// has already been judged "good enough" (that's what the tier and the hard
-// filters are for), so Route always takes the cheapest one -- see
-// scoreAndPick. AutoModeWeights and ConfidenceEscalationThreshold are the
-// only places quality/cost tradeoffs are actually made.
+// AutoMode and ConfidenceEscalationThreshold choose the depth tier.
+// TaskProfile then defines the quality band used to select models within
+// that tier before cost minimization -- see scoreAndPick.
 type Weights struct {
-	ConfidenceEscalationThreshold float64         `json:"confidence_escalation_threshold"`
-	AutoMode                      AutoModeWeights `json:"auto_mode"`
+	ConfidenceEscalationThreshold float64            `json:"confidence_escalation_threshold"`
+	AutoMode                      AutoModeWeights    `json:"auto_mode"`
+	TaskProfile                   TaskProfileWeights `json:"task_profile"`
 }
 
 // RouteResult is the output of the routing decision.

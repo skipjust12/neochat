@@ -20,8 +20,31 @@ func LoadCatalog(path string) (Catalog, error) {
 	if len(catalog.Models) == 0 {
 		return Catalog{}, fmt.Errorf("router: catalog file %q contains no models", path)
 	}
+	for _, model := range catalog.Models {
+		if err := validateTaskScores(model.ID, "task_category_scores", model.TaskCategoryScores, knownTaskCategories); err != nil {
+			return Catalog{}, err
+		}
+		if err := validateTaskScores(model.ID, "task_intent_scores", model.TaskIntentScores, knownTaskIntents); err != nil {
+			return Catalog{}, err
+		}
+	}
 
 	return catalog, nil
+}
+
+func validateTaskScores(modelID, field string, scores map[string]float64, knownValues map[string]bool) error {
+	if len(scores) == 0 {
+		return fmt.Errorf("router: model %q has no %s", modelID, field)
+	}
+	for name, score := range scores {
+		if !knownValues[name] {
+			return fmt.Errorf("router: model %q has unknown %s key %q", modelID, field, name)
+		}
+		if score < 0 || score > 1 {
+			return fmt.Errorf("router: model %q %s.%s %.2f out of range [0,1]", modelID, field, name, score)
+		}
+	}
+	return nil
 }
 
 // FindModel looks up a model by ID in the catalog.
