@@ -8,7 +8,7 @@ module neochat
 // every one of them fixed in a 1.25.x patch. Keep this at a current
 // patch release and bump it when govulncheck says to; dropping it back
 // to "1.25.0" silently reintroduces all of them.
-go 1.25.12
+go 1.25.14
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
