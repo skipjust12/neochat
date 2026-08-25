@@ -11,7 +11,9 @@
       "supports_modality": ["text", "code", "image"],
       "supports_tools": ["web_search", "code_execution"],
       "max_output_tokens": 64000,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.80, "writing": 0.86, "frontend": 0.80, "software_engineering": 0.79, "data_analysis": 0.75, "math": 0.72, "research": 0.77, "reasoning": 0.76, "knowledge": 0.81, "translation": 0.84, "vision": 0.78, "image_generation": 0.20},
+      "task_intent_scores": {"answer": 0.80, "generate": 0.79, "edit": 0.86, "debug": 0.76, "review": 0.78, "explain": 0.82, "summarize": 0.86, "compare": 0.79, "plan": 0.75, "extract": 0.84, "classify": 0.83, "transform": 0.84}
     },
     {
       "id": "claude-sonnet-5",
@@ -24,7 +26,9 @@
       "supports_modality": ["text", "code", "image"],
       "supports_tools": ["web_search", "code_execution"],
       "max_output_tokens": 128000,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.92, "writing": 0.97, "frontend": 0.96, "software_engineering": 0.94, "data_analysis": 0.90, "math": 0.88, "research": 0.92, "reasoning": 0.94, "knowledge": 0.92, "translation": 0.94, "vision": 0.92, "image_generation": 0.25},
+      "task_intent_scores": {"answer": 0.92, "generate": 0.95, "edit": 0.97, "debug": 0.93, "review": 0.95, "explain": 0.94, "summarize": 0.96, "compare": 0.93, "plan": 0.93, "extract": 0.91, "classify": 0.90, "transform": 0.95}
     },
     {
       "id": "claude-opus-5",
@@ -37,7 +41,9 @@
       "supports_modality": ["text", "code", "image"],
       "supports_tools": ["web_search", "code_execution"],
       "max_output_tokens": 128000,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.96, "writing": 0.96, "frontend": 0.94, "software_engineering": 0.94, "data_analysis": 0.94, "math": 0.94, "research": 0.96, "reasoning": 0.98, "knowledge": 0.96, "translation": 0.96, "vision": 0.95, "image_generation": 0.30},
+      "task_intent_scores": {"answer": 0.96, "generate": 0.95, "edit": 0.97, "debug": 0.95, "review": 0.97, "explain": 0.97, "summarize": 0.97, "compare": 0.98, "plan": 0.98, "extract": 0.94, "classify": 0.94, "transform": 0.96}
     },
     {
       "id": "claude-fable-5",
@@ -50,7 +56,9 @@
       "supports_modality": ["text", "code", "image"],
       "supports_tools": ["web_search", "code_execution"],
       "max_output_tokens": 128000,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.94, "writing": 1.00, "frontend": 0.96, "software_engineering": 0.92, "data_analysis": 0.90, "math": 0.88, "research": 0.94, "reasoning": 0.95, "knowledge": 0.94, "translation": 0.98, "vision": 0.94, "image_generation": 0.35},
+      "task_intent_scores": {"answer": 0.94, "generate": 1.00, "edit": 1.00, "debug": 0.91, "review": 0.95, "explain": 0.96, "summarize": 0.98, "compare": 0.96, "plan": 0.94, "extract": 0.92, "classify": 0.91, "transform": 0.99}
     },
     {
       "id": "gpt-5.6-luna",
@@ -63,7 +71,9 @@
       "supports_modality": ["text", "code", "image"],
       "supports_tools": ["web_search", "code_execution"],
       "max_output_tokens": 128000,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.84, "writing": 0.82, "frontend": 0.89, "software_engineering": 0.87, "data_analysis": 0.84, "math": 0.82, "research": 0.82, "reasoning": 0.82, "knowledge": 0.84, "translation": 0.82, "vision": 0.84, "image_generation": 0.25},
+      "task_intent_scores": {"answer": 0.84, "generate": 0.88, "edit": 0.83, "debug": 0.87, "review": 0.84, "explain": 0.84, "summarize": 0.82, "compare": 0.83, "plan": 0.81, "extract": 0.86, "classify": 0.86, "transform": 0.85}
     },
     {
       "id": "gpt-5.6-terra",
@@ -76,7 +86,9 @@
       "supports_modality": ["text", "code", "image"],
       "supports_tools": ["web_search", "code_execution"],
       "max_output_tokens": 128000,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.91, "writing": 0.87, "frontend": 0.90, "software_engineering": 0.95, "data_analysis": 0.94, "math": 0.93, "research": 0.91, "reasoning": 0.95, "knowledge": 0.91, "translation": 0.88, "vision": 0.90, "image_generation": 0.30},
+      "task_intent_scores": {"answer": 0.91, "generate": 0.94, "edit": 0.88, "debug": 0.96, "review": 0.95, "explain": 0.94, "summarize": 0.89, "compare": 0.93, "plan": 0.95, "extract": 0.93, "classify": 0.92, "transform": 0.91}
     },
     {
       "id": "gpt-5.6-sol",
@@ -89,7 +101,9 @@
       "supports_modality": ["text", "code", "image"],
       "supports_tools": ["web_search", "code_execution"],
       "max_output_tokens": 128000,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.98, "writing": 0.96, "frontend": 0.99, "software_engineering": 1.00, "data_analysis": 0.99, "math": 0.99, "research": 0.98, "reasoning": 1.00, "knowledge": 0.98, "translation": 0.96, "vision": 0.98, "image_generation": 0.35},
+      "task_intent_scores": {"answer": 0.98, "generate": 1.00, "edit": 0.97, "debug": 1.00, "review": 1.00, "explain": 0.99, "summarize": 0.97, "compare": 0.99, "plan": 1.00, "extract": 0.98, "classify": 0.98, "transform": 0.98}
     },
     {
       "id": "gemini-3.5-flash-lite",
@@ -102,7 +116,9 @@
       "supports_modality": ["text", "code", "image"],
       "supports_tools": ["web_search"],
       "max_output_tokens": 65536,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.79, "writing": 0.76, "frontend": 0.74, "software_engineering": 0.73, "data_analysis": 0.78, "math": 0.76, "research": 0.84, "reasoning": 0.75, "knowledge": 0.83, "translation": 0.85, "vision": 0.87, "image_generation": 0.30},
+      "task_intent_scores": {"answer": 0.81, "generate": 0.75, "edit": 0.77, "debug": 0.72, "review": 0.75, "explain": 0.80, "summarize": 0.84, "compare": 0.82, "plan": 0.74, "extract": 0.87, "classify": 0.86, "transform": 0.83}
     },
     {
       "id": "nano-banana-2-lite",
@@ -115,7 +131,9 @@
       "supports_modality": ["text", "image"],
       "supports_tools": [],
       "max_output_tokens": 65536,
-      "supports_output_formats": ["image"]
+      "supports_output_formats": ["image"],
+      "task_category_scores": {"general": 0.35, "writing": 0.10, "frontend": 0.35, "software_engineering": 0.10, "data_analysis": 0.10, "math": 0.10, "research": 0.10, "reasoning": 0.15, "knowledge": 0.20, "translation": 0.10, "vision": 0.72, "image_generation": 1.00},
+      "task_intent_scores": {"answer": 0.20, "generate": 1.00, "edit": 0.95, "debug": 0.10, "review": 0.20, "explain": 0.15, "summarize": 0.10, "compare": 0.15, "plan": 0.15, "extract": 0.20, "classify": 0.20, "transform": 0.92}
     },
     {
       "id": "kimi-k3",
@@ -128,7 +146,9 @@
       "supports_modality": ["text", "code", "image"],
       "supports_tools": ["code_execution"],
       "max_output_tokens": 131072,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.88, "writing": 0.78, "frontend": 0.88, "software_engineering": 0.94, "data_analysis": 0.95, "math": 0.97, "research": 0.90, "reasoning": 0.97, "knowledge": 0.89, "translation": 0.80, "vision": 0.84, "image_generation": 0.20},
+      "task_intent_scores": {"answer": 0.89, "generate": 0.93, "edit": 0.80, "debug": 0.95, "review": 0.94, "explain": 0.93, "summarize": 0.84, "compare": 0.95, "plan": 0.96, "extract": 0.91, "classify": 0.91, "transform": 0.87}
     },
     {
       "id": "deepseek-v4-flash",
@@ -141,7 +161,9 @@
       "supports_modality": ["text", "code"],
       "supports_tools": [],
       "max_output_tokens": 384000,
-      "supports_output_formats": ["text", "markdown", "json", "function_call"]
+      "supports_output_formats": ["text", "markdown", "json", "function_call"],
+      "task_category_scores": {"general": 0.68, "writing": 0.62, "frontend": 0.76, "software_engineering": 0.86, "data_analysis": 0.82, "math": 0.88, "research": 0.65, "reasoning": 0.83, "knowledge": 0.70, "translation": 0.66, "vision": 0.10, "image_generation": 0.05},
+      "task_intent_scores": {"answer": 0.72, "generate": 0.85, "edit": 0.70, "debug": 0.88, "review": 0.84, "explain": 0.80, "summarize": 0.68, "compare": 0.80, "plan": 0.82, "extract": 0.82, "classify": 0.78, "transform": 0.78}
     }
   ]
 }

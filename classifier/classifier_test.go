@@ -2,14 +2,16 @@ package classifier
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"neochat/provider"
 )
 
 const sampleReply = `{
-	"schema_version": "1.0",
-	"task_type": "code_generation",
+	"schema_version": "1.1",
+	"task_category": "software_engineering",
+	"task_intent": "generate",
 	"language": "ru",
 	"modality_input": ["text", "code"],
 	"modality_output_expected": ["text", "code"],
@@ -34,7 +36,7 @@ func TestClassify_ParsesReply(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if out.TaskType != "code_generation" || out.ReasoningDepth != "moderate" {
+	if out.TaskCategory != "software_engineering" || out.TaskIntent != "generate" || out.ReasoningDepth != "moderate" {
 		t.Errorf("unexpected parsed output: %+v", out)
 	}
 
@@ -58,7 +60,7 @@ func TestClassify_StripsCodeFence(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error parsing a fenced reply: %v", err)
 	}
-	if out.TaskType != "code_generation" {
+	if out.TaskCategory != "software_engineering" {
 		t.Errorf("unexpected parsed output: %+v", out)
 	}
 }
@@ -79,6 +81,14 @@ func TestLoadSystemPrompt(t *testing.T) {
 	}
 	if prompt == "" {
 		t.Error("expected a non-empty prompt")
+	}
+	for _, required := range []string{"\"task_category\"", "\"task_intent\"", "\"frontend\"", "\"writing\""} {
+		if !strings.Contains(prompt, required) {
+			t.Errorf("classifier prompt is missing %s", required)
+		}
+	}
+	if strings.Contains(prompt, "\"task_type\"") {
+		t.Error("classifier prompt still documents the removed task_type field")
 	}
 }
 

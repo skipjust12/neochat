@@ -2,6 +2,7 @@ package router
 
 import (
 	"fmt"
+	"math"
 	"strings"
 )
 
@@ -166,7 +167,8 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 		)
 	}
 
-	winner, scoreLog := r.scoreAndPick(modeCandidates)
+	taskCategory, taskIntent, taskFallbackNote := normalizeTaskClassification(input.TaskCategory, input.TaskIntent)
+	winner, scoreLog := r.scoreAndPick(modeCandidates, taskCategory, taskIntent)
 
 	var reason strings.Builder
 	fmt.Fprintf(&reason, "hard filters passed: %s. ", filterLog)
@@ -187,6 +189,9 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 			input.Confidence, r.Weights.ConfidenceEscalationThreshold)
 	}
 	fmt.Fprintf(&reason, "scored %d candidate(s) for mode=%s: %s.", len(modeCandidates), effectiveMode, scoreLog)
+	if taskFallbackNote != "" {
+		fmt.Fprintf(&reason, " Task classification fallback: %s.", taskFallbackNote)
+	}
 	reason.WriteString(lockedDowngradeNote)
 
 	return RouteResult{
@@ -425,40 +430,69 @@ func (r Router) determineAutoMode(input ClassifierOutput, availableModes map[str
 	return mode, reasonDetail
 }
 
-// scoreAndPick picks the cheapest model among candidates already known to
-// be eligible for the target mode tier. Quality is decided before this
-// point -- by which tier got selected (determineAutoMode / the user's
-// explicit requestedMode) and by the hard filters -- so every survivor
-// here has already been judged good enough for the request; scoreAndPick's
-// only job is "не самая дешёвая, а самая дешёвая из тех, что не теряют в
-// качестве": minimize cost among the already-qualified set.
-//
-// Exact cost ties (e.g. claude-sonnet-5 and kimi-k3, both $18/Mtok blended
-// in the thinking tier) are broken deterministically by capabilityScore --
-// more supported tools/modalities/output formats wins -- and, if that is
-// also tied, by ID lexicographic order. Falling back to catalog order here
-// would make the winner depend on unrelated edits to models.json.
-func (r Router) scoreAndPick(candidates []Model) (Model, string) {
-	best := candidates[0]
-	bestCost := best.CostInputPerMTok + best.CostOutputPerMTok
-	bestCapability := capabilityScore(best)
+// scoreAndPick first keeps models whose category+intent fit is close enough
+// to the best fit in this tier, then minimizes cost inside that quality
+// band. This implements the routing rule "the cheapest model that preserves
+// quality" without folding dollars and quality into one unitless score.
+func (r Router) scoreAndPick(candidates []Model, category, intent string) (Model, string) {
+	type scoredModel struct {
+		model Model
+		fit   float64
+	}
 
-	for _, m := range candidates[1:] {
+	scored := make([]scoredModel, 0, len(candidates))
+	bestFit := 0.0
+	for _, model := range candidates {
+		fit := taskProfileScore(model, category, intent, r.Weights.TaskProfile)
+		scored = append(scored, scoredModel{model: model, fit: fit})
+		bestFit = math.Max(bestFit, fit)
+	}
+
+	qualityFloor := math.Max(r.Weights.TaskProfile.MinimumScore, bestFit-r.Weights.TaskProfile.MaxQualityGap)
+	qualified := make([]scoredModel, 0, len(scored))
+	for _, candidate := range scored {
+		if candidate.fit >= qualityFloor {
+			qualified = append(qualified, candidate)
+		}
+	}
+	// MinimumScore can deliberately be higher than every catalog score while
+	// operators tune config. Keep the request servable by falling back to the
+	// best-fit model(s), rather than turning a soft preference into an outage.
+	if len(qualified) == 0 {
+		qualityFloor = bestFit
+		for _, candidate := range scored {
+			if candidate.fit == bestFit {
+				qualified = append(qualified, candidate)
+			}
+		}
+	}
+
+	best := qualified[0]
+	bestModel := best.model
+	bestCost := bestModel.CostInputPerMTok + bestModel.CostOutputPerMTok
+	bestCapability := capabilityScore(bestModel)
+
+	for _, candidate := range qualified[1:] {
+		m := candidate.model
 		cost := m.CostInputPerMTok + m.CostOutputPerMTok
 		capability := capabilityScore(m)
 
 		switch {
 		case cost < bestCost:
-			best, bestCost, bestCapability = m, cost, capability
+			bestModel, bestCost, bestCapability = m, cost, capability
 		case cost == bestCost && capability > bestCapability:
-			best, bestCost, bestCapability = m, cost, capability
-		case cost == bestCost && capability == bestCapability && m.ID < best.ID:
-			best, bestCost, bestCapability = m, cost, capability
+			bestModel, bestCost, bestCapability = m, cost, capability
+		case cost == bestCost && capability == bestCapability && m.ID < bestModel.ID:
+			bestModel, bestCost, bestCapability = m, cost, capability
 		}
 	}
 
-	log := fmt.Sprintf("cheapest in tier: winner=%s (cost=%.2f, capability_score=%d)", best.ID, bestCost, bestCapability)
-	return best, log
+	winnerFit := taskProfileScore(bestModel, category, intent, r.Weights.TaskProfile)
+	log := fmt.Sprintf(
+		"task_category=%s, task_intent=%s, best_fit=%.2f, quality_floor=%.2f, qualified=%d/%d; cheapest qualified: winner=%s (fit=%.2f, cost=%.2f, capability_score=%d)",
+		category, intent, bestFit, qualityFloor, len(qualified), len(candidates), bestModel.ID, winnerFit, bestCost, bestCapability,
+	)
+	return bestModel, log
 }
 
 // capabilityScore is the tie-break metric for scoreAndPick: the total count

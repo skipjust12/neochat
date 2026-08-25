@@ -37,13 +37,18 @@ func testWeights() Weights {
 			InstantCeiling:   1.0,
 			ThinkingCeiling:  2.5,
 		},
+		TaskProfile: TaskProfileWeights{
+			CategoryWeight: 0.8, IntentWeight: 0.2, DefaultScore: 0.5,
+			MinimumScore: 0.65, MaxQualityGap: 0.05,
+		},
 	}
 }
 
 func baseInput() ClassifierOutput {
 	return ClassifierOutput{
-		SchemaVersion:          "1.0",
-		TaskType:               "code_generation",
+		SchemaVersion:          "1.1",
+		TaskCategory:           TaskCategorySoftwareEngineering,
+		TaskIntent:             TaskIntentGenerate,
 		Language:               "ru",
 		ModalityInput:          []string{"text", "code"},
 		ModalityOutputExpected: []string{"text", "code"},
