@@ -286,9 +286,12 @@
   @keyframes thinkingBarLight{0%{height:6px;opacity:.3;background:#d4d4d8}15%{height:16px;opacity:.9;background:#a1a1aa}30%{height:9px;opacity:.5;background:#71717a}50%,75%{height:14px;opacity:1;background:#18181b}100%{height:6px;opacity:.3;background:#d4d4d8}}
   html[data-theme="dark"] .thinking-bar{animation-name:thinkingBarDark}
   @keyframes thinkingBarDark{0%{height:6px;opacity:.3;background:#3f3f46}15%{height:16px;opacity:.9;background:#71717a}30%{height:9px;opacity:.5;background:#a1a1aa}50%,75%{height:14px;opacity:1;background:#fafafa}100%{height:6px;opacity:.3;background:#3f3f46}}
-  .thinking-label{font-family:Charter,"Bitstream Charter","Sitka Text","Iowan Old Style",Georgia,serif;font-size:16px;font-weight:500;letter-spacing:.01em;white-space:nowrap;opacity:1;color:transparent;background-image:linear-gradient(90deg,#a1a1aa 0%,#a1a1aa 40%,#18181b 50%,#a1a1aa 60%,#a1a1aa 100%);background-size:220% 100%;background-repeat:no-repeat;-webkit-background-clip:text;background-clip:text;animation:thinkingSweep 1.8s linear infinite}
-  html[data-theme="dark"] .thinking-label{background-image:linear-gradient(90deg,#71717a 0%,#71717a 40%,#fafafa 50%,#71717a 60%,#71717a 100%)}
+  .thinking-label{position:relative;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:18px;font-weight:520;letter-spacing:.005em;white-space:nowrap;opacity:1;color:#a1a1aa}
+  .thinking-label::after{content:attr(data-text);position:absolute;inset:0;opacity:1;color:transparent;background-image:linear-gradient(90deg,transparent 0%,transparent 40%,#18181b 50%,transparent 60%,transparent 100%);background-size:220% 100%;background-repeat:no-repeat;-webkit-background-clip:text;background-clip:text;animation:thinkingSweep 1.8s linear infinite;pointer-events:none}
+  html[data-theme="dark"] .thinking-label{color:#71717a}
+  html[data-theme="dark"] .thinking-label::after{background-image:linear-gradient(90deg,transparent 0%,transparent 40%,#fafafa 50%,transparent 60%,transparent 100%)}
   @keyframes thinkingSweep{0%{background-position:140% 0;opacity:1}100%{background-position:-40% 0;opacity:1}}
+  .thought-time{margin-bottom:7px;color:var(--muted);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:12.5px;font-weight:560;letter-spacing:.005em}
   .chat-message.is-error .chat-text{color:#c3453b}
   .send:disabled{opacity:.45;cursor:wait;transform:none}
   .composer textarea:disabled{opacity:.65}
@@ -1489,7 +1492,19 @@
       const label=document.createElement('span');
       label.className='thinking-label';
       label.textContent='Thinking';
+      label.dataset.text='Thinking';
       stage.append(align);state.append(stage,label);body.append(state);
+    }
+
+    function showThoughtTime(message,elapsedMilliseconds){
+      const copy=message.querySelector('.chat-copy');
+      const previous=copy.querySelector('.thought-time');
+      if(previous)previous.remove();
+      const seconds=Math.max(1,Math.round(elapsedMilliseconds/1000));
+      const timing=document.createElement('div');
+      timing.className='thought-time';
+      timing.textContent='Thought for '+seconds+' '+(seconds===1?'second':'seconds');
+      copy.prepend(timing);
     }
 
     function appendMessage(role,text){
@@ -1648,6 +1663,7 @@
       const pending=appendMessage('assistant','');
       pending.classList.add('is-pending');
       setThinkingState(pending);
+      const thinkingStartedAt=performance.now();
       textarea.value='';
       textarea.style.height='auto';
       setSending(true);
@@ -1672,6 +1688,7 @@
         conversationID=data.conversation_id||conversationID;
         storeValue(localStorage,currentConversationStorageKey,conversationID);
         pending.classList.remove('is-pending');
+        showThoughtTime(pending,performance.now()-thinkingStartedAt);
         renderMarkdown(pending.querySelector('.chat-text'),data.response_text||'The server returned an empty response.');
         chatLog.scrollTop=chatLog.scrollHeight;
         loadConversations(false);
