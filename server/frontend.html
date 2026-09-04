@@ -1,0 +1,537 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark">
+  <title>NeoChat</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #0a0b0d;
+      --panel: #111317;
+      --panel-soft: #171a20;
+      --line: #252a33;
+      --text: #f4f5f7;
+      --muted: #9299a6;
+      --accent: #8df5c6;
+      --accent-strong: #59dba5;
+      --danger: #ff8d8d;
+      --radius: 18px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at 50% -20%, rgba(77, 187, 141, .13), transparent 34rem),
+        var(--bg);
+      color: var(--text);
+      font: 15px/1.5 Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+
+    button, input, textarea, select { font: inherit; }
+
+    button { color: inherit; }
+
+    .app {
+      display: grid;
+      grid-template-columns: 260px minmax(0, 1fr);
+      min-height: 100vh;
+    }
+
+    .sidebar {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+      padding: 18px;
+      border-right: 1px solid var(--line);
+      background: rgba(12, 14, 17, .78);
+      backdrop-filter: blur(18px);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 11px;
+      padding: 4px 6px;
+      font-weight: 700;
+      letter-spacing: -.02em;
+    }
+
+    .brand-mark {
+      display: grid;
+      width: 32px;
+      height: 32px;
+      place-items: center;
+      border-radius: 10px;
+      background: var(--accent);
+      color: #09251a;
+      font-weight: 900;
+    }
+
+    .new-chat, .send, .icon-button {
+      border: 0;
+      cursor: pointer;
+      transition: transform .15s ease, background .15s ease, opacity .15s ease;
+    }
+
+    .new-chat {
+      width: 100%;
+      padding: 11px 14px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel-soft);
+      text-align: left;
+    }
+
+    .new-chat:hover { background: #1d2128; }
+
+    .sidebar-copy {
+      margin-top: auto;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .main {
+      display: grid;
+      grid-template-rows: auto 1fr auto;
+      min-width: 0;
+      height: 100vh;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px 24px;
+      border-bottom: 1px solid rgba(37, 42, 51, .72);
+    }
+
+    .mode-picker {
+      display: flex;
+      gap: 4px;
+      padding: 4px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+      background: var(--panel);
+    }
+
+    .mode-picker button {
+      border: 0;
+      border-radius: 8px;
+      padding: 7px 11px;
+      background: transparent;
+      color: var(--muted);
+      cursor: pointer;
+    }
+
+    .mode-picker button.active {
+      background: var(--panel-soft);
+      color: var(--text);
+      box-shadow: 0 1px 8px rgba(0, 0, 0, .24);
+    }
+
+    .settings {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    select, .key-input {
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      outline: none;
+      background: var(--panel);
+      color: var(--text);
+    }
+
+    select { padding: 0 32px 0 10px; }
+
+    .key-input {
+      width: 180px;
+      padding: 0 11px;
+    }
+
+    select:focus, .key-input:focus, textarea:focus {
+      border-color: #4f7d6a;
+      box-shadow: 0 0 0 3px rgba(89, 219, 165, .1);
+    }
+
+    .messages {
+      overflow-y: auto;
+      padding: 42px 24px 30px;
+      scroll-behavior: smooth;
+    }
+
+    .conversation {
+      width: min(760px, 100%);
+      margin: 0 auto;
+    }
+
+    .welcome {
+      display: grid;
+      min-height: 52vh;
+      place-content: center;
+      text-align: center;
+    }
+
+    .welcome h1 {
+      margin: 0;
+      font-size: clamp(34px, 6vw, 58px);
+      letter-spacing: -.06em;
+      line-height: 1;
+    }
+
+    .welcome p {
+      max-width: 500px;
+      margin: 18px auto 0;
+      color: var(--muted);
+      font-size: 17px;
+    }
+
+    .message {
+      display: grid;
+      grid-template-columns: 34px minmax(0, 1fr);
+      gap: 13px;
+      margin: 0 0 28px;
+    }
+
+    .avatar {
+      display: grid;
+      width: 34px;
+      height: 34px;
+      place-items: center;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--panel-soft);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .message.assistant .avatar {
+      border-color: transparent;
+      background: var(--accent);
+      color: #09251a;
+    }
+
+    .message-body { min-width: 0; }
+
+    .message-role {
+      margin-bottom: 5px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .message-text {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .message-meta {
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .message.error .message-text { color: var(--danger); }
+
+    .composer-wrap {
+      padding: 14px 24px 24px;
+      background: linear-gradient(transparent, var(--bg) 26%);
+    }
+
+    .composer {
+      width: min(780px, 100%);
+      margin: 0 auto;
+      padding: 8px 8px 8px 16px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      box-shadow: 0 18px 60px rgba(0, 0, 0, .25);
+    }
+
+    textarea {
+      display: block;
+      width: 100%;
+      min-height: 54px;
+      max-height: 190px;
+      resize: none;
+      border: 0;
+      outline: 0;
+      padding: 10px 4px 8px;
+      background: transparent;
+      color: var(--text);
+    }
+
+    textarea::placeholder { color: #747b87; }
+
+    .composer-actions {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+
+    .hint {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .send {
+      display: grid;
+      width: 40px;
+      height: 40px;
+      place-items: center;
+      border-radius: 12px;
+      background: var(--accent);
+      color: #09251a;
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .send:hover { background: var(--accent-strong); transform: translateY(-1px); }
+    .send:disabled { cursor: wait; opacity: .45; transform: none; }
+
+    .status {
+      min-height: 18px;
+      margin: 8px auto 0;
+      color: var(--muted);
+      font-size: 12px;
+      text-align: center;
+    }
+
+    @media (max-width: 780px) {
+      .app { grid-template-columns: 1fr; }
+      .sidebar { display: none; }
+      .topbar {
+        align-items: flex-start;
+        flex-direction: column;
+        padding: 12px 14px;
+      }
+      .topbar, .settings { width: 100%; }
+      .mode-picker { width: 100%; overflow-x: auto; }
+      .mode-picker button { flex: 1; }
+      .settings select { flex: 1; }
+      .key-input { flex: 2; min-width: 0; }
+      .messages { padding: 28px 16px 22px; }
+      .composer-wrap { padding: 10px 12px 16px; }
+      .hint { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <div class="brand"><span class="brand-mark">N</span> NeoChat</div>
+      <button class="new-chat" id="newChat" type="button">＋ Новый чат</button>
+      <p class="sidebar-copy">Выбирайте глубину ответа — модель подберёт NeoChat.</p>
+    </aside>
+
+    <main class="main">
+      <header class="topbar">
+        <div class="mode-picker" aria-label="Режим ответа">
+          <button class="active" type="button" data-mode="auto">Авто</button>
+          <button type="button" data-mode="instant">Быстро</button>
+          <button type="button" data-mode="thinking">Подумать</button>
+          <button type="button" data-mode="max">Максимум</button>
+        </div>
+
+        <div class="settings">
+          <select id="persona" aria-label="Стиль ответа">
+            <option>Default</option>
+            <option>Expert</option>
+            <option>Friendly</option>
+            <option>Direct</option>
+            <option>Cynical</option>
+          </select>
+          <input class="key-input" id="apiKey" type="password" autocomplete="off" placeholder="API-ключ">
+        </div>
+      </header>
+
+      <section class="messages" id="messages" aria-live="polite">
+        <div class="conversation" id="conversation">
+          <div class="welcome" id="welcome">
+            <div>
+              <h1>О чём подумаем?</h1>
+              <p>Один чат, несколько уровней глубины. Просто опишите задачу — технические детали мы возьмём на себя.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <footer class="composer-wrap">
+        <form class="composer" id="composer">
+          <textarea id="message" rows="1" placeholder="Напишите сообщение…" aria-label="Сообщение"></textarea>
+          <div class="composer-actions">
+            <span class="hint">Enter — отправить · Shift+Enter — новая строка</span>
+            <button class="send" id="send" type="submit" aria-label="Отправить">↑</button>
+          </div>
+        </form>
+        <div class="status" id="status"></div>
+      </footer>
+    </main>
+  </div>
+
+  <script>
+    const state = {
+      mode: "auto",
+      conversationId: "",
+      sending: false,
+    };
+
+    const conversation = document.querySelector("#conversation");
+    const welcome = document.querySelector("#welcome");
+    const composer = document.querySelector("#composer");
+    const messageInput = document.querySelector("#message");
+    const sendButton = document.querySelector("#send");
+    const status = document.querySelector("#status");
+    const apiKey = document.querySelector("#apiKey");
+    const persona = document.querySelector("#persona");
+
+    apiKey.value = sessionStorage.getItem("neochat-api-key") || "";
+
+    document.querySelectorAll("[data-mode]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.mode = button.dataset.mode;
+        document.querySelectorAll("[data-mode]").forEach((item) => {
+          item.classList.toggle("active", item === button);
+        });
+      });
+    });
+
+    document.querySelector("#newChat").addEventListener("click", () => {
+      state.conversationId = "";
+      conversation.replaceChildren(welcome);
+      welcome.hidden = false;
+      status.textContent = "";
+      messageInput.focus();
+    });
+
+    messageInput.addEventListener("input", () => {
+      messageInput.style.height = "auto";
+      messageInput.style.height = Math.min(messageInput.scrollHeight, 190) + "px";
+    });
+
+    messageInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        composer.requestSubmit();
+      }
+    });
+
+    function addMessage(role, text, meta = "", isError = false) {
+      welcome.hidden = true;
+
+      const item = document.createElement("article");
+      item.className = "message " + role + (isError ? " error" : "");
+
+      const avatar = document.createElement("div");
+      avatar.className = "avatar";
+      avatar.textContent = role === "assistant" ? "N" : "Вы";
+
+      const body = document.createElement("div");
+      body.className = "message-body";
+
+      const roleLabel = document.createElement("div");
+      roleLabel.className = "message-role";
+      roleLabel.textContent = role === "assistant" ? "NeoChat" : "Вы";
+
+      const content = document.createElement("div");
+      content.className = "message-text";
+      content.textContent = text;
+
+      body.append(roleLabel, content);
+
+      if (meta) {
+        const metadata = document.createElement("div");
+        metadata.className = "message-meta";
+        metadata.textContent = meta;
+        body.append(metadata);
+      }
+
+      item.append(avatar, body);
+      conversation.append(item);
+      document.querySelector("#messages").scrollTop = document.querySelector("#messages").scrollHeight;
+      return content;
+    }
+
+    function setSending(value) {
+      state.sending = value;
+      sendButton.disabled = value;
+      messageInput.disabled = value;
+      status.textContent = value ? "NeoChat подбирает модель и готовит ответ…" : "";
+    }
+
+    composer.addEventListener("submit", async (event) => {
+      event.preventDefault();
+      const text = messageInput.value.trim();
+      const token = apiKey.value.trim();
+
+      if (!text || state.sending) return;
+      if (!token) {
+        status.textContent = "Введите API-ключ в правом верхнем углу.";
+        apiKey.focus();
+        return;
+      }
+
+      sessionStorage.setItem("neochat-api-key", token);
+      addMessage("user", text);
+      messageInput.value = "";
+      messageInput.style.height = "auto";
+      setSending(true);
+
+      const payload = {
+        message: text,
+        requested_mode: state.mode,
+        persona: persona.value,
+        idempotency_key: crypto.randomUUID(),
+      };
+
+      if (state.conversationId) {
+        payload.conversation_id = state.conversationId;
+      }
+
+      try {
+        const response = await fetch("/chat", {
+          method: "POST",
+          headers: {
+            "Authorization": "Bearer " + token,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(payload),
+        });
+
+        const raw = await response.text();
+        let data;
+
+        try {
+          data = JSON.parse(raw);
+        } catch {
+          data = null;
+        }
+
+        if (!response.ok) {
+          throw new Error(data?.error || raw || "HTTP " + response.status);
+        }
+
+        state.conversationId = data.conversation_id || state.conversationId;
+        const modelMeta = [data.selected_mode, data.selected_model_id].filter(Boolean).join(" · ");
+        addMessage("assistant", data.response_text || "Пустой ответ", modelMeta, Boolean(data.blocked));
+      } catch (error) {
+        addMessage("assistant", "Не удалось получить ответ: " + error.message, "", true);
+      } finally {
+        setSending(false);
+        messageInput.disabled = false;
+        messageInput.focus();
+      }
+    });
+
+    messageInput.focus();
+  </script>
+</body>
+</html>
