@@ -40,6 +40,12 @@ func TestLoadWeights_LoadsTaskProfilePolicy(t *testing.T) {
 	if weights.TaskProfile.MaxQualityGap <= 0 {
 		t.Fatalf("expected a positive quality band: %+v", weights.TaskProfile)
 	}
+	if weights.ConfidenceEscalationEnabled {
+		t.Fatal("production config should not escalate solely because classifier confidence is low")
+	}
+	if weights.AutoMode.ThinkingCeiling < 3.5 {
+		t.Fatalf("thinking ceiling is too aggressive: %+v", weights.AutoMode)
+	}
 }
 
 func TestLoadWeights_RejectsInvalidTaskProfilePolicy(t *testing.T) {

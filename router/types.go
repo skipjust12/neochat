@@ -128,10 +128,15 @@ type TaskProfileWeights struct {
 // Weights holds the scoring weights and thresholds loaded from weights.json.
 // Field meanings and units are documented alongside the JSON file itself.
 //
-// AutoMode and ConfidenceEscalationThreshold choose the depth tier.
-// TaskProfile then defines the quality band used to select models within
-// that tier before cost minimization -- see scoreAndPick.
+// AutoMode chooses the depth tier. The confidence settings can optionally
+// escalate an auto-selected tier; TaskProfile then defines the quality band
+// used to select models within that tier before cost minimization.
 type Weights struct {
+	// ConfidenceEscalationEnabled keeps confidence-based tier escalation an
+	// explicit operator choice. Classifier confidence measures certainty in
+	// the labels, not task difficulty, so the safe default is to record low
+	// confidence without buying a stronger model.
+	ConfidenceEscalationEnabled   bool               `json:"confidence_escalation_enabled"`
 	ConfidenceEscalationThreshold float64            `json:"confidence_escalation_threshold"`
 	AutoMode                      AutoModeWeights    `json:"auto_mode"`
 	TaskProfile                   TaskProfileWeights `json:"task_profile"`
