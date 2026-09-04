@@ -22,6 +22,7 @@
   .icon-btn{width:42px;height:42px;border:0;border-radius:15px;display:grid;place-items:center;background:transparent;cursor:pointer;transition:background-color .28s var(--ease-gentle),border-color .28s var(--ease-gentle),box-shadow .36s var(--ease-gentle),transform .28s var(--ease-out),color .28s var(--ease-gentle)}.icon-btn:hover{background:var(--hover)}.icon-btn:active{transform:scale(.96)}.close-sidebar{color:var(--muted)}
   .new-chat{width:100%;border:0;border-radius:22px;background:var(--soft);padding:17px 18px;display:flex;align-items:center;gap:15px;font-size:18px;font-weight:620;cursor:pointer;transition:background .18s ease,transform .18s ease}.new-chat svg{width:24px;height:24px}.new-chat:hover{background:var(--soft-hover)}.new-chat:active{transform:scale(.985)}
   .nav{margin-top:18px;display:grid;gap:4px}.nav-item{width:100%;border:0;background:transparent;display:flex;align-items:center;gap:15px;padding:13px 18px;border-radius:18px;color:var(--text);cursor:pointer;text-align:left;font-size:17px;font-weight:520;transition:background .18s ease}.nav-item svg{width:23px;height:23px}.nav-item:hover{background:var(--hover)}.nav-item .trailing{margin-left:auto;color:var(--muted);display:grid;place-items:center}.nav-item .trailing svg{width:19px;height:19px}
+  .chat-history{min-height:0;margin-top:18px;display:flex;flex:1;flex-direction:column;border-top:1px solid var(--line);padding-top:15px}.chat-history-title{padding:0 12px 8px;color:var(--muted);font-size:12px;font-weight:680;letter-spacing:.08em;text-transform:uppercase}.conversation-list{min-height:0;overflow-y:auto;display:grid;align-content:start;gap:3px;scrollbar-width:thin}.conversation-item{width:100%;border:0;background:transparent;border-radius:14px;padding:10px 12px;text-align:left;cursor:pointer;color:var(--muted);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .18s ease,color .18s ease}.conversation-item:hover{background:var(--hover);color:var(--text)}.conversation-item.is-active{background:var(--soft);color:var(--text);font-weight:620}.conversation-empty{padding:10px 12px;color:var(--muted);font-size:12.5px;line-height:1.45}
   .profile{margin-top:auto;display:flex;align-items:center;gap:12px;padding:13px 9px 7px;border-radius:20px;transition:background .18s ease}.profile:hover{background:var(--hover)}.avatar{width:42px;height:42px;border-radius:50%;background:#909d9c;color:#fff;display:grid;place-items:center;font-size:13px;font-weight:720}.profile-copy{min-width:0;flex:1}.profile-copy strong,.profile-copy span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.profile-copy strong{font-size:15px;font-weight:650}.profile-copy span{font-size:13px;color:var(--muted);margin-top:2px}.store-icon{color:var(--muted)}
   .main{position:relative;isolation:isolate;width:100%;height:100%;min-width:0;border:1px solid var(--border-light);border-radius:var(--radius-xl);background:var(--card);backdrop-filter:blur(22px);overflow:hidden;box-shadow:var(--shadow);transition:background-color .65s var(--ease-gentle),border-color .55s var(--ease-gentle),box-shadow .7s var(--ease-gentle)}
   .main::before,.main::after{content:"";position:absolute;z-index:0;left:-12%;right:-12%;bottom:-14%;height:76%;pointer-events:none;opacity:0;transform:translate3d(0,15%,0) scale(.94);transform-origin:50% 100%;will-change:opacity,transform;transition:opacity .9s var(--ease-gentle),transform 1.15s var(--ease-out)}
@@ -302,6 +303,10 @@
       <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>Plugins</button>
       <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></svg>More</button>
     </nav>
+    <section class="chat-history" aria-label="Saved chats">
+      <div class="chat-history-title">Chats</div>
+      <div class="conversation-list" id="conversationList"><div class="conversation-empty">Add your NeoChat access key to load saved chats.</div></div>
+    </section>
     <div class="profile"><div class="avatar">SK</div><div class="profile-copy"><strong>skipjust</strong><span>Plus</span></div><button class="icon-btn store-icon" id="openSettings" aria-label="Open settings" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></button></div>
   </aside>
   <main class="main">
@@ -730,7 +735,7 @@
             <span class="label soft">NeoChat API key</span>
             <span class="val"><input class="api-key-input" id="apiKey" type="password" autocomplete="off" placeholder="Paste API key" aria-label="NeoChat API key" /></span>
           </div>
-          <p class="set-note">Kept only for this browser tab and sent to the same-origin chat API.</p>
+          <p class="set-note">Saved in this browser and sent only to the same-origin NeoChat API.</p>
         </div>
         <div class="set-sec">
           <div class="set-sec-title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M16 8v5a3 3 0 0 0 6 0v-1a10 10 0 1 0-4 8"/></svg>Account info</div>
@@ -1303,6 +1308,9 @@
     const chatContent=document.querySelector('.content');
     const chatLog=document.getElementById('chatLog');
     const apiKeyInput=document.getElementById('apiKey');
+    const conversationList=document.getElementById('conversationList');
+    const apiKeyStorageKey='neochat-api-key';
+    const currentConversationStorageKey='neochat-current-conversation';
     const manualModelIDs={
       'Claude Fable 5':'claude-fable-5',
       'Claude Opus 5':'claude-opus-5',
@@ -1319,10 +1327,24 @@
     };
     let conversationID='';
     let sending=false;
+    let keyReloadTimer=null;
 
-    apiKeyInput.value=sessionStorage.getItem('neochat-api-key')||'';
+    function storedValue(storage,key){
+      try{return storage.getItem(key)||''}catch(error){return ''}
+    }
+    function storeValue(storage,key,value){
+      try{
+        if(value)storage.setItem(key,value);else storage.removeItem(key);
+      }catch(error){}
+    }
+
+    apiKeyInput.value=storedValue(localStorage,apiKeyStorageKey)||storedValue(sessionStorage,apiKeyStorageKey);
     apiKeyInput.addEventListener('input',function(){
-      sessionStorage.setItem('neochat-api-key',apiKeyInput.value.trim());
+      const token=apiKeyInput.value.trim();
+      storeValue(localStorage,apiKeyStorageKey,token);
+      storeValue(sessionStorage,apiKeyStorageKey,'');
+      clearTimeout(keyReloadTimer);
+      keyReloadTimer=setTimeout(function(){loadConversations(true)},350);
     });
 
     function createIdempotencyKey(){
@@ -1360,11 +1382,87 @@
 
     function resetConversation(){
       conversationID='';
+      storeValue(localStorage,currentConversationStorageKey,'');
       chatLog.replaceChildren();
       chatContent.classList.remove('has-chat');
+      conversationList.querySelectorAll('.conversation-item').forEach(function(item){item.classList.remove('is-active')});
       textarea.value='';
       textarea.style.height='auto';
       textarea.focus();
+    }
+
+    function setConversationListMessage(message){
+      conversationList.replaceChildren();
+      const empty=document.createElement('div');
+      empty.className='conversation-empty';
+      empty.textContent=message;
+      conversationList.append(empty);
+    }
+
+    function renderConversationList(conversations){
+      conversationList.replaceChildren();
+      if(!conversations.length){
+        setConversationListMessage('No saved chats yet.');
+        return;
+      }
+      conversations.forEach(function(conversation){
+        const button=document.createElement('button');
+        button.type='button';
+        button.className='conversation-item';
+        button.dataset.conversationId=conversation.conversation_id;
+        button.textContent=conversation.title||'New chat';
+        button.title=conversation.title||'New chat';
+        button.classList.toggle('is-active',conversation.conversation_id===conversationID);
+        button.addEventListener('click',function(){loadConversation(conversation.conversation_id)});
+        conversationList.append(button);
+      });
+    }
+
+    async function loadConversations(restoreCurrent){
+      const token=apiKeyInput.value.trim();
+      if(!token){
+        setConversationListMessage('Add your NeoChat access key to load saved chats.');
+        return;
+      }
+      try{
+        const response=await fetch('/conversations',{headers:{'Authorization':'Bearer '+token}});
+        if(!response.ok)throw new Error(await response.text()||'HTTP '+response.status);
+        const data=await response.json();
+        const conversations=Array.isArray(data.conversations)?data.conversations:[];
+        renderConversationList(conversations);
+        const savedID=storedValue(localStorage,currentConversationStorageKey);
+        if(restoreCurrent&&savedID&&conversations.some(function(item){return item.conversation_id===savedID})){
+          await loadConversation(savedID);
+        }
+      }catch(error){
+        setConversationListMessage('Could not load saved chats. Check your access key.');
+      }
+    }
+
+    async function loadConversation(id){
+      if(sending)return;
+      const token=apiKeyInput.value.trim();
+      if(!token){promptForAPIKey();return}
+      try{
+        const response=await fetch('/conversations/'+encodeURIComponent(id),{headers:{'Authorization':'Bearer '+token}});
+        if(!response.ok)throw new Error(await response.text()||'HTTP '+response.status);
+        const data=await response.json();
+        conversationID=data.conversation_id||id;
+        storeValue(localStorage,currentConversationStorageKey,conversationID);
+        chatLog.replaceChildren();
+        (Array.isArray(data.messages)?data.messages:[]).forEach(function(message){
+          if(message.is_summary)return;
+          appendMessage(message.role,message.content,message.model_id||'');
+        });
+        if(!chatLog.children.length)chatContent.classList.remove('has-chat');
+        conversationList.querySelectorAll('.conversation-item').forEach(function(item){
+          item.classList.toggle('is-active',item.dataset.conversationId===conversationID);
+        });
+        sidebarState.checked=false;
+        textarea.focus();
+      }catch(error){
+        toast('Could not load that chat.');
+      }
     }
 
     function selectedRequest(){
@@ -1443,6 +1541,7 @@
         }
 
         conversationID=data.conversation_id||conversationID;
+        storeValue(localStorage,currentConversationStorageKey,conversationID);
         pending.classList.remove('is-pending');
         pending.querySelector('.chat-text').textContent=data.response_text||'The server returned an empty response.';
         const meta=[data.selected_mode,data.selected_model_id].filter(Boolean).join(' · ');
@@ -1453,6 +1552,7 @@
           pending.querySelector('.chat-copy').append(metadata);
         }
         chatLog.scrollTop=chatLog.scrollHeight;
+        loadConversations(false);
       }catch(error){
         pending.classList.remove('is-pending');
         pending.classList.add('is-error');
@@ -1493,6 +1593,8 @@
     document.querySelectorAll('.round-btn:not(#attachBtn)').forEach(function(button){
       button.addEventListener('click',function(){toast(button.getAttribute('aria-label')+' is not wired up yet.')});
     });
+
+    loadConversations(true);
   })();
 </script>
 
@@ -1584,6 +1686,82 @@
       webSearchState.classList.remove('row-state');void webSearchState.offsetWidth;webSearchState.classList.add('row-state');
       webSearchState.textContent=states[stateIndex];
     });
+  })();
+</script>
+<script>
+  (function(){
+    const storageKey='neochat-preferences-v1';
+    const displayName=document.getElementById('displayName');
+    const instructions=document.getElementById('instructions');
+    const language=document.getElementById('language');
+    const themeSeg=document.getElementById('themeSeg');
+    const toneWrap=document.getElementById('toneWrap');
+    const modePicker=document.getElementById('modePicker');
+    const manualState=document.getElementById('manualState');
+    const reasoningRange=document.getElementById('reasoningRange');
+    const webSearchRow=document.getElementById('webSearchRow');
+    const webSearchState=document.getElementById('webSearchState');
+
+    function loadPreferences(){
+      try{return JSON.parse(localStorage.getItem(storageKey)||'{}')}catch(error){return {}}
+    }
+    function savePreferences(){
+      const activeTheme=themeSeg.querySelector('button.is-active');
+      const selectedMode=modePicker.querySelector('input[name="work-mode"]:checked');
+      const preferences={
+        displayName:displayName.value,
+        instructions:instructions.value,
+        language:language.value,
+        theme:activeTheme?activeTheme.dataset.themeValue:'system',
+        tone:document.getElementById('toneTriggerLabel').textContent.trim(),
+        workMode:selectedMode?selectedMode.value:'Auto',
+        manualModel:manualState.textContent.trim(),
+        reasoningEffort:Math.round(Number(reasoningRange.value)),
+        webSearch:webSearchState.textContent.trim()
+      };
+      try{localStorage.setItem(storageKey,JSON.stringify(preferences))}catch(error){}
+    }
+
+    const preferences=loadPreferences();
+    if(typeof preferences.displayName==='string'){
+      displayName.value=preferences.displayName;
+      displayName.dispatchEvent(new Event('input'));
+    }
+    if(typeof preferences.instructions==='string')instructions.value=preferences.instructions;
+    if(typeof preferences.language==='string'&&Array.from(language.options).some(function(option){return option.value===preferences.language})){
+      language.value=preferences.language;
+    }
+    if(typeof preferences.theme==='string'){
+      const themeButton=themeSeg.querySelector('[data-theme-value="'+preferences.theme+'"]');
+      if(themeButton)themeButton.click();
+    }
+    if(typeof preferences.tone==='string'){
+      const toneOption=toneWrap.querySelector('[data-tone="'+preferences.tone+'"]');
+      if(toneOption)toneOption.click();
+    }
+    if(typeof preferences.workMode==='string'){
+      const mode=Array.from(modePicker.querySelectorAll('input[name="work-mode"]')).find(function(input){return input.value===preferences.workMode});
+      if(mode){mode.checked=true;mode.dispatchEvent(new Event('change'))}
+    }
+    if(typeof preferences.manualModel==='string'&&preferences.manualModel)manualState.textContent=preferences.manualModel;
+    if(Number.isFinite(preferences.reasoningEffort)){
+      reasoningRange.value=String(Math.max(0,Math.min(4,preferences.reasoningEffort)));
+      reasoningRange.dispatchEvent(new Event('input'));
+    }
+    if(['Auto','On','Off'].includes(preferences.webSearch)){
+      while(webSearchState.textContent.trim()!==preferences.webSearch)webSearchRow.click();
+    }
+
+    displayName.addEventListener('input',savePreferences);
+    instructions.addEventListener('input',savePreferences);
+    language.addEventListener('change',savePreferences);
+    themeSeg.addEventListener('click',savePreferences);
+    toneWrap.addEventListener('click',function(event){if(event.target.closest('.tone-option'))savePreferences()});
+    modePicker.addEventListener('change',savePreferences);
+    modePicker.querySelectorAll('.model-row').forEach(function(row){row.addEventListener('click',savePreferences)});
+    reasoningRange.addEventListener('input',savePreferences);
+    webSearchRow.addEventListener('click',savePreferences);
+    window.addEventListener('beforeunload',savePreferences);
   })();
 </script>
 </body>

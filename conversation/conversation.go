@@ -40,6 +40,15 @@ type Message struct {
 	IsSummary bool `json:"is_summary,omitempty"`
 }
 
+// Overview is the compact representation used by conversation lists.
+// The title is derived from the first user message, so saving a chat does
+// not require a second metadata write or a separate naming flow.
+type Overview struct {
+	ID        string    `json:"conversation_id"`
+	Title     string    `json:"title"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
 // Summary is the rolling, machine-generated compression of a
 // conversation's older messages, kept alongside the full History so a
 // long-running conversation can stay within a model's context window

@@ -2,6 +2,8 @@ package conversation
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"sync"
 )
 
@@ -40,6 +42,10 @@ type Store interface {
 	// Summary.CoversThrough counts in, the two stay directly comparable:
 	// index i of a result fetched at offset N is absolute index N+i.
 	History(ctx context.Context, userID, conversationID string, offset int) ([]Message, error)
+
+	// List returns the user's most recently active conversations. Titles
+	// are derived from the first user message in each conversation.
+	List(ctx context.Context, userID string, limit int) ([]Overview, error)
 
 	// GetSummary returns the current rolling Summary for (userID,
 	// conversationID). An unknown conversation, or one that has never
@@ -104,6 +110,42 @@ func (s *InMemoryStore) History(_ context.Context, userID, conversationID string
 	stored = stored[offset:]
 	out := make([]Message, len(stored))
 	copy(out, stored)
+	return out, nil
+}
+
+func (s *InMemoryStore) List(_ context.Context, userID string, limit int) ([]Overview, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit <= 0 {
+		return []Overview{}, nil
+	}
+
+	out := []Overview{}
+	for key, messages := range s.history {
+		if key.userID != userID || len(messages) == 0 {
+			continue
+		}
+		overview := Overview{ID: key.conversationID, Title: "New chat"}
+		for _, message := range messages {
+			if message.CreatedAt.After(overview.UpdatedAt) {
+				overview.UpdatedAt = message.CreatedAt
+			}
+			if overview.Title == "New chat" && message.Role == RoleUser && strings.TrimSpace(message.Content) != "" {
+				title := []rune(strings.TrimSpace(message.Content))
+				if len(title) > 80 {
+					title = title[:80]
+				}
+				overview.Title = string(title)
+			}
+		}
+		out = append(out, overview)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
 	return out, nil
 }
 

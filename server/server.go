@@ -300,10 +300,52 @@ func (s *Server) Mux() *http.ServeMux {
 	}))
 	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
+	mux.HandleFunc("GET /conversations", recovered(s.rateLimited(s.authenticated(s.handleConversationList))))
+	mux.HandleFunc("GET /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.handleConversationHistory))))
 	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	return mux
+}
+
+type conversationListResponse struct {
+	Conversations []conversation.Overview `json:"conversations"`
+}
+
+type conversationHistoryResponse struct {
+	ConversationID string                 `json:"conversation_id"`
+	Messages       []conversation.Message `json:"messages"`
+}
+
+func (s *Server) handleConversationList(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	conversations, err := s.Conversations.List(r.Context(), identity.UserID, 100)
+	if err != nil {
+		log.Printf("server: list conversations for user_id=%s: %v", identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(conversationListResponse{Conversations: conversations}); err != nil {
+		log.Printf("server: encode conversation list: %v", err)
+	}
+}
+
+func (s *Server) handleConversationHistory(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	conversationID := strings.TrimSpace(r.PathValue("conversation_id"))
+	if conversationID == "" {
+		http.Error(w, "conversation_id is required", http.StatusBadRequest)
+		return
+	}
+	messages, err := s.Conversations.History(r.Context(), identity.UserID, conversationID, 0)
+	if err != nil {
+		log.Printf("server: load conversation_id=%s for user_id=%s: %v", conversationID, identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(conversationHistoryResponse{ConversationID: conversationID, Messages: messages}); err != nil {
+		log.Printf("server: encode conversation history: %v", err)
+	}
 }
 
 // recovered turns a panic in next into a logged 500 for that one request.
