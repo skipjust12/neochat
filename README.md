@@ -201,7 +201,7 @@ Design principle: the classifier returns **raw task features**, never a final mo
 - `task_intent` is the operation axis: `answer`, `generate`, `edit`, `debug`, `review`, `explain`, `summarize`, `compare`, `plan`, `extract`, `classify`, or `transform`.
 - The router combines the two against each model's `task_category_scores` and `task_intent_scores`. Within the selected mode it retains models close enough to the best task fit (`task_profile.minimum_score` and `task_profile.max_quality_gap`), then chooses the cheapest survivor. Unknown classifier values fall back to `general`/`answer` and are recorded in `RouteResult.Reason`.
 - `expected_output_length` is a bucketed enum, not a raw token estimate — small models are unreliable at precise token counts.
-- `confidence` drives the escalation rule directly: below a threshold, the router bumps the mode tier up (`instant → thinking`, `thinking → max`) regardless of what the other features say.
+- `confidence` measures certainty in the classifier's labels, not task difficulty. Low confidence is recorded in the route reason but does not change the tier by default. Operators can restore one-tier escalation for `auto` requests with `confidence_escalation_enabled`; explicit `instant`/`thinking`/`max` choices are never overridden by classifier uncertainty.
 - `context_dependency` feeds the prompt-caching-vs-routing tradeoff (see below): `heavy` should penalize mid-session model switches more aggressively.
 - Cost estimation (input token count) is **not** a classifier field — it must be computed deterministically by a tokenizer before any request goes out, as a hard defense against cost-based abuse.
 - `schema_version` is required from day one, since this schema will evolve the same way the routing weights do.

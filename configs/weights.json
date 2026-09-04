@@ -1,17 +1,18 @@
 {
+  "confidence_escalation_enabled": false,
   "confidence_escalation_threshold": 0.5,
   "auto_mode": {
     "reasoning_weight": 1.0,
     "complexity_weight": 2.0,
     "creativity_weight": 0.2,
     "instant_ceiling": 1.0,
-    "thinking_ceiling": 2.5
+    "thinking_ceiling": 3.5
   },
   "task_profile": {
     "category_weight": 0.8,
     "intent_weight": 0.2,
     "default_score": 0.5,
     "minimum_score": 0.65,
-    "max_quality_gap": 0.05
+    "max_quality_gap": 0.06
   }
 }

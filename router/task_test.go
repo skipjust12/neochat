@@ -145,3 +145,30 @@ func TestRoute_RealCatalogChangesWinnerByTaskProfile(t *testing.T) {
 		t.Fatalf("software route selected %q, want gpt-5.6-terra", softwareResult.SelectedModelID)
 	}
 }
+
+func TestRoute_RealCatalogAvoidsSoftwareGeneratePriceCliff(t *testing.T) {
+	catalog, err := LoadCatalog("../configs/models.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	weights, err := LoadWeights("../configs/weights.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	input := baseInput()
+	input.TaskCategory = TaskCategorySoftwareEngineering
+	input.TaskIntent = TaskIntentGenerate
+	input.ModalityInput = []string{"text"}
+	input.ModalityOutputExpected = []string{"code"}
+	input.OutputFormat = "json"
+	input.Confidence = 0.9
+
+	result, err := NewRouter(catalog, weights).Route(input, "thinking", "", 1000, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.SelectedModelID != "gpt-5.6-terra" {
+		t.Fatalf("selected %q, want gpt-5.6-terra inside the quality band", result.SelectedModelID)
+	}
+}

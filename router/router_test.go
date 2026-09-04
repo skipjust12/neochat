@@ -121,16 +121,62 @@ func TestRoute_ManualModeRejectsExcludedModel(t *testing.T) {
 	}
 }
 
-func TestRoute_LowConfidenceEscalatesModeTier(t *testing.T) {
-	r := NewRouter(testCatalog(), testWeights())
+func TestRoute_LowConfidenceDoesNotOverrideExplicitMode(t *testing.T) {
+	weights := testWeights()
+	weights.ConfidenceEscalationEnabled = true
+	r := NewRouter(testCatalog(), weights)
 	input := baseInput()
-	input.Confidence = 0.1 // well below the 0.5 threshold -> forces escalation
+	input.Confidence = 0.1
 	result, err := r.Route(input, "instant", "", 1000, false, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
+	if result.SelectedMode != "instant" {
+		t.Errorf("explicit instant mode must not be overridden by classifier confidence, got mode=%s", result.SelectedMode)
+	}
+}
+
+func TestRoute_LowConfidenceEscalationIsOptInForAutoMode(t *testing.T) {
+	input := baseInput()
+	input.ReasoningDepth = "low"
+	input.ComplexityScore = 0.1
+	input.CreativityLevel = "low"
+	input.Confidence = 0.1
+
+	result, err := NewRouter(testCatalog(), testWeights()).Route(input, "auto", "", 1000, false, nil)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SelectedMode != "instant" {
+		t.Fatalf("low confidence should be observational by default, got mode=%s", result.SelectedMode)
+	}
+
+	weights := testWeights()
+	weights.ConfidenceEscalationEnabled = true
+	result, err = NewRouter(testCatalog(), weights).Route(input, "auto", "", 1000, false, nil)
+	if err != nil {
+		t.Fatalf("unexpected error with opt-in escalation: %v", err)
+	}
 	if result.SelectedMode != "thinking" {
-		t.Errorf("expected escalation from instant to thinking, got mode=%s", result.SelectedMode)
+		t.Errorf("opt-in confidence escalation should move auto instant to thinking, got mode=%s", result.SelectedMode)
+	}
+}
+
+func TestRoute_RejectsInvalidModeAndNegativeTokenEstimates(t *testing.T) {
+	r := NewRouter(testCatalog(), testWeights())
+
+	if _, err := r.Route(baseInput(), "turbo", "", 1000, false, nil); err == nil {
+		t.Fatal("expected invalid requested mode to be rejected")
+	}
+
+	input := baseInput()
+	input.EstimatedOutputTokens = -1
+	if _, err := r.Route(input, "auto", "", 1000, false, nil); err == nil {
+		t.Fatal("expected negative estimated output tokens to be rejected")
+	}
+
+	if _, err := r.Route(baseInput(), "manual", "instant-model", -1, false, nil); err == nil {
+		t.Fatal("expected negative context tokens to be rejected in manual mode")
 	}
 }
 
@@ -229,6 +275,16 @@ func TestRoute_AutoModePicksTierFromComplexity(t *testing.T) {
 	}
 	if result.SelectedMode != "max" {
 		t.Errorf("expected auto mode=max for a hard, high-complexity request, got %s", result.SelectedMode)
+	}
+}
+
+func TestModalitiesListIsDeterministic(t *testing.T) {
+	got := modalitiesList(map[string]bool{"text": true, "image": true, "code": true})
+	want := []string{"code", "image", "text"}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("modalitiesList() = %v, want sorted %v", got, want)
+		}
 	}
 }
 

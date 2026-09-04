@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"math"
+	"sort"
 	"strings"
 )
 
@@ -63,6 +64,16 @@ func NewRouter(catalog Catalog, weights Weights) Router {
 // manual mode, an excluded manualModelID is still an error (there is no
 // other candidate to fall back to: the user asked for this exact model).
 func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelID string, estimatedContextTokens int, thinkingMaxLocked bool, excludedModelIDs map[string]bool) (RouteResult, error) {
+	if estimatedContextTokens < 0 {
+		return RouteResult{}, fmt.Errorf("router: estimated context tokens %d must be non-negative", estimatedContextTokens)
+	}
+	if input.EstimatedOutputTokens < 0 {
+		return RouteResult{}, fmt.Errorf("router: estimated_output_tokens %d must be non-negative", input.EstimatedOutputTokens)
+	}
+	if requestedMode != "auto" && requestedMode != "instant" && requestedMode != "thinking" && requestedMode != "max" && requestedMode != "manual" {
+		return RouteResult{}, fmt.Errorf("router: requested_mode %q must be auto, instant, thinking, max, or manual", requestedMode)
+	}
+
 	if requestedMode == "manual" {
 		if excludedModelIDs[manualModelID] {
 			return RouteResult{}, fmt.Errorf("router: manual_model_id %q is currently unavailable (circuit open)", manualModelID)
@@ -123,7 +134,8 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 	escalated := false
 	escalationTarget := "" // the tier escalation aimed for, before any snap; used only in the reason text
 	escalationSnapNote := ""
-	if confidenceBelowThreshold {
+	confidenceEscalationEnabled := requestedMode == "auto" && r.Weights.ConfidenceEscalationEnabled
+	if confidenceBelowThreshold && confidenceEscalationEnabled {
 		if escalatedMode, ok := escalateMode(baseMode); ok {
 			escalationTarget = escalatedMode
 			effectiveMode = escalatedMode
@@ -181,9 +193,12 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 	case escalated:
 		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalated %s -> %s%s. ",
 			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode, escalationTarget, escalationSnapNote)
-	case confidenceBelowThreshold:
+	case confidenceBelowThreshold && confidenceEscalationEnabled:
 		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: escalation triggered but base_mode=%s has no higher tier. ",
 			input.Confidence, r.Weights.ConfidenceEscalationThreshold, baseMode)
+	case confidenceBelowThreshold:
+		fmt.Fprintf(&reason, "confidence %.2f < threshold %.2f: uncertainty recorded, mode unchanged. ",
+			input.Confidence, r.Weights.ConfidenceEscalationThreshold)
 	default:
 		fmt.Fprintf(&reason, "confidence %.2f >= threshold %.2f: no escalation. ",
 			input.Confidence, r.Weights.ConfidenceEscalationThreshold)
@@ -303,6 +318,7 @@ func modalitiesList(m map[string]bool) []string {
 	for k := range m {
 		out = append(out, k)
 	}
+	sort.Strings(out)
 	return out
 }
 
