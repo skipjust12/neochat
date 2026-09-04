@@ -6,6 +6,7 @@ package server
 
 import (
 	"context"
+	_ "embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -30,6 +31,9 @@ import (
 	"neochat/summarizer"
 	"neochat/tokenizer"
 )
+
+//go:embed frontend.html
+var frontendHTML []byte
 
 // maxCircuitFailoverAttempts bounds how many times handle will re-route
 // around a model whose circuit just opened before giving up. Each retry
@@ -290,6 +294,10 @@ type chatResponse struct {
 // why both exist rather than either alone.
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", recovered(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(frontendHTML)
+	}))
 	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
 	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
