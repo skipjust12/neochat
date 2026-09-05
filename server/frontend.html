@@ -1353,11 +1353,14 @@
       }catch(error){}
     }
 
-    apiKeyInput.value=storedValue(localStorage,apiKeyStorageKey)||storedValue(sessionStorage,apiKeyStorageKey);
+    apiKeyInput.value=storedValue(sessionStorage,apiKeyStorageKey);
+    storeValue(localStorage,apiKeyStorageKey,'');
     apiKeyInput.addEventListener('input',function(){
       const token=apiKeyInput.value.trim();
-      storeValue(localStorage,apiKeyStorageKey,token);
-      storeValue(sessionStorage,apiKeyStorageKey,'');
+      storeValue(sessionStorage,apiKeyStorageKey,token);
+      conversationID='';
+      chatLog.replaceChildren();
+      chatContent.classList.remove('has-chat');
       clearTimeout(keyReloadTimer);
       keyReloadTimer=setTimeout(function(){loadConversations(true)},350);
     });
@@ -1571,6 +1574,7 @@
         const response=await fetch('/conversations',{headers:{'Authorization':'Bearer '+token}});
         if(!response.ok)throw new Error(await response.text()||'HTTP '+response.status);
         const data=await response.json();
+        if(apiKeyInput.value.trim()!==token)return;
         const conversations=Array.isArray(data.conversations)?data.conversations:[];
         renderConversationList(conversations);
         const savedID=storedValue(localStorage,currentConversationStorageKey);
@@ -1590,13 +1594,15 @@
         const response=await fetch('/conversations/'+encodeURIComponent(id),{headers:{'Authorization':'Bearer '+token}});
         if(!response.ok)throw new Error(await response.text()||'HTTP '+response.status);
         const data=await response.json();
+        if(apiKeyInput.value.trim()!==token)return;
         conversationID=data.conversation_id||id;
         storeValue(localStorage,currentConversationStorageKey,conversationID);
         chatLog.replaceChildren();
         (Array.isArray(data.messages)?data.messages:[]).forEach(function(message){
           if(message.is_summary)return;
-          appendMessage(message.role,message.content,message.model_id||'');
+          appendMessage(message.role,message.content+(message.truncated?'\n[Message truncated]':''),message.model_id||'');
         });
+        showOlderMessagesButton(id,data.next_cursor,token);
         if(!chatLog.children.length)chatContent.classList.remove('has-chat');
         conversationList.querySelectorAll('.conversation-item').forEach(function(item){
           item.classList.toggle('is-active',item.dataset.conversationId===conversationID);
@@ -1606,6 +1612,33 @@
       }catch(error){
         toast('Could not load that chat.');
       }
+    }
+
+    function showOlderMessagesButton(id,cursor,token){
+      if(!cursor)return;
+      const button=document.createElement('button');
+      button.type='button';
+      button.className='conversation-item';
+      button.textContent='Load older messages';
+      button.addEventListener('click',async function(){
+        button.disabled=true;
+        try{
+          const response=await fetch('/conversations/'+encodeURIComponent(id)+'?before='+encodeURIComponent(cursor),{headers:{'Authorization':'Bearer '+token}});
+          if(!response.ok)throw new Error('History unavailable');
+          const data=await response.json();
+          if(conversationID!==id || apiKeyInput.value.trim()!==token)return;
+          const fragment=document.createDocumentFragment();
+          (data.messages||[]).forEach(function(message){
+            if(message.is_summary)return;
+            appendMessage(message.role,message.content+(message.truncated?'\n[Message truncated]':''),message.model_id||'');
+            fragment.append(chatLog.lastElementChild);
+          });
+          button.remove();
+          chatLog.prepend(fragment);
+          showOlderMessagesButton(id,data.next_cursor,token);
+        }catch(error){button.disabled=false;toast('Could not load older messages.');}
+      });
+      chatLog.prepend(button);
     }
 
     function selectedRequest(){
@@ -1685,6 +1718,7 @@
           throw new Error(data&&data.error?data.error:(raw||'HTTP '+response.status));
         }
 
+        if(apiKeyInput.value.trim()!==token)return;
         conversationID=data.conversation_id||conversationID;
         storeValue(localStorage,currentConversationStorageKey,conversationID);
         pending.classList.remove('is-pending');

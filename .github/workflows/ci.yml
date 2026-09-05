@@ -116,7 +116,7 @@ jobs:
           set -a
           . ./.env
           set +a
-          go test -tags=integration -count=1 -v ./... 2>&1 | tee integration.log
+          go test -tags=integration -p 1 -count=1 -v ./... 2>&1 | tee integration.log
 
       # internal/dbtest skips its tests when POSTGRES_USER/REDIS_PASSWORD
       # are unset, and a skipped test still reports ok -- so a broken env

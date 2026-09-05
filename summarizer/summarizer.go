@@ -19,9 +19,11 @@ import (
 // Summarizer calls one provider.Client/model pair with the summarizer
 // system prompt to fold a batch of messages into an updated summary.
 type Summarizer struct {
-	Client       provider.Client
-	APIModelID   string
-	SystemPrompt string
+	Client            provider.Client
+	APIModelID        string
+	SystemPrompt      string
+	CostInputPerMTok  float64
+	CostOutputPerMTok float64
 }
 
 // New builds a Summarizer from an already-loaded system prompt (see

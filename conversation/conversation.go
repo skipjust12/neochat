@@ -22,8 +22,10 @@ const (
 // optional fields can be added later without touching what's here, as
 // long as they default sanely (zero value) for older stored rows.
 type Message struct {
-	Role    Role   `json:"role"`
-	Content string `json:"content"`
+	ID        int64  `json:"id,omitempty"`
+	Truncated bool   `json:"truncated,omitempty"`
+	Role      Role   `json:"role"`
+	Content   string `json:"content"`
 
 	// ModelID is which catalog model produced this message -- empty for
 	// user turns, the router's selected model ID for assistant turns.
@@ -65,4 +67,10 @@ type Summary struct {
 	CoversThrough int `json:"covers_through"`
 
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// Page is chronological, with a cursor for loading older messages.
+type Page struct {
+	Messages   []Message `json:"messages"`
+	NextCursor int64     `json:"next_cursor,omitempty"`
 }
