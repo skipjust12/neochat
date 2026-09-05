@@ -64,6 +64,47 @@ func (s *PostgresStore) History(ctx context.Context, userID, conversationID stri
 	return out, rows.Err()
 }
 
+func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]Overview, error) {
+	if limit <= 0 {
+		return []Overview{}, nil
+	}
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT grouped.conversation_id,
+		       COALESCE(NULLIF((
+		           SELECT LEFT(BTRIM(first_message.content), 80)
+		           FROM conversation_messages first_message
+		           WHERE first_message.user_id = $1
+		             AND first_message.conversation_id = grouped.conversation_id
+		             AND first_message.role = $3
+		           ORDER BY first_message.id
+		           LIMIT 1
+		       ), ''), 'New chat') AS title,
+		       grouped.updated_at
+		FROM (
+			SELECT conversation_id, MAX(created_at) AS updated_at
+			FROM conversation_messages
+			WHERE user_id = $1
+			GROUP BY conversation_id
+		) grouped
+		ORDER BY grouped.updated_at DESC
+		LIMIT $2
+	`, userID, limit, RoleUser)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	out := []Overview{}
+	for rows.Next() {
+		var overview Overview
+		if err := rows.Scan(&overview.ID, &overview.Title, &overview.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, overview)
+	}
+	return out, rows.Err()
+}
+
 func (s *PostgresStore) GetSummary(ctx context.Context, userID, conversationID string) (Summary, error) {
 	var sum Summary
 	err := s.db.QueryRowContext(ctx, `

@@ -26,6 +26,9 @@ func LoadPlanLimits(path string) (map[string]PlanLimits, error) {
 
 	byID := make(map[string]PlanLimits, len(raw.Plans))
 	for _, p := range raw.Plans {
+		if !validMoney(p.ThinkingMaxCapUSD) || !validMoney(p.InstantExtraCapUSD) {
+			return nil, fmt.Errorf("limits: invalid plan caps")
+		}
 		if p.PlanID == "" {
 			return nil, fmt.Errorf("limits: plan entry missing plan_id")
 		}

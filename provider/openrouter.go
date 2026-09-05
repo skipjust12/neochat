@@ -125,7 +125,7 @@ type openRouterChatResponse struct {
 }
 
 func (c *OpenRouterClient) Generate(ctx context.Context, apiModelID string, messages []Message) (GenerateResult, error) {
-	reqBody := openRouterChatRequest{Model: apiModelID, MaxTokens: c.MaxTokens}
+	reqBody := openRouterChatRequest{Model: apiModelID, MaxTokens: outputLimit(ctx, c.MaxTokens)}
 	for _, m := range messages {
 		reqBody.Messages = append(reqBody.Messages, openRouterChatMessage{Role: m.Role, Content: m.Content})
 	}
@@ -239,7 +239,7 @@ type openRouterStreamChunk struct {
 // ends, one way or another -- see StreamChunk's doc comment for the exact
 // contract.
 func (c *OpenRouterClient) GenerateStream(ctx context.Context, apiModelID string, messages []Message) (<-chan StreamChunk, error) {
-	reqBody := openRouterStreamRequest{Model: apiModelID, Stream: true, MaxTokens: c.MaxTokens}
+	reqBody := openRouterStreamRequest{Model: apiModelID, Stream: true, MaxTokens: outputLimit(ctx, c.MaxTokens)}
 	reqBody.StreamOptions.IncludeUsage = true
 	for _, m := range messages {
 		reqBody.Messages = append(reqBody.Messages, openRouterChatMessage{Role: m.Role, Content: m.Content})

@@ -9,8 +9,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=20", "-c", "effective_cache_size=128MB"]
-    ports:
-      - "127.0.0.1:5432:5432"
+    networks: [backend]
     volumes:
       - neochat_pg_data:/var/lib/postgresql/data
     healthcheck:
@@ -27,8 +26,7 @@ services:
     command: >
       redis-server --maxmemory 150mb --maxmemory-policy noeviction
       --requirepass ${REDIS_PASSWORD} --appendonly yes --appendfsync always --save 60 1
-    ports:
-      - "127.0.0.1:6379:6379"
+    networks: [backend]
     volumes:
       - neochat_redis_data:/data
     healthcheck:
@@ -56,14 +54,47 @@ services:
       # network the databases are reachable by service name, not localhost.
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
-    ports:
-      - "127.0.0.1:8080:8080"
+      REQUIRE_HTTPS: "true"
+      TRUSTED_PROXY_CIDRS: "172.30.77.2/32"
+    networks:
+      backend:
+      frontend:
+        ipv4_address: 172.30.77.3
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
 
+  proxy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    environment:
+      NEOCHAT_DOMAIN: ${NEOCHAT_DOMAIN:?Set NEOCHAT_DOMAIN to your public DNS hostname}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      frontend:
+        ipv4_address: 172.30.77.2
+    depends_on:
+      - server
+
+networks:
+  backend:
+    internal: true
+  frontend:
+    ipam:
+      config:
+        - subnet: 172.30.77.0/24
+
 volumes:
+  caddy_data:
+  caddy_config:
   neochat_pg_data:
   neochat_redis_data:
+

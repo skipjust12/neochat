@@ -13,7 +13,9 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -70,13 +72,15 @@ var ErrInstantCapExceeded = errors.New("server: instant-tier spend cap exceeded 
 // Server holds everything one /chat request needs. All fields are
 // required; use New to build one with validation.
 type Server struct {
-	Router        router.Router
-	Classifier    classifier.Classifier
-	Moderator     moderation.Moderator
-	ModerationLog moderation.BlockLog
-	Conversations conversation.Store
-	Store         limits.SpendStore
-	Plans         map[string]limits.PlanLimits
+	TrustedProxies []netip.Prefix
+	RequireHTTPS   bool
+	Router         router.Router
+	Classifier     classifier.Classifier
+	Moderator      moderation.Moderator
+	ModerationLog  moderation.BlockLog
+	Conversations  conversation.Store
+	Store          limits.SpendStore
+	Plans          map[string]limits.PlanLimits
 
 	// CostLog persists one costlog.Store record per completed generation
 	// (real token usage, not the pre-flight estimate) -- see README
@@ -189,6 +193,7 @@ type Server struct {
 
 // chatRequest is the wire format for POST /chat.
 type chatRequest struct {
+	idempotencyOwner string
 	// UserID and PlanID are never read from the client, even though a
 	// caller can still send "user_id"/"plan_id" in the JSON body -- json:"-"
 	// means json.Decode silently ignores both. decodeChatRequest fills
@@ -294,16 +299,85 @@ type chatResponse struct {
 // why both exist rather than either alone.
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
-	mux.HandleFunc("GET /{$}", recovered(func(w http.ResponseWriter, _ *http.Request) {
-		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		_, _ = w.Write(frontendHTML)
-	}))
+	mux.HandleFunc("GET /{$}", recovered(s.frontend))
 	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
+	mux.HandleFunc("GET /conversations", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationList))))))
+	mux.HandleFunc("GET /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationHistory))))))
 	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
 	return mux
+}
+
+type conversationListResponse struct {
+	Conversations []conversation.Overview `json:"conversations"`
+}
+
+type conversationHistoryResponse struct {
+	NextCursor     int64                  `json:"next_cursor,omitempty"`
+	ConversationID string                 `json:"conversation_id"`
+	Messages       []conversation.Message `json:"messages"`
+}
+
+func (s *Server) handleConversationList(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	conversations, err := s.Conversations.List(r.Context(), identity.UserID, 100)
+	if err != nil {
+		log.Printf("server: list conversations for user_id=%s: %v", identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(conversationListResponse{Conversations: conversations}); err != nil {
+		log.Printf("server: encode conversation list: %v", err)
+	}
+}
+
+func (s *Server) handleConversationHistory(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	conversationID := strings.TrimSpace(r.PathValue("conversation_id"))
+	if conversationID == "" {
+		http.Error(w, "conversation_id is required", http.StatusBadRequest)
+		return
+	}
+	before := int64(0)
+	if raw := r.URL.Query().Get("before"); raw != "" {
+		value, err := strconv.ParseInt(raw, 10, 64)
+		if err != nil || value <= 0 {
+			http.Error(w, "invalid history cursor", http.StatusBadRequest)
+			return
+		}
+		before = value
+	}
+	page, err := s.Conversations.HistoryPage(r.Context(), identity.UserID, conversationID, before, 20)
+	if err != nil {
+		log.Printf("server: load conversation_id=%s for user_id=%s: %v", conversationID, identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	response := conversationHistoryResponse{ConversationID: conversationID, Messages: page.Messages, NextCursor: page.NextCursor}
+	data, err := json.Marshal(response)
+	if err != nil {
+		http.Error(w, "could not encode history", http.StatusInternalServerError)
+		return
+	}
+	// Each message is database-bounded; also cap the final JSON response at 1 MiB.
+	for len(data) > 1024*1024 && len(response.Messages) > 1 {
+		response.Messages = response.Messages[1:]
+		response.NextCursor = response.Messages[0].ID
+		data, err = json.Marshal(response)
+		if err != nil {
+			http.Error(w, "could not encode history", http.StatusInternalServerError)
+			return
+		}
+	}
+	if len(data) > 1024*1024 {
+		http.Error(w, "message too large", http.StatusRequestEntityTooLarge)
+		return
+	}
+	if _, err := w.Write(data); err != nil {
+		log.Printf("server: encode conversation history: %v", err)
+	}
 }
 
 // recovered turns a panic in next into a logged 500 for that one request.
@@ -322,6 +396,10 @@ func (s *Server) Mux() *http.ServeMux {
 // case; the write is best-effort.
 func recovered(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("X-Frame-Options", "DENY")
+		w.Header().Set("Referrer-Policy", "no-referrer")
+		w.Header().Set("Cache-Control", "no-store")
 		defer func() {
 			rec := recover()
 			if rec == nil {
@@ -372,10 +450,12 @@ func recoverGoroutine(what string, errp *error) {
 func (s *Server) rateLimited(next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		if s.IPRateLimiter != nil {
-			ip := clientIP(r)
+			ip := s.requestIP(r)
 			allowed, err := s.IPRateLimiter.Allow(r.Context(), ip)
 			if err != nil {
-				log.Printf("server: rate limiter check failed for ip=%s, failing open: %v", ip, err)
+				log.Printf("server: rate limiter check failed for ip=%s, rejecting request: %v", ip, err)
+				http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+				return
 			} else if !allowed {
 				http.Error(w, "too many requests", http.StatusTooManyRequests)
 				return
@@ -390,23 +470,15 @@ func (s *Server) rateLimited(next http.HandlerFunc) http.HandlerFunc {
 // must sit inside authenticated, which is what produces that identity
 // (see Mux). A user over quota gets a 429 and next never runs.
 //
-// Fails open on a limiter error for the same reason rateLimited does: a
-// Redis blip should not read as "everyone is over quota". Note this makes
-// the two limiters degrade together, since they share one Redis today --
-// acceptable because failing open on a throttle is a bounded loss of
-// defense, whereas failing closed would be a self-inflicted outage.
-//
-// The 429 body names the API key rather than reusing rateLimited's
-// generic "too many requests", so a caller who legitimately hit their own
-// per-key quota can tell that apart from being caught in an IP-wide
-// throttle they may share with others behind the same NAT. It reveals
-// nothing the caller doesn't already hold.
+// A limiter failure rejects the request: Redis errors must not disable abuse protection.
 func (s *Server) userRateLimited(next identityHandler) identityHandler {
 	return func(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
 		if s.UserRateLimiter != nil {
 			allowed, err := s.UserRateLimiter.Allow(r.Context(), identity.UserID)
 			if err != nil {
-				log.Printf("server: user rate limiter check failed for user_id=%s, failing open: %v", identity.UserID, err)
+				log.Printf("server: user rate limiter check failed for user_id=%s, rejecting request: %v", identity.UserID, err)
+				http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
+				return
 			} else if !allowed {
 				http.Error(w, "too many requests for this API key", http.StatusTooManyRequests)
 				return
@@ -445,6 +517,10 @@ type identityHandler func(w http.ResponseWriter, r *http.Request, identity auth.
 // auth.ErrInvalidToken's doc comment for why they're not distinguished.
 func (s *Server) authenticated(next identityHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
+		if s.RequireHTTPS && r.TLS == nil && !(s.trustedProxy(clientIP(r)) && r.Header.Get("X-Forwarded-Proto") == "https") {
+			http.Error(w, "HTTPS is required", http.StatusBadRequest)
+			return
+		}
 		token, ok := bearerToken(r)
 		if !ok {
 			http.Error(w, "missing or malformed Authorization header, want: Bearer <api-key>", http.StatusUnauthorized)
@@ -535,7 +611,7 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 // finding). Add a new case here, not a bare error string at the call
 // site, for any future error that's genuinely meant to reach the client.
 func clientErrorMessage(err error) string {
-	if errors.Is(err, ErrInstantCapExceeded) || errors.Is(err, idempotency.ErrInFlight) {
+	if errors.Is(err, ErrInstantCapExceeded) || errors.Is(err, idempotency.ErrInFlight) || errors.Is(err, limits.ErrBudgetExceeded) || errors.Is(err, errInvalidRequest) {
 		return err.Error()
 	}
 	return "an internal error occurred processing this request"
@@ -551,8 +627,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, identity aut
 	if err != nil {
 		log.Printf("server: /chat error for user_id=%s: %v", req.UserID, err)
 		status := http.StatusBadGateway
-		if errors.Is(err, ErrInstantCapExceeded) {
+		if errors.Is(err, ErrInstantCapExceeded) || errors.Is(err, limits.ErrBudgetExceeded) || errors.Is(err, idempotency.ErrInFlight) {
 			status = http.StatusTooManyRequests
+		}
+		if errors.Is(err, errInvalidRequest) {
+			status = http.StatusBadRequest
 		}
 		http.Error(w, clientErrorMessage(err), status)
 		return
@@ -602,6 +681,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request, identi
 			log.Printf("server: /chat/stream marshal %s event: %v", event, err)
 			return
 		}
+		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(10 * time.Second))
 		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
 		flusher.Flush()
 	}
@@ -617,6 +697,7 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request, identi
 // only how the actual generation call is made (and its result delivered)
 // differs between the two.
 type preparedRequest struct {
+	plan           limits.PlanLimits
 	conversationID string
 	classified     router.ClassifierOutput
 	locked         bool
@@ -646,6 +727,14 @@ type preparedRequest struct {
 // the request, blocked is non-nil and the caller must return it as-is
 // without running anything below (no route, no generate).
 func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanLimits) (prepared preparedRequest, blocked *chatResponse, err error) {
+	if err := s.validateRequest(req); err != nil {
+		return preparedRequest{}, nil, err
+	}
+	classifierForRequest := s.Classifier
+	classifierForRequest.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Classifier.Client, inputRate: s.Classifier.CostInputPerMTok, outputRate: s.Classifier.CostOutputPerMTok}
+	moderatorForRequest := s.Moderator
+	moderatorForRequest.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Moderator.Client, inputRate: s.Moderator.CostInputPerMTok, outputRate: s.Moderator.CostOutputPerMTok}
+
 	// Checked first, before anything else in prepare runs: classify/
 	// moderate are themselves billed calls (see recordAuxCostLog below), so
 	// an already-over-the-anti-bot-ceiling request should never reach even
@@ -714,12 +803,12 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	go func() {
 		defer wg.Done()
 		defer recoverGoroutine("classifier.Classify", &classifyErr)
-		classified, classifyUsage, classifyErr = s.Classifier.Classify(ctx, req.Message)
+		classified, classifyUsage, classifyErr = classifierForRequest.Classify(ctx, req.Message)
 	}()
 	go func() {
 		defer wg.Done()
 		defer recoverGoroutine("moderation.Moderate", &modErr)
-		modResult, modUsage, modErr = s.Moderator.Moderate(ctx, req.Message)
+		modResult, modUsage, modErr = moderatorForRequest.Moderate(ctx, req.Message)
 	}()
 	wg.Wait()
 
@@ -774,7 +863,9 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	// summaryText is "" only when this conversation has never been
 	// summarized and isn't being summarized now -- an existing summary is
 	// always carried through even on the paths that fold nothing new.
-	tail, summaryText := s.maybeSummarize(ctx, req.UserID, conversationID, summaryState, history)
+	summaryServer := *s
+	summaryServer.Summarizer.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Summarizer.Client, inputRate: s.Summarizer.CostInputPerMTok, outputRate: s.Summarizer.CostOutputPerMTok}
+	tail, summaryText := summaryServer.maybeSummarize(ctx, req.UserID, conversationID, summaryState, history)
 
 	persona := req.Persona
 	if persona == "" {
@@ -810,6 +901,7 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 		messages:               messages,
 		estimatedContextTokens: tokenizer.EstimateMessages(messages),
 		requestID:              requestID,
+		plan:                   plan,
 	}, nil, nil
 }
 
@@ -1018,7 +1110,7 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
 		}
 
-		genResult, err := call(ctx, gen, model.ResolveAPIModelID(), prepared.messages)
+		genResult, err := s.billedCall(ctx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), prepared.messages, call)
 		if err == nil {
 			return result, model, genResult, nil
 		}
@@ -1044,6 +1136,8 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 // request failure -- it just means this turn won't be there for History
 // on the next one. Same reasoning as prepare's ModerationLog handling.
 func (s *Server) finalize(ctx context.Context, req chatRequest, prepared preparedRequest, result router.RouteResult, model router.Model, genResult provider.GenerateResult) (chatResponse, error) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
 	now := time.Now()
 	if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, CreatedAt: now}); err != nil {
 		log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
@@ -1053,21 +1147,11 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	}
 
 	actualCost := router.ComputeCostUSD(model, genResult.InputTokens, genResult.OutputTokens)
-	var err error
-	if result.SelectedMode == "instant" {
-		err = limits.RecordInstantSpend(ctx, s.Store, req.UserID, actualCost, now)
-	} else {
-		err = limits.RecordThinkingMaxSpend(ctx, s.Store, req.UserID, actualCost, now)
-	}
-	if err != nil {
-		return chatResponse{}, fmt.Errorf("record spend: %w", err)
-	}
-
 	// Best-effort like Conversations.Append above: the request already
 	// succeeded and the user already has their answer, so a logging
 	// failure here shouldn't fail the request -- it just means this one
 	// request is missing from the per-request cost log (README pre-launch
-	// checklist item 7), not from the rolling-window spend Store above,
+	// checklist item 7), not from the spend store already settled by billedCall,
 	// which is what actually gates the Thinking+Max cap.
 	entry := router.NewCostLogEntry(req.UserID, prepared.requestID, model, result.SelectedMode, genResult.InputTokens, genResult.OutputTokens, now)
 	if err := s.CostLog.Record(ctx, entry); err != nil {
@@ -1091,32 +1175,10 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 // tied up on the way out.
 const abortedSpendTimeout = 5 * time.Second
 
-// recordAbortedSpend books the vendor cost of a generation that started
-// but never produced a result the user received -- overwhelmingly, a
-// client that disconnected mid-stream.
-//
-// This closes a hole in the spend accounting (audit.md's aborted-spend
-// finding): finalize is the only thing that writes to costlog.Store and
-// limits.SpendStore, and it only runs on success. So a generation that
-// ran for twenty seconds and was then cancelled cost real money at the
-// vendor while leaving no cost_log row and no movement in the rolling
-// spend window -- invisible to unit economics, and deliberately
-// repeatable by a client that disconnects just before completion.
-//
-// partialText is what the client actually received before the failure
-// (streaming only -- see handleStreamOnce). Cost is priced from
-// server-side estimates rather than vendor-reported usage, because a
-// failed call reports none: the input side is prepared.estimatedContextTokens,
-// already computed for routing, and the output side is
-// tokenizer.EstimateText over the delta text that genuinely arrived. The
-// entry is marked with a "_aborted" mode suffix so reconciliation can
-// tell measured billing apart from this estimated kind.
-//
-// Nothing is recorded when there is no measured output (the
-// non-streaming path, where a failed call yields no observable tokens at
-// all). Guessing a charge there could bill a user for a request that
-// produced nothing, so it logs loudly instead -- the request_id and model
-// are enough to reconcile against the vendor's invoice by hand.
+// recordAbortedSpend logs measurable partial output for reconciliation. The
+// budget is already protected by billedCall's retained upper reservation, even
+// when the provider supplies no usage or the browser disconnects. This estimated
+// cost-log row is marked "_aborted" and does not debit the spend store again.
 func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepared preparedRequest, result router.RouteResult, model router.Model, partialText string, cause error) {
 	if model.ID == "" {
 		// Never reached a model (routing failed, no generator configured,
@@ -1126,7 +1188,7 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
 
 	outputTokens := tokenizer.EstimateText(partialText)
 	if outputTokens == 0 {
-		log.Printf("server: generation aborted with no measurable output, possible unbilled vendor cost: request_id=%s user_id=%s model_id=%s: %v",
+		log.Printf("server: generation aborted with no measurable output, upper budget reservation retained: request_id=%s user_id=%s model_id=%s: %v",
 			prepared.requestID, req.UserID, model.ID, cause)
 		return
 	}
@@ -1142,15 +1204,7 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
 	log.Printf("server: recording aborted generation: request_id=%s user_id=%s model_id=%s estimated_output_tokens=%d estimated_cost_usd=%.6f: %v",
 		prepared.requestID, req.UserID, model.ID, outputTokens, cost, cause)
 
-	var err error
-	if result.SelectedMode == "instant" {
-		err = limits.RecordInstantSpend(billCtx, s.Store, req.UserID, cost, now)
-	} else {
-		err = limits.RecordThinkingMaxSpend(billCtx, s.Store, req.UserID, cost, now)
-	}
-	if err != nil {
-		log.Printf("server: failed to record aborted spend for request_id=%s: %v", prepared.requestID, err)
-	}
+	// billedCall already retained the upper reservation for uncertain usage.
 
 	entry := router.NewCostLogEntry(req.UserID, prepared.requestID, model, result.SelectedMode+"_aborted", prepared.estimatedContextTokens, outputTokens, now)
 	if err := s.CostLog.Record(billCtx, entry); err != nil {
@@ -1167,12 +1221,13 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
 // the caller must report its outcome back via finishIdempotent. A request
 // with no IdempotencyKey (or a Server with no Idempotency store configured)
 // always takes this second path -- the guard is opt-in per request.
-func (s *Server) reserveIdempotent(ctx context.Context, req chatRequest) (chatResponse, bool, error) {
+func (s *Server) reserveIdempotent(ctx context.Context, req *chatRequest) (chatResponse, bool, error) {
 	if req.IdempotencyKey == "" || s.Idempotency == nil {
 		return chatResponse{}, false, nil
 	}
 
-	rec, found, err := s.Idempotency.Reserve(ctx, req.UserID, req.IdempotencyKey)
+	rec, found, err := s.Idempotency.Reserve(ctx, req.UserID, "client:"+req.IdempotencyKey)
+	req.idempotencyOwner = rec.Owner
 	if err != nil {
 		if errors.Is(err, idempotency.ErrInFlight) {
 			// Wrapped with %w (not just formatted in) so clientErrorMessage
@@ -1202,12 +1257,14 @@ func (s *Server) reserveIdempotent(ctx context.Context, req chatRequest) (chatRe
 // permanently stuck behind ErrInFlight. No-op under the same conditions
 // reserveIdempotent short-circuits on (no key, or no store configured).
 func (s *Server) finishIdempotent(ctx context.Context, req chatRequest, resp chatResponse, handleErr error) {
+	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
 	if req.IdempotencyKey == "" || s.Idempotency == nil {
 		return
 	}
 
 	if handleErr != nil {
-		if err := s.Idempotency.Release(ctx, req.UserID, req.IdempotencyKey); err != nil {
+		if err := s.Idempotency.Release(ctx, req.UserID, "client:"+req.IdempotencyKey, req.idempotencyOwner); err != nil {
 			log.Printf("server: failed to release idempotency_key=%s for user_id=%s: %v", req.IdempotencyKey, req.UserID, err)
 		}
 		return
@@ -1216,12 +1273,12 @@ func (s *Server) finishIdempotent(ctx context.Context, req chatRequest, resp cha
 	data, err := json.Marshal(resp)
 	if err != nil {
 		log.Printf("server: failed to encode idempotent response for idempotency_key=%s: %v", req.IdempotencyKey, err)
-		if relErr := s.Idempotency.Release(ctx, req.UserID, req.IdempotencyKey); relErr != nil {
+		if relErr := s.Idempotency.Release(ctx, req.UserID, "client:"+req.IdempotencyKey, req.idempotencyOwner); relErr != nil {
 			log.Printf("server: failed to release idempotency_key=%s for user_id=%s: %v", req.IdempotencyKey, req.UserID, relErr)
 		}
 		return
 	}
-	if err := s.Idempotency.Complete(ctx, req.UserID, req.IdempotencyKey, idempotency.Record{Response: data}); err != nil {
+	if err := s.Idempotency.Complete(ctx, req.UserID, "client:"+req.IdempotencyKey, idempotency.Record{Response: data, Owner: req.idempotencyOwner}); err != nil {
 		log.Printf("server: failed to complete idempotency_key=%s for user_id=%s: %v", req.IdempotencyKey, req.UserID, err)
 	}
 }
@@ -1234,12 +1291,23 @@ func (s *Server) finishIdempotent(ctx context.Context, req chatRequest, resp cha
 // directly with a fixed request/plan and inspect the typed result instead
 // of parsing HTTP output.
 func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
-	if cached, found, err := s.reserveIdempotent(ctx, req); err != nil {
+	if err := s.validateRequest(req); err != nil {
+		return chatResponse{}, err
+	}
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	if cached, found, err := s.reserveIdempotent(ctx, &req); err != nil {
 		return chatResponse{}, err
 	} else if found {
 		return cached, nil
 	}
 
+	release, err := s.acquireRequest(ctx, req)
+	if err != nil {
+		s.finishIdempotent(ctx, req, chatResponse{}, err)
+		return chatResponse{}, err
+	}
+	defer release()
 	resp, err := s.handleOnce(ctx, req, plan)
 	s.finishIdempotent(ctx, req, resp, err)
 	return resp, err
@@ -1280,7 +1348,12 @@ func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.Pl
 // way handle is split from handleChat, for the same reason: testable
 // without parsing SSE wire output.
 func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.PlanLimits, send func(event string, payload any)) error {
-	if cached, found, err := s.reserveIdempotent(ctx, req); err != nil {
+	if err := s.validateRequest(req); err != nil {
+		return err
+	}
+	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
+	defer cancel()
+	if cached, found, err := s.reserveIdempotent(ctx, &req); err != nil {
 		return err
 	} else if found {
 		if cached.Blocked {
@@ -1291,6 +1364,12 @@ func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.
 		return nil
 	}
 
+	release, err := s.acquireRequest(ctx, req)
+	if err != nil {
+		s.finishIdempotent(ctx, req, chatResponse{}, err)
+		return err
+	}
+	defer release()
 	resp, err := s.handleStreamOnce(ctx, req, plan, send)
 	s.finishIdempotent(ctx, req, resp, err)
 	return err
