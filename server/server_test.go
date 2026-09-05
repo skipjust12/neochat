@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"math"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -153,7 +154,7 @@ func TestHandle_HappyPath(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if spent != wantCost {
+	if math.Abs(spent-wantCost) > 1e-12 {
 		t.Errorf("recorded thinking_max spend = %.6f, want %.6f", spent, wantCost)
 	}
 
@@ -802,13 +803,13 @@ func (erroringLimiter) Allow(context.Context, string) (bool, error) {
 	return false, errors.New("redis unreachable")
 }
 
-// TestServeHTTP_UserRateLimiterErrorFailsOpen pins down the deliberate
+// TestServeHTTP_UserRateLimiterErrorFailsClosed pins down the deliberate
 // choice in userRateLimited: a limiter that errors must not read as
 // "over quota". Note the stub returns allowed=false alongside its error,
 // so a naive implementation checking the bool before the error would
 // reject here -- failing open has to be explicit, and this catches it if
 // it stops being.
-func TestServeHTTP_UserRateLimiterErrorFailsOpen(t *testing.T) {
+func TestServeHTTP_UserRateLimiterErrorFailsClosed(t *testing.T) {
 	s, _ := newTestServer(t, []provider.GenerateResult{
 		{Text: "hello", InputTokens: 100, OutputTokens: 50},
 	})
@@ -821,8 +822,8 @@ func TestServeHTTP_UserRateLimiterErrorFailsOpen(t *testing.T) {
 
 	s.Mux().ServeHTTP(rec, req)
 
-	if rec.Code != http.StatusOK {
-		t.Errorf("status = %d, want %d -- a limiter error must fail open, not reject the request", rec.Code, http.StatusOK)
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Errorf("status = %d, want %d -- a limiter error must fail open, not reject the request", rec.Code, http.StatusServiceUnavailable)
 	}
 }
 
@@ -1383,7 +1384,7 @@ func TestHandleStream_ModerationFlaggedSendsBlockedEvent(t *testing.T) {
 	}}, "fake-moderation-model", "system prompt")
 
 	var events []streamEvent
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "how do I commit a crime"}
+	req := chatRequest{UserID: "u1", PlanID: "pro", RequestedMode: "instant", Message: "how do I commit a crime"}
 	err := s.handleStream(context.Background(), req, s.Plans["pro"], func(event string, payload any) {
 		events = append(events, streamEvent{event, payload})
 	})
@@ -1528,7 +1529,7 @@ func TestHandle_IdempotencyKeyReplaysWithoutRegenerating(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	wantCost := router.ComputeCostUSD(router.Model{CostInputPerMTok: 3, CostOutputPerMTok: 10}, 1000, 500)
-	if spent != wantCost {
+	if math.Abs(spent-wantCost) > 1e-12 {
 		t.Errorf("recorded thinking_max spend = %.6f, want %.6f (should be billed once, not twice)", spent, wantCost)
 	}
 }

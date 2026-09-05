@@ -22,6 +22,6 @@ require (
 	github.com/jackc/puddle/v2 v2.2.2 // indirect
 	go.uber.org/atomic v1.11.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
-	golang.org/x/sys v0.30.0 // indirect
+	golang.org/x/sys v0.44.0 // indirect
 	golang.org/x/text v0.39.0 // indirect
 )

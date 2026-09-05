@@ -20,6 +20,7 @@ import (
 // InMemoryStore. Nothing in server/ depends on which implementation is
 // in use, only on this interface.
 type Store interface {
+	HistoryPage(ctx context.Context, userID, conversationID string, before int64, limit int) (Page, error)
 	// Append adds one message to (userID, conversationID)'s history, in
 	// order.
 	Append(ctx context.Context, userID, conversationID string, msg Message) error
@@ -89,6 +90,7 @@ func (s *InMemoryStore) Append(_ context.Context, userID, conversationID string,
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := conversationKey{userID: userID, conversationID: conversationID}
+	msg.ID = int64(len(s.history[key]) + 1)
 	s.history[key] = append(s.history[key], msg)
 	return nil
 }

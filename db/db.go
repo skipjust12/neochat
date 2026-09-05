@@ -100,6 +100,18 @@ func ConnectRedis(ctx context.Context) (*redis.Client, error) {
 		return nil, fmt.Errorf("db: ping redis: %w", err)
 	}
 
+	for name, want := range map[string]string{"maxmemory-policy": "noeviction", "appendonly": "yes", "appendfsync": "always"} {
+		settings, err := rdb.ConfigGet(pingCtx, name).Result()
+		if err != nil {
+			rdb.Close()
+			return nil, fmt.Errorf("db: verify Redis durability: %w", err)
+		}
+		if settings[name] != want {
+			rdb.Close()
+			return nil, fmt.Errorf("db: Redis requires %s=%s for budget safety", name, want)
+		}
+	}
+
 	return rdb, nil
 }
 

@@ -30,8 +30,9 @@ const maxRetention = 31 * 24 * time.Hour
 // (INCRBYFLOAT per bucket key with a TTL), just against a map instead of
 // real keys.
 type InMemorySpendStore struct {
-	mu      sync.Mutex
-	buckets map[bucketKey]float64
+	mu           sync.Mutex
+	buckets      map[bucketKey]float64
+	reservations map[string]Reservation
 }
 
 type bucketKey struct {
@@ -81,6 +82,11 @@ func (s *InMemorySpendStore) Sum(_ context.Context, userID string, pool Pool, wi
 // uses per-key TTLs instead, see the SpendStore doc comment).
 func (s *InMemorySpendStore) prune(at time.Time) {
 	cutoff := bucketIndex(at.Add(-maxRetention))
+	for id, r := range s.reservations {
+		if bucketIndex(r.At) < cutoff {
+			delete(s.reservations, id)
+		}
+	}
 	for k := range s.buckets {
 		if k.bucket < cutoff {
 			delete(s.buckets, k)

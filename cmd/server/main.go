@@ -9,10 +9,13 @@ import (
 	"context"
 	"errors"
 	"log"
+	"math"
 	"net/http"
+	"net/netip"
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -93,9 +96,12 @@ func main() {
 	// staying well under the priciest catalog models' own
 	// max_output_tokens (128000+, see configs/models.json), which is what
 	// every call was implicitly allowed to run up to before this existed.
-	// Override with OPENROUTER_MAX_TOKENS; 0 disables the cap entirely
-	// (falls back to each model's own default).
+	// Override with OPENROUTER_MAX_TOKENS in the range 1..16000. The
+	// reservation layer also enforces a per-model cap on every vendor call.
 	openRouterClient.MaxTokens = getenvIntDefault("OPENROUTER_MAX_TOKENS", 16000)
+	if openRouterClient.MaxTokens <= 0 || openRouterClient.MaxTokens > 16000 {
+		log.Fatal("OPENROUTER_MAX_TOKENS must be between 1 and 16000")
+	}
 
 	// Every vendor call -- generation, classify, moderate, summarize --
 	// goes through the retry wrapper: OpenRouter really does hand out 429s
@@ -199,6 +205,9 @@ func main() {
 		if err != nil {
 			log.Fatalf("IDEMPOTENCY_TTL: %v", err)
 		}
+		if d <= 0 {
+			log.Fatal("IDEMPOTENCY_TTL must be positive")
+		}
 		idempotencyTTL = d
 	}
 
@@ -231,10 +240,26 @@ func main() {
 	userRateLimitPerMinute := getenvIntDefault("USER_RATE_LIMIT_PER_MINUTE", 60)
 	userRateLimiter := ratelimit.NewRedisLimiter(redisClient, "chat_user", userRateLimitPerMinute, time.Minute)
 
+	trustedProxies := []netip.Prefix{}
+	for _, raw := range strings.Split(os.Getenv("TRUSTED_PROXY_CIDRS"), ",") {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		prefix, err := netip.ParsePrefix(strings.TrimSpace(raw))
+		if err != nil {
+			log.Fatal(err)
+		}
+		trustedProxies = append(trustedProxies, prefix)
+	}
+	summaryClient := summarizer.New(retryingClient, summarizerModelID, summarizerSystemPrompt)
+	summaryClient.CostInputPerMTok = getenvFloatDefault("SUMMARIZER_COST_INPUT_PER_MTOK", classifierCostInputPerMTok)
+	summaryClient.CostOutputPerMTok = getenvFloatDefault("SUMMARIZER_COST_OUTPUT_PER_MTOK", classifierCostOutputPerMTok)
 	srv := &server.Server{
-		Router:     router.NewRouter(catalog, weights),
-		Classifier: classifierWithCost,
-		Moderator:  moderatorWithCost,
+		TrustedProxies: trustedProxies,
+		RequireHTTPS:   os.Getenv("REQUIRE_HTTPS") == "true",
+		Router:         router.NewRouter(catalog, weights),
+		Classifier:     classifierWithCost,
+		Moderator:      moderatorWithCost,
 		// Postgres-backed, replacing InMemoryBlockLog -- see
 		// moderation.BlockLog's doc comment for the swap-in procedure this
 		// follows and README's "Current task" section.
@@ -254,7 +279,7 @@ func main() {
 		CostLog:              costlog.NewPostgresStore(pgDB),
 		Plans:                plans,
 		SystemPrompts:        chatSystemPrompts,
-		Summarizer:           summarizer.New(retryingClient, summarizerModelID, summarizerSystemPrompt),
+		Summarizer:           summaryClient,
 		SummaryTriggerTokens: summaryTriggerTokens,
 		SummaryTailMessages:  summaryTailMessages,
 		// Every catalog provider tag routes through the same
@@ -377,6 +402,9 @@ func getenvFloatDefault(key string, def float64) float64 {
 	f, err := strconv.ParseFloat(v, 64)
 	if err != nil {
 		log.Fatalf("%s: %v", key, err)
+	}
+	if f <= 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		log.Fatalf("%s must be finite and positive", key)
 	}
 	return f
 }

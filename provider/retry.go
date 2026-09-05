@@ -47,18 +47,15 @@ func (e *StatusError) Error() string {
 //
 //   - 429 always retries. A rate limit is a refusal, so nothing was
 //     generated and nothing was billed.
-//   - 500/502/503 retry. These mean the request was rejected or never
-//     reached a model.
+//   - 500/502/503 do NOT retry: the upstream may have generated and billed
+//     before an intermediary returned the error.
 //   - 504 does NOT retry. A gateway timeout is the one status that
 //     plausibly means the upstream model did the work (and billed for
 //     it) and only the response was lost on the way back; retrying that
 //     buys a second bill for an answer we already paid for.
 func (e *StatusError) Retryable() bool {
 	switch e.StatusCode {
-	case http.StatusTooManyRequests, // 429
-		http.StatusInternalServerError, // 500
-		http.StatusBadGateway,          // 502
-		http.StatusServiceUnavailable:  // 503
+	case http.StatusTooManyRequests: // A refusal before generation, safe to retry.
 		return true
 	default:
 		return false
