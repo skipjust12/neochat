@@ -19,11 +19,13 @@ import (
 // this rather than wait: waiting here would just move the duplicate-
 // request problem into the HTTP layer's timeout instead of resolving it.
 var ErrInFlight = errors.New("idempotency: request already in flight")
+var ErrLeaseLost = errors.New("idempotency: reservation no longer owned by this attempt")
 
 // Record is the cached result of a completed attempt, keyed by
 // (user_id, idempotency_key). Response is opaque to this package -- the
 // server layer marshals/unmarshals its own response type into it.
 type Record struct {
+	Owner    string // Required for Complete/Release; returned by a successful Reserve.
 	Response []byte
 }
 
@@ -32,19 +34,14 @@ type Record struct {
 // stand-in, the same role limits.SpendStore/conversation.Store/
 // moderation.BlockLog play for their own data.
 //
-// Swap-in procedure once a real database exists: implement this interface
-// against Redis (SET key NX for Reserve's claim, matching the "in flight"
-// marker; SET with the response body plus a TTL for Complete; DEL for
-// Release) so state is shared across instances instead of one process --
-// the same reasoning as those other stores' doc comments. A TTL on
-// completed entries (this in-memory version keeps them forever) is worth
-// adding at that point too, since a real deployment's request volume would
-// otherwise grow this store without bound.
+// Redis implements ownership checks atomically and bounds in-flight leases and
+// cached responses by TTL. A caller must retain the Owner returned by Reserve
+// and pass it to Complete or Release; stale owners receive ErrLeaseLost.
 type Store interface {
 	// Reserve claims (userID, key) for a new attempt.
 	//
 	//   - Never seen before: marks it in-flight and returns
-	//     (Record{}, false, nil) -- the caller should proceed with the
+	//     (Record{Owner: ...}, false, nil) -- the caller should proceed with the
 	//     actual work and report back via Complete or Release.
 	//   - Already completed: returns (the stored Record, true, nil) -- the
 	//     caller should return that instead of doing the work again.
@@ -54,11 +51,11 @@ type Store interface {
 
 	// Complete stores the finished result and clears the in-flight marker,
 	// so a later Reserve for the same key returns it instead of running
-	// the work again.
+	// the work again. record.Owner must match the current reservation.
 	Complete(ctx context.Context, userID, key string, record Record) error
 
 	// Release clears the in-flight marker without storing a result --
 	// used when the attempt failed, so a legitimate retry after a real
 	// failure isn't permanently stuck behind ErrInFlight.
-	Release(ctx context.Context, userID, key string) error
+	Release(ctx context.Context, userID, key, owner string) error
 }

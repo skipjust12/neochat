@@ -35,15 +35,18 @@ const (
 // Nothing in limits.go or router/ depends on which implementation is in
 // use, only on this interface.
 type SpendStore interface {
+	// Reserve atomically checks the rolling cap and prepays the maximum cost.
+	Reserve(ctx context.Context, userID string, pool Pool, amount, cap float64) (Reservation, error)
+	// Settle replaces a reservation with actual usage, at most once.
+	Settle(ctx context.Context, reservation Reservation, actual float64) error
+
 	// Sum returns the total cost recorded for userID in pool within the
 	// last `window` -- a rolling window ending now, not a fixed calendar
 	// period (see docs/unit-economics.md section 6.2 on why rolling).
 	Sum(ctx context.Context, userID string, pool Pool, window time.Duration) (float64, error)
 
-	// Record appends an actual spend entry, timestamped at `at`. Call this
-	// after generation completes with the real cost -- build it with
-	// router.ComputeCostUSD from actual token usage, not
-	// RouteResult.EstimatedCostUSD, which is only a pre-flight guess.
+	// Record appends an external/legacy accounting adjustment. The request
+	// pipeline uses Reserve/Settle; do not Record that same usage a second time.
 	Record(ctx context.Context, userID string, pool Pool, costUSD float64, at time.Time) error
 }
 

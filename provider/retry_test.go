@@ -89,9 +89,9 @@ func TestRetryClient_RetriesRateLimitThenSucceeds(t *testing.T) {
 
 func TestRetryClient_GivesUpAfterMaxAttempts(t *testing.T) {
 	inner := &countingClient{errs: []error{
-		&StatusError{StatusCode: http.StatusServiceUnavailable},
-		&StatusError{StatusCode: http.StatusServiceUnavailable},
-		&StatusError{StatusCode: http.StatusServiceUnavailable},
+		&StatusError{StatusCode: http.StatusTooManyRequests},
+		&StatusError{StatusCode: http.StatusTooManyRequests},
+		&StatusError{StatusCode: http.StatusTooManyRequests},
 	}}
 	c, _ := newTestRetryClient(inner, 3)
 
@@ -100,8 +100,8 @@ func TestRetryClient_GivesUpAfterMaxAttempts(t *testing.T) {
 		t.Fatal("expected an error after exhausting attempts")
 	}
 	var statusErr *StatusError
-	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusServiceUnavailable {
-		t.Errorf("err = %v, want the underlying 503 StatusError", err)
+	if !errors.As(err, &statusErr) || statusErr.StatusCode != http.StatusTooManyRequests {
+		t.Errorf("err = %v, want the underlying 429 StatusError", err)
 	}
 	if inner.calls != 3 {
 		t.Errorf("inner called %d times, want exactly MaxAttempts (3)", inner.calls)

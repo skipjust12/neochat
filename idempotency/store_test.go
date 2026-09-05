@@ -6,83 +6,49 @@ import (
 	"testing"
 )
 
-func TestInMemoryStore_ReserveThenCompleteReplaysRecord(t *testing.T) {
+func exerciseStore(t *testing.T, store Store) {
+	t.Helper()
 	ctx := context.Background()
-	store := NewInMemoryStore()
-
-	rec, found, err := store.Reserve(ctx, "u1", "key1")
+	user, err := newOwner()
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatal(err)
 	}
-	if found {
-		t.Fatalf("first Reserve for a new key should report found=false, got Record %+v", rec)
+	lease, found, err := store.Reserve(ctx, user, "key")
+	if err != nil || found || lease.Owner == "" {
+		t.Fatalf("reserve: %+v %v %v", lease, found, err)
 	}
-
-	want := Record{Response: []byte(`{"a":1}`)}
-	if err := store.Complete(ctx, "u1", "key1", want); err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	if _, _, err := store.Reserve(ctx, user, "key"); !errors.Is(err, ErrInFlight) {
+		t.Fatalf("duplicate accepted: %v", err)
 	}
-
-	got, found, err := store.Reserve(ctx, "u1", "key1")
+	if err := store.Complete(ctx, user, "key", Record{Owner: "wrong", Response: []byte("wrong")}); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("wrong owner completed: %v", err)
+	}
+	if err := store.Release(ctx, user, "key", "wrong"); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("wrong owner released: %v", err)
+	}
+	if err := store.Release(ctx, user, "key", lease.Owner); err != nil {
+		t.Fatal(err)
+	}
+	replacement, _, err := store.Reserve(ctx, user, "key")
 	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+		t.Fatal(err)
 	}
-	if !found {
-		t.Fatal("Reserve after Complete should report found=true")
+	if err := store.Release(ctx, user, "key", lease.Owner); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("stale owner released replacement: %v", err)
 	}
-	if string(got.Response) != string(want.Response) {
-		t.Errorf("Reserve() Record = %s, want %s", got.Response, want.Response)
+	if err := store.Complete(ctx, user, "key", Record{Owner: lease.Owner, Response: []byte("stale")}); !errors.Is(err, ErrLeaseLost) {
+		t.Fatalf("stale owner completed replacement: %v", err)
+	}
+	if err := store.Complete(ctx, user, "key", Record{Owner: replacement.Owner, Response: []byte("answer")}); err != nil {
+		t.Fatal(err)
+	}
+	cached, found, err := store.Reserve(ctx, user, "key")
+	if err != nil || !found || string(cached.Response) != "answer" {
+		t.Fatalf("replay: %+v %v %v", cached, found, err)
+	}
+	if _, found, err := store.Reserve(ctx, user+"other", "key"); err != nil || found {
+		t.Fatalf("cross-user replay: %v %v", found, err)
 	}
 }
 
-func TestInMemoryStore_ReserveWhileInFlightErrors(t *testing.T) {
-	ctx := context.Background()
-	store := NewInMemoryStore()
-
-	if _, found, err := store.Reserve(ctx, "u1", "key1"); err != nil || found {
-		t.Fatalf("first Reserve: found=%v err=%v, want found=false err=nil", found, err)
-	}
-
-	if _, _, err := store.Reserve(ctx, "u1", "key1"); !errors.Is(err, ErrInFlight) {
-		t.Errorf("second concurrent Reserve error = %v, want ErrInFlight", err)
-	}
-}
-
-func TestInMemoryStore_ReleaseAllowsRetryAfterFailure(t *testing.T) {
-	ctx := context.Background()
-	store := NewInMemoryStore()
-
-	if _, _, err := store.Reserve(ctx, "u1", "key1"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if err := store.Release(ctx, "u1", "key1"); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// After Release, the key must behave exactly like it was never seen --
-	// not still in-flight, not already completed.
-	_, found, err := store.Reserve(ctx, "u1", "key1")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if found {
-		t.Error("Reserve after Release should report found=false, not replay a stale record")
-	}
-}
-
-func TestInMemoryStore_UsersAreIsolated(t *testing.T) {
-	ctx := context.Background()
-	store := NewInMemoryStore()
-
-	if err := store.Complete(ctx, "u1", "same-key", Record{Response: []byte("u1's response")}); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	_, found, err := store.Reserve(ctx, "u2", "same-key")
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if found {
-		t.Error("u2 reserving the same key text as u1 should not see u1's completed record")
-	}
-}
+func TestInMemoryStore_OwnershipAndReplay(t *testing.T) { exerciseStore(t, NewInMemoryStore()) }
