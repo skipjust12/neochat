@@ -1729,6 +1729,123 @@
       toast('Add your API key to start chatting.');
     }
 
+    function parseServerSentEvent(block){
+      let event='message';
+      const data=[];
+      String(block||'').split(/\r?\n/).forEach(function(line){
+        if(line.startsWith('event:'))event=line.slice(6).trim();
+        if(line.startsWith('data:'))data.push(line.slice(5).replace(/^ /,''));
+      });
+      if(!data.length)return null;
+      try{
+        return {event:event,payload:JSON.parse(data.join('\n'))};
+      }catch(error){
+        throw new Error('The server returned an invalid stream event.');
+      }
+    }
+
+    async function readServerSentEvents(response,onEvent){
+      if(!response.body||typeof response.body.getReader!=='function'){
+        throw new Error('Streaming responses are not supported by this browser.');
+      }
+      const reader=response.body.getReader();
+      const decoder=new TextDecoder();
+      let buffer='';
+
+      try{
+        while(true){
+          const part=await reader.read();
+          buffer+=decoder.decode(part.value,{stream:!part.done});
+          const blocks=buffer.split(/\r?\n\r?\n/);
+          buffer=blocks.pop()||'';
+          for(const block of blocks){
+            const parsed=parseServerSentEvent(block);
+            if(parsed)onEvent(parsed.event,parsed.payload);
+          }
+          if(part.done)break;
+        }
+        if(buffer.trim()){
+          const parsed=parseServerSentEvent(buffer);
+          if(parsed)onEvent(parsed.event,parsed.payload);
+        }
+      }catch(error){
+        try{await reader.cancel()}catch(cancelError){}
+        throw error;
+      }finally{
+        reader.releaseLock();
+      }
+    }
+
+    function createSmoothMessageStream(message){
+      const body=message.querySelector('.chat-text');
+      let visibleText='';
+      let queuedCharacters=[];
+      let timer=0;
+      let finishing=false;
+      let cancelled=false;
+      let lastTick=performance.now();
+      let resolveFinished=function(){};
+      const finished=new Promise(function(resolve){resolveFinished=resolve});
+
+      function schedule(){
+        if(!timer&&!cancelled)timer=setTimeout(renderNext,24);
+      }
+
+      function renderNext(){
+        timer=0;
+        if(cancelled)return;
+        const now=performance.now();
+        const elapsed=Math.max(16,Math.min(1000,now-lastTick));
+        lastTick=now;
+        const backlog=queuedCharacters.length;
+        if(backlog){
+          const rate=finishing
+            ?Math.min(5000,Math.max(240,Math.ceil(backlog/1.8)))
+            :Math.min(1200,120+backlog*1.4);
+          const count=Math.max(1,Math.min(backlog,Math.ceil(rate*elapsed/1000)));
+          visibleText+=queuedCharacters.splice(0,count).join('');
+          const stayAtBottom=chatLog.scrollHeight-chatLog.scrollTop-chatLog.clientHeight<96;
+          renderMarkdown(body,visibleText);
+          if(stayAtBottom)chatLog.scrollTop=chatLog.scrollHeight;
+        }
+        if(queuedCharacters.length){schedule();return}
+        if(finishing)resolveFinished();
+      }
+
+      return {
+        append:function(text){
+          if(cancelled||!text)return;
+          queuedCharacters=queuedCharacters.concat(Array.from(String(text)));
+          schedule();
+        },
+        replace:function(text){
+          if(cancelled)return;
+          const completeText=String(text||'');
+          const currentText=visibleText+queuedCharacters.join('');
+          if(completeText===currentText)return;
+          if(completeText.startsWith(visibleText)){
+            queuedCharacters=Array.from(completeText.slice(visibleText.length));
+          }else{
+            visibleText='';
+            queuedCharacters=Array.from(completeText);
+          }
+          schedule();
+        },
+        finish:function(){
+          finishing=true;
+          schedule();
+          return finished;
+        },
+        cancel:function(){
+          cancelled=true;
+          clearTimeout(timer);
+          timer=0;
+          resolveFinished();
+        },
+        visibleText:function(){return visibleText}
+      };
+    }
+
     async function sendMessage(){
       const request=selectedRequest();
       const token=apiKeyInput.value.trim();
@@ -1758,8 +1875,12 @@
       textarea.style.height='auto';
       setSending(true);
 
+      const stream=createSmoothMessageStream(pending);
+      let receivedTerminalEvent=false;
+      let receivedFirstText=false;
+
       try{
-        const response=await fetch('/chat',{
+        const response=await fetch('/chat/stream',{
           method:'POST',
           headers:{
             'Authorization':'Bearer '+token,
@@ -1767,26 +1888,56 @@
           },
           body:JSON.stringify(request)
         });
-        const raw=await response.text();
-        let data=null;
-        try{data=JSON.parse(raw)}catch(parseError){}
 
         if(!response.ok){
-          throw new Error(data&&data.error?data.error:(raw||'HTTP '+response.status));
+          const raw=await response.text();
+          throw new Error(raw.trim()||'HTTP '+response.status);
         }
 
-        if(apiKeyInput.value.trim()!==token)return;
-        conversationID=data.conversation_id||conversationID;
-        storeValue(localStorage,currentConversationStorageKey,conversationID);
-        pending.classList.remove('is-pending');
-        showThoughtTime(pending,performance.now()-thinkingStartedAt);
-        renderMarkdown(pending.querySelector('.chat-text'),data.response_text||'The server returned an empty response.');
-        chatLog.scrollTop=chatLog.scrollHeight;
+        await readServerSentEvents(response,function(event,data){
+          if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
+          if(event==='meta'){
+            conversationID=data.conversation_id||conversationID;
+            storeValue(localStorage,currentConversationStorageKey,conversationID);
+            return;
+          }
+          if(event==='delta'){
+            const text=data&&data.text?String(data.text):'';
+            if(text&&!receivedFirstText){
+              receivedFirstText=true;
+              pending.classList.remove('is-pending');
+              showThoughtTime(pending,performance.now()-thinkingStartedAt);
+            }
+            stream.append(text);
+            return;
+          }
+          if(event==='done'||event==='blocked'){
+            receivedTerminalEvent=true;
+            conversationID=data.conversation_id||conversationID;
+            storeValue(localStorage,currentConversationStorageKey,conversationID);
+            pending.classList.remove('is-pending');
+            if(!receivedFirstText)showThoughtTime(pending,performance.now()-thinkingStartedAt);
+            stream.replace(data.response_text||'The server returned an empty response.');
+          }
+        });
+        if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
+        if(apiKeyInput.value.trim()!==token){stream.cancel();return}
+        await stream.finish();
         loadConversations(false);
       }catch(error){
+        const partialText=stream.visibleText();
+        stream.cancel();
         pending.classList.remove('is-pending');
         pending.classList.add('is-error');
-        pending.querySelector('.chat-text').textContent='Could not get a response: '+error.message;
+        const body=pending.querySelector('.chat-text');
+        if(partialText){
+          renderMarkdown(body,partialText);
+          const note=document.createElement('p');
+          note.textContent='Response interrupted: '+error.message;
+          body.append(note);
+        }else{
+          body.textContent='Could not get a response: '+error.message;
+        }
         if(String(error.message).toLowerCase().includes('unauthorized'))promptForAPIKey();
       }finally{
         setSending(false);
