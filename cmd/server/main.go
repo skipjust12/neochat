@@ -403,8 +403,8 @@ func getenvFloatDefault(key string, def float64) float64 {
 	if err != nil {
 		log.Fatalf("%s: %v", key, err)
 	}
-	if f <= 0 || math.IsNaN(f) || math.IsInf(f, 0) {
-		log.Fatalf("%s must be finite and positive", key)
+	if f < 0 || math.IsNaN(f) || math.IsInf(f, 0) {
+		log.Fatalf("%s must be finite and nonnegative", key)
 	}
 	return f
 }
