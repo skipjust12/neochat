@@ -3,6 +3,7 @@ package conversation
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 )
 
@@ -22,11 +23,73 @@ func NewPostgresStore(db *sql.DB) *PostgresStore {
 }
 
 func (s *PostgresStore) Append(ctx context.Context, userID, conversationID string, msg Message) error {
-	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO conversation_messages (user_id, conversation_id, role, content, model_id, is_summary, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7)
-	`, userID, conversationID, msg.Role, msg.Content, msg.ModelID, msg.IsSummary, msg.CreatedAt)
+	if msg.Role == RoleAssistant && len(msg.Versions) == 0 {
+		msg.Versions = []ResponseVersion{{Content: msg.Content, ModelID: msg.ModelID, CreatedAt: msg.CreatedAt}}
+	}
+	versions, err := json.Marshal(msg.Versions)
+	if err != nil {
+		return err
+	}
+	_, err = s.db.ExecContext(ctx, `
+		INSERT INTO conversation_messages (user_id, conversation_id, role, content, model_id, is_summary, created_at, versions)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+	`, userID, conversationID, msg.Role, msg.Content, msg.ModelID, msg.IsSummary, msg.CreatedAt, versions)
 	return err
+}
+
+func (s *PostgresStore) AddResponseVersion(ctx context.Context, userID, conversationID string, messageID int64, version ResponseVersion) (Message, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return Message{}, err
+	}
+	defer tx.Rollback()
+
+	var message Message
+	var encoded []byte
+	err = tx.QueryRowContext(ctx, `
+		SELECT id, role, content, model_id, is_summary, created_at, versions
+		FROM conversation_messages
+		WHERE user_id = $1 AND conversation_id = $2 AND id = $3 AND role = $4
+		FOR UPDATE
+	`, userID, conversationID, messageID, RoleAssistant).Scan(
+		&message.ID, &message.Role, &message.Content, &message.ModelID, &message.IsSummary, &message.CreatedAt, &encoded,
+	)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Message{}, ErrMessageNotFound
+	}
+	if err != nil {
+		return Message{}, err
+	}
+	if len(encoded) > 0 {
+		if err := json.Unmarshal(encoded, &message.Versions); err != nil {
+			return Message{}, err
+		}
+	}
+	if len(message.Versions) == 0 {
+		message.Versions = []ResponseVersion{{Content: message.Content, ModelID: message.ModelID, CreatedAt: message.CreatedAt}}
+	}
+	if len(message.Versions)-1 >= MaxRegenerationAttempts {
+		return Message{}, ErrRegenerationLimit
+	}
+	message.Versions = append(message.Versions, version)
+	message.Content = version.Content
+	message.ModelID = version.ModelID
+	message.CreatedAt = version.CreatedAt
+	encoded, err = json.Marshal(message.Versions)
+	if err != nil {
+		return Message{}, err
+	}
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE conversation_messages
+		SET content = $1, model_id = $2, created_at = $3, versions = $4
+		WHERE user_id = $5 AND conversation_id = $6 AND id = $7
+	`, message.Content, message.ModelID, message.CreatedAt, encoded, userID, conversationID, messageID); err != nil {
+		return Message{}, err
+	}
+	if err := tx.Commit(); err != nil {
+		return Message{}, err
+	}
+	return message, nil
 }
 
 func (s *PostgresStore) History(ctx context.Context, userID, conversationID string, offset int) ([]Message, error) {
@@ -39,7 +102,7 @@ func (s *PostgresStore) History(ctx context.Context, userID, conversationID stri
 	// stay meaningful. The (user_id, conversation_id, id) index in
 	// db/migrations/0002_conversation.sql covers this scan.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT role, content, model_id, is_summary, created_at
+		SELECT id, role, content, model_id, is_summary, created_at, versions
 		FROM conversation_messages
 		WHERE user_id = $1 AND conversation_id = $2
 		ORDER BY id
@@ -56,8 +119,14 @@ func (s *PostgresStore) History(ctx context.Context, userID, conversationID stri
 	out := []Message{}
 	for rows.Next() {
 		var m Message
-		if err := rows.Scan(&m.Role, &m.Content, &m.ModelID, &m.IsSummary, &m.CreatedAt); err != nil {
+		var encoded []byte
+		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.ModelID, &m.IsSummary, &m.CreatedAt, &encoded); err != nil {
 			return nil, err
+		}
+		if len(encoded) > 0 {
+			if err := json.Unmarshal(encoded, &m.Versions); err != nil {
+				return nil, err
+			}
 		}
 		out = append(out, m)
 	}

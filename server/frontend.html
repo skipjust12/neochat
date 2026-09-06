@@ -292,6 +292,9 @@
   .message-action{width:30px;height:30px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;transition:background .16s ease,color .16s ease,transform .16s ease}
   .message-action:hover{background:var(--hover);color:var(--text)}.message-action:active{transform:scale(.92)}.message-action[aria-pressed="true"]{background:var(--soft);color:var(--text)}
   .message-action svg{width:16px;height:16px;stroke-width:1.8}
+  .response-versions{display:flex;align-items:center;gap:4px;margin-left:5px;padding-left:7px;border-left:1px solid var(--line)}
+  .version-nav{height:30px;padding:0 7px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-size:12px;cursor:pointer;transition:background .16s ease,color .16s ease}
+  .version-nav:hover{background:var(--hover);color:var(--text)}.version-nav[hidden]{display:none}
   .chat-message.is-error .chat-text{color:#c3453b}
   .send:disabled{opacity:.45;cursor:wait;transform:none}
   .composer textarea:disabled{opacity:.65}
@@ -1550,15 +1553,15 @@
       }
     }
 
-    function setThinkingState(message){
+    function setThinkingState(message,labelText){
       const body=message.querySelector('.chat-text');
       body.replaceChildren();
       const state=document.createElement('div');
       state.className='thinking-state';
       const label=document.createElement('span');
       label.className='thinking-label';
-      label.textContent='Thinking';
-      label.dataset.text='Thinking';
+      label.textContent=labelText||'Thinking';
+      label.dataset.text=label.textContent;
       state.append(label);body.append(state);
     }
 
@@ -1599,6 +1602,25 @@
       fallback.remove();
     }
 
+    function normalizeResponseVersions(message,text){
+      const versions=message&&Array.isArray(message.versions)?message.versions.filter(function(version){return version&&typeof version.content==='string'}):[];
+      return versions.length?versions:[{content:String(text||''),model_id:message&&message.model_id?message.model_id:''}];
+    }
+
+    function renderResponseVersion(message,index){
+      const versions=message.responseVersions||[];
+      if(!versions.length)return;
+      message.responseVersionIndex=Math.max(0,Math.min(index,versions.length-1));
+      const version=versions[message.responseVersionIndex];
+      message.dataset.messageText=version.content;
+      renderMarkdown(message.querySelector('.chat-text'),version.content);
+      const navigation=message.querySelector('.response-versions');
+      if(!navigation)return;
+      navigation.hidden=versions.length<2;
+      navigation.querySelector('.version-prev').hidden=message.responseVersionIndex===0;
+      navigation.querySelector('.version-next').hidden=message.responseVersionIndex===versions.length-1;
+    }
+
     function appendMessageActions(message){
       const actions=document.createElement('div');
       actions.className='message-actions';
@@ -1616,16 +1638,9 @@
       });
 
       const retry=messageActionButton('Use prompt again','<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path>');
-      retry.addEventListener('click',function(){
-        if(sending){toast('Wait for the current response.');return}
-        let previous=message.previousElementSibling;
-        while(previous&&!previous.classList.contains('user'))previous=previous.previousElementSibling;
-        if(!previous)return;
-        textarea.value=previous.dataset.messageText||previous.querySelector('.chat-text').innerText;
-        textarea.dispatchEvent(new Event('input'));
-        textarea.focus();
-        toast('Prompt ready to send again.');
-      });
+      retry.setAttribute('aria-label','Regenerate response');
+      retry.title='Regenerate response';
+      retry.addEventListener('click',function(){regenerateMessage(message)});
 
       const like=messageActionButton('Good response','<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path><path d="M7 10v12"></path>');
       const dislike=messageActionButton('Bad response','<path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path><path d="M17 14V2"></path>');
@@ -1640,11 +1655,22 @@
         });
       });
 
-      actions.append(copy,retry,like,dislike);
+      const navigation=document.createElement('span');
+      navigation.className='response-versions';
+      navigation.hidden=true;
+      const previous=document.createElement('button');
+      previous.type='button';previous.className='version-nav version-prev';previous.textContent='< Prev';
+      previous.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex-1)});
+      const next=document.createElement('button');
+      next.type='button';next.className='version-nav version-next';next.textContent='Next >';
+      next.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex+1)});
+      navigation.append(previous,next);
+
+      actions.append(copy,retry,like,dislike,navigation);
       message.querySelector('.chat-copy').append(actions);
     }
 
-    function appendMessage(role,text){
+    function appendMessage(role,text,messageDetails){
       chatContent.classList.add('has-chat');
       const message=document.createElement('article');
       message.className='chat-message '+role;
@@ -1657,7 +1683,11 @@
       copy.append(body);
       message.append(copy);
       if(role==='assistant'){
+        message.responseVersions=normalizeResponseVersions(messageDetails,text);
+        message.responseVersionIndex=message.responseVersions.length-1;
+        if(messageDetails&&messageDetails.id)message.dataset.messageId=String(messageDetails.id);
         appendMessageActions(message);
+        renderResponseVersion(message,message.responseVersionIndex);
         if(text)message.classList.add('is-complete');
       }
       chatLog.append(message);
@@ -1739,7 +1769,7 @@
         chatLog.replaceChildren();
         (Array.isArray(data.messages)?data.messages:[]).forEach(function(message){
           if(message.is_summary)return;
-          appendMessage(message.role,message.content+(message.truncated?'\n[Message truncated]':''),message.model_id||'');
+          appendMessage(message.role,message.content+(message.truncated?'\n[Message truncated]':''),message);
         });
         showOlderMessagesButton(id,data.next_cursor,token);
         if(!chatLog.children.length)chatContent.classList.remove('has-chat');
@@ -1769,7 +1799,7 @@
           const fragment=document.createDocumentFragment();
           (data.messages||[]).forEach(function(message){
             if(message.is_summary)return;
-            appendMessage(message.role,message.content+(message.truncated?'\n[Message truncated]':''),message.model_id||'');
+            appendMessage(message.role,message.content+(message.truncated?'\n[Message truncated]':''),message);
             fragment.append(chatLog.lastElementChild);
           });
           button.remove();
@@ -1929,6 +1959,98 @@
       };
     }
 
+    async function regenerateMessage(message){
+      if(sending){toast('Wait for the current response.');return}
+      const assistantMessages=chatLog.querySelectorAll('.chat-message.assistant');
+      if(!assistantMessages.length||assistantMessages[assistantMessages.length-1]!==message){
+        toast('Only the latest response can be regenerated.');
+        return;
+      }
+      const versions=message.responseVersions||[];
+      if(versions.length-1>=10){
+        toast('The 10 regeneration limit has been reached.');
+        return;
+      }
+      const token=apiKeyInput.value.trim();
+      if(!token){promptForAPIKey();return}
+      if(!conversationID){toast('This response is not saved yet.');return}
+
+      const selectedMode=document.querySelector('input[name="work-mode"]:checked');
+      const mode=(selectedMode?selectedMode.value:'Auto').toLowerCase();
+      const request={
+        conversation_id:conversationID,
+        message_id:Number(message.dataset.messageId||0),
+        requested_mode:mode,
+        persona:document.getElementById('toneTriggerLabel').textContent.trim()||'Default',
+        idempotency_key:createIdempotencyKey()
+      };
+      if(mode==='manual'){
+        const selectedModel=document.getElementById('manualState').textContent.trim();
+        request.manual_model_id=manualModelIDs[selectedModel]||'';
+        if(!request.manual_model_id){toast('That model is not available on the current backend yet.');return}
+      }
+
+      const previousIndex=message.responseVersionIndex;
+      message.classList.remove('is-complete');
+      message.classList.add('is-pending');
+      setThinkingState(message,'Regenerating');
+      setSending(true);
+      const thinkingStartedAt=performance.now();
+      const stream=createSmoothMessageStream(message);
+      let terminalData=null;
+      let versionsData=null;
+      let receivedFirstText=false;
+
+      try{
+        const response=await fetch('/chat/regenerate/stream',{
+          method:'POST',
+          headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
+          body:JSON.stringify(request)
+        });
+        if(!response.ok){
+          const raw=await response.text();
+          throw new Error(raw.trim()||'HTTP '+response.status);
+        }
+        await readServerSentEvents(response,function(event,data){
+          if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
+          if(event==='blocked')throw new Error(data.response_text||'Regeneration was blocked.');
+          if(event==='versions'){versionsData=data;return}
+          if(event==='delta'){
+            const text=data&&data.text?String(data.text):'';
+            if(text&&!receivedFirstText){
+              receivedFirstText=true;
+              message.classList.remove('is-pending');
+              showThoughtTime(message,performance.now()-thinkingStartedAt);
+            }
+            stream.append(text);
+          }
+          if(event==='done'){
+            terminalData=data;
+            message.classList.remove('is-pending');
+            if(!receivedFirstText)showThoughtTime(message,performance.now()-thinkingStartedAt);
+            stream.replace(data.response_text||'The server returned an empty response.');
+          }
+        });
+        if(!terminalData)throw new Error('The response stream ended unexpectedly.');
+        await stream.finish();
+        message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
+        message.responseVersionIndex=message.responseVersions.length-1;
+        if(versionsData&&versionsData.message_id)message.dataset.messageId=String(versionsData.message_id);
+        renderResponseVersion(message,message.responseVersionIndex);
+        message.classList.add('is-complete');
+        loadConversations(false);
+      }catch(error){
+        stream.cancel();
+        message.classList.remove('is-pending');
+        renderResponseVersion(message,previousIndex);
+        message.classList.add('is-complete');
+        toast('Could not regenerate: '+error.message);
+      }finally{
+        setSending(false);
+        textarea.focus();
+      }
+    }
+
     async function sendMessage(){
       const request=selectedRequest();
       const token=apiKeyInput.value.trim();
@@ -1963,6 +2085,7 @@
       const stream=createSmoothMessageStream(pending);
       let receivedTerminalEvent=false;
       let receivedFirstText=false;
+      let terminalData=null;
 
       try{
         const response=await fetch('/chat/stream',{
@@ -1998,6 +2121,7 @@
           }
           if(event==='done'||event==='blocked'){
             receivedTerminalEvent=true;
+            terminalData=data;
             conversationID=data.conversation_id||conversationID;
             storeValue(localStorage,currentConversationStorageKey,conversationID);
             pending.classList.remove('is-pending');
@@ -2008,6 +2132,8 @@
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(apiKeyInput.value.trim()!==token){stream.cancel();return}
         await stream.finish();
+        pending.responseVersions=normalizeResponseVersions(null,terminalData.response_text);
+        pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
         loadConversations(false);
       }catch(error){
