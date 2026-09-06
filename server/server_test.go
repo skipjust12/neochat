@@ -560,6 +560,26 @@ func TestHandle_IncognitoUsesRequestHistoryWithoutPersisting(t *testing.T) {
 	}
 }
 
+func TestHandle_ProjectChatUsesInstructionsAndStaysOutOfGeneralList(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{{Text: "project answer", InputTokens: 10, OutputTokens: 5}})
+	project := conversation.Project{ID: "project-1", Name: "Launch", Description: "Always answer with launch context.", CreatedAt: time.Now()}
+	if err := s.Conversations.CreateProject(context.Background(), "u1", project); err != nil {
+		t.Fatal(err)
+	}
+	resp, err := s.handle(context.Background(), chatRequest{UserID: "u1", PlanID: "pro", Message: "What next?", RequestedMode: "instant", ProjectID: project.ID}, s.Plans["pro"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(genClient.Requests) != 1 || len(genClient.Requests[0].Messages) < 2 || !strings.Contains(genClient.Requests[0].Messages[0].Content, project.Description) {
+		t.Fatalf("project instructions missing: %+v", genClient.Requests)
+	}
+	general, _ := s.Conversations.List(context.Background(), "u1", 10)
+	projectChats, _ := s.Conversations.ListByProject(context.Background(), "u1", project.ID, 10)
+	if len(general) != 0 || len(projectChats) != 1 || projectChats[0].ID != resp.ConversationID {
+		t.Fatalf("general=%+v project=%+v", general, projectChats)
+	}
+}
+
 func TestValidateRequestRejectsInvalidIncognitoContext(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 	cases := []chatRequest{

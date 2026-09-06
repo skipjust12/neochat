@@ -58,12 +58,21 @@ type Overview struct {
 	ID        string    `json:"conversation_id"`
 	Title     string    `json:"title"`
 	Pinned    bool      `json:"pinned,omitempty"`
+	ProjectID string    `json:"project_id,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type MetadataUpdate struct {
-	Title  *string
-	Pinned *bool
+	Title     *string
+	Pinned    *bool
+	ProjectID *string
+}
+
+type Project struct {
+	ID          string    `json:"project_id"`
+	Name        string    `json:"name"`
+	Description string    `json:"description"`
+	CreatedAt   time.Time `json:"created_at"`
 }
 
 // Summary is the rolling, machine-generated compression of a

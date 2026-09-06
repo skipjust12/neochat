@@ -95,6 +95,55 @@ func TestConversationUpdateAndDeleteEndpoints(t *testing.T) {
 	}
 }
 
+func TestProjectCreateAndGetEndpoints(t *testing.T) {
+	store := conversation.NewInMemoryStore()
+	srv := &Server{Conversations: store}
+	identity := auth.Identity{UserID: "owner"}
+	ctx := context.Background()
+	create := httptest.NewRequest(http.MethodPost, "/projects", bytes.NewBufferString(`{"name":"Research","description":"Use our shared context"}`))
+	rec := httptest.NewRecorder()
+	srv.handleProjectCreate(rec, create, identity)
+	if rec.Code != http.StatusCreated {
+		t.Fatalf("create=%d %s", rec.Code, rec.Body.String())
+	}
+	var project conversation.Project
+	if err := json.Unmarshal(rec.Body.Bytes(), &project); err != nil {
+		t.Fatal(err)
+	}
+	if project.Name != "Research" || project.ID == "" {
+		t.Fatalf("project=%+v", project)
+	}
+	get := httptest.NewRequest(http.MethodGet, "/projects/"+project.ID, nil)
+	get.SetPathValue("project_id", project.ID)
+	got := httptest.NewRecorder()
+	srv.handleProjectGet(got, get, identity)
+	if got.Code != http.StatusOK {
+		t.Fatalf("get=%d %s", got.Code, got.Body.String())
+	}
+
+	if err := store.Append(ctx, identity.UserID, "chat-1", conversation.Message{Role: conversation.RoleUser, Content: "Move me", CreatedAt: time.Now()}); err != nil {
+		t.Fatal(err)
+	}
+	update := httptest.NewRequest(http.MethodPatch, "/conversations/chat-1", bytes.NewBufferString(`{"project_id":"`+project.ID+`"}`))
+	update.SetPathValue("conversation_id", "chat-1")
+	updated := httptest.NewRecorder()
+	srv.handleConversationUpdate(updated, update, identity)
+	if updated.Code != http.StatusNoContent {
+		t.Fatalf("add to project=%d %s", updated.Code, updated.Body.String())
+	}
+	general, err := store.List(ctx, identity.UserID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	projectChats, err := store.ListByProject(ctx, identity.UserID, project.ID, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(general) != 0 || len(projectChats) != 1 || projectChats[0].ID != "chat-1" {
+		t.Fatalf("general=%+v project=%+v", general, projectChats)
+	}
+}
+
 func TestHistoryHTTPPaginationAndUserLimit(t *testing.T) {
 	ctx := context.Background()
 	store := conversation.NewInMemoryStore()

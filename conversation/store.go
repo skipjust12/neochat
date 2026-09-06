@@ -53,8 +53,12 @@ type Store interface {
 	// List returns the user's most recently active conversations. Titles
 	// are derived from the first user message in each conversation.
 	List(ctx context.Context, userID string, limit int) ([]Overview, error)
+	ListByProject(ctx context.Context, userID, projectID string, limit int) ([]Overview, error)
 	UpdateMetadata(ctx context.Context, userID, conversationID string, update MetadataUpdate) error
 	Delete(ctx context.Context, userID, conversationID string) error
+	CreateProject(ctx context.Context, userID string, project Project) error
+	ListProjects(ctx context.Context, userID string) ([]Project, error)
+	GetProject(ctx context.Context, userID, projectID string) (Project, error)
 
 	// GetSummary returns the current rolling Summary for (userID,
 	// conversationID). An unknown conversation, or one that has never
@@ -80,11 +84,13 @@ type InMemoryStore struct {
 	history   map[conversationKey][]Message
 	summaries map[conversationKey]Summary
 	metadata  map[conversationKey]conversationMetadata
+	projects  map[conversationKey]Project
 }
 
 type conversationMetadata struct {
-	title  string
-	pinned bool
+	title     string
+	pinned    bool
+	projectID string
 }
 
 type conversationKey struct {
@@ -98,6 +104,7 @@ func NewInMemoryStore() *InMemoryStore {
 		history:   make(map[conversationKey][]Message),
 		summaries: make(map[conversationKey]Summary),
 		metadata:  make(map[conversationKey]conversationMetadata),
+		projects:  make(map[conversationKey]Project),
 	}
 }
 
@@ -170,6 +177,9 @@ func (s *InMemoryStore) List(_ context.Context, userID string, limit int) ([]Ove
 			continue
 		}
 		meta := s.metadata[key]
+		if meta.projectID != "" {
+			continue
+		}
 		overview := Overview{ID: key.conversationID, Title: meta.title, Pinned: meta.pinned}
 		if overview.Title == "" {
 			overview.Title = "New chat"
@@ -200,6 +210,52 @@ func (s *InMemoryStore) List(_ context.Context, userID string, limit int) ([]Ove
 	return out, nil
 }
 
+func (s *InMemoryStore) ListByProject(_ context.Context, userID, projectID string, limit int) ([]Overview, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if limit <= 0 {
+		return []Overview{}, nil
+	}
+
+	out := []Overview{}
+	for key, messages := range s.history {
+		meta := s.metadata[key]
+		if key.userID != userID || len(messages) == 0 || meta.projectID != projectID {
+			continue
+		}
+		overview := Overview{ID: key.conversationID, Title: meta.title, Pinned: meta.pinned, ProjectID: projectID}
+		if overview.Title == "" {
+			overview.Title = "New chat"
+			for _, message := range messages {
+				if message.Role == RoleUser && strings.TrimSpace(message.Content) != "" {
+					title := []rune(strings.TrimSpace(message.Content))
+					if len(title) > 80 {
+						title = title[:80]
+					}
+					overview.Title = string(title)
+					break
+				}
+			}
+		}
+		for _, message := range messages {
+			if message.CreatedAt.After(overview.UpdatedAt) {
+				overview.UpdatedAt = message.CreatedAt
+			}
+		}
+		out = append(out, overview)
+	}
+	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Pinned != out[j].Pinned {
+			return out[i].Pinned
+		}
+		return out[i].UpdatedAt.After(out[j].UpdatedAt)
+	})
+	if len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
+}
+
 func (s *InMemoryStore) UpdateMetadata(_ context.Context, userID, conversationID string, update MetadataUpdate) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -214,8 +270,43 @@ func (s *InMemoryStore) UpdateMetadata(_ context.Context, userID, conversationID
 	if update.Pinned != nil {
 		meta.pinned = *update.Pinned
 	}
+	if update.ProjectID != nil {
+		meta.projectID = *update.ProjectID
+	}
 	s.metadata[key] = meta
 	return nil
+}
+
+func (s *InMemoryStore) CreateProject(_ context.Context, userID string, project Project) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.projects[conversationKey{userID: userID, conversationID: project.ID}] = project
+	return nil
+}
+
+func (s *InMemoryStore) ListProjects(_ context.Context, userID string) ([]Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	out := []Project{}
+	for key, project := range s.projects {
+		if key.userID == userID {
+			out = append(out, project)
+		}
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
+func (s *InMemoryStore) GetProject(_ context.Context, userID, projectID string) (Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	project, ok := s.projects[conversationKey{userID: userID, conversationID: projectID}]
+	if !ok {
+		return Project{}, ErrConversationNotFound
+	}
+	return project, nil
 }
 
 func (s *InMemoryStore) Delete(_ context.Context, userID, conversationID string) error {
