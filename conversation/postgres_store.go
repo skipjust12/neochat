@@ -139,7 +139,7 @@ func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]O
 	}
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT grouped.conversation_id,
-		       COALESCE(NULLIF((
+		       COALESCE(NULLIF(metadata.title, ''), NULLIF((
 		           SELECT LEFT(BTRIM(first_message.content), 80)
 		           FROM conversation_messages first_message
 		           WHERE first_message.user_id = $1
@@ -148,6 +148,7 @@ func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]O
 		           ORDER BY first_message.id
 		           LIMIT 1
 		       ), ''), 'New chat') AS title,
+		       COALESCE(metadata.pinned, FALSE),
 		       grouped.updated_at
 		FROM (
 			SELECT conversation_id, MAX(created_at) AS updated_at
@@ -155,7 +156,9 @@ func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]O
 			WHERE user_id = $1
 			GROUP BY conversation_id
 		) grouped
-		ORDER BY grouped.updated_at DESC
+		LEFT JOIN conversation_metadata metadata
+		  ON metadata.user_id = $1 AND metadata.conversation_id = grouped.conversation_id
+		ORDER BY COALESCE(metadata.pinned, FALSE) DESC, grouped.updated_at DESC
 		LIMIT $2
 	`, userID, limit, RoleUser)
 	if err != nil {
@@ -166,12 +169,56 @@ func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]O
 	out := []Overview{}
 	for rows.Next() {
 		var overview Overview
-		if err := rows.Scan(&overview.ID, &overview.Title, &overview.UpdatedAt); err != nil {
+		if err := rows.Scan(&overview.ID, &overview.Title, &overview.Pinned, &overview.UpdatedAt); err != nil {
 			return nil, err
 		}
 		out = append(out, overview)
 	}
 	return out, rows.Err()
+}
+
+func (s *PostgresStore) UpdateMetadata(ctx context.Context, userID, conversationID string, update MetadataUpdate) error {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM conversation_messages WHERE user_id = $1 AND conversation_id = $2)`, userID, conversationID).Scan(&exists); err != nil {
+		return err
+	}
+	if !exists {
+		return ErrConversationNotFound
+	}
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO conversation_metadata (user_id, conversation_id, title, pinned)
+		VALUES ($1, $2, COALESCE($3, ''), COALESCE($4, FALSE))
+		ON CONFLICT (user_id, conversation_id) DO UPDATE SET
+			title = CASE WHEN $3::TEXT IS NULL THEN conversation_metadata.title ELSE $3 END,
+			pinned = CASE WHEN $4::BOOLEAN IS NULL THEN conversation_metadata.pinned ELSE $4 END
+	`, userID, conversationID, update.Title, update.Pinned)
+	return err
+}
+
+func (s *PostgresStore) Delete(ctx context.Context, userID, conversationID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	result, err := tx.ExecContext(ctx, `DELETE FROM conversation_messages WHERE user_id = $1 AND conversation_id = $2`, userID, conversationID)
+	if err != nil {
+		return err
+	}
+	deleted, err := result.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if deleted == 0 {
+		return ErrConversationNotFound
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM conversation_summaries WHERE user_id = $1 AND conversation_id = $2`, userID, conversationID); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx, `DELETE FROM conversation_metadata WHERE user_id = $1 AND conversation_id = $2`, userID, conversationID); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *PostgresStore) GetSummary(ctx context.Context, userID, conversationID string) (Summary, error) {

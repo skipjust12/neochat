@@ -318,6 +318,8 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
 	mux.HandleFunc("GET /conversations", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationList))))))
 	mux.HandleFunc("GET /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationHistory))))))
+	mux.HandleFunc("PATCH /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationUpdate))))))
+	mux.HandleFunc("DELETE /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationDelete))))))
 	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -332,6 +334,70 @@ type conversationHistoryResponse struct {
 	NextCursor     int64                  `json:"next_cursor,omitempty"`
 	ConversationID string                 `json:"conversation_id"`
 	Messages       []conversation.Message `json:"messages"`
+}
+
+type conversationUpdateRequest struct {
+	Title  *string `json:"title"`
+	Pinned *bool   `json:"pinned"`
+}
+
+func conversationIDFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
+	conversationID := strings.TrimSpace(r.PathValue("conversation_id"))
+	if conversationID == "" || len(conversationID) > 128 {
+		http.Error(w, "invalid conversation_id", http.StatusBadRequest)
+		return "", false
+	}
+	return conversationID, true
+}
+
+func (s *Server) handleConversationUpdate(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	conversationID, ok := conversationIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	var request conversationUpdateRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil || (request.Title == nil && request.Pinned == nil) {
+		http.Error(w, "invalid update", http.StatusBadRequest)
+		return
+	}
+	if request.Title != nil {
+		title := strings.TrimSpace(*request.Title)
+		if title == "" || len([]rune(title)) > 80 {
+			http.Error(w, "title must be between 1 and 80 characters", http.StatusBadRequest)
+			return
+		}
+		request.Title = &title
+	}
+	if err := s.Conversations.UpdateMetadata(r.Context(), identity.UserID, conversationID, conversation.MetadataUpdate{Title: request.Title, Pinned: request.Pinned}); err != nil {
+		if errors.Is(err, conversation.ErrConversationNotFound) {
+			http.Error(w, "conversation not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("server: update conversation_id=%s for user_id=%s: %v", conversationID, identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (s *Server) handleConversationDelete(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	conversationID, ok := conversationIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	if err := s.Conversations.Delete(r.Context(), identity.UserID, conversationID); err != nil {
+		if errors.Is(err, conversation.ErrConversationNotFound) {
+			http.Error(w, "conversation not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("server: delete conversation_id=%s for user_id=%s: %v", conversationID, identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) handleConversationList(w http.ResponseWriter, r *http.Request, identity auth.Identity) {

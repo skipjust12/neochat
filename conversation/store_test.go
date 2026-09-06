@@ -178,6 +178,32 @@ func TestInMemoryStore_SummaryIsolatesByUserAndConversation(t *testing.T) {
 	}
 }
 
+func TestInMemoryStore_MetadataAndDelete(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+	now := time.Now()
+	must(t, store.Append(ctx, "u1", "older", Message{Role: RoleUser, Content: "Old title", CreatedAt: now}))
+	must(t, store.Append(ctx, "u1", "newer", Message{Role: RoleUser, Content: "New title", CreatedAt: now.Add(time.Hour)}))
+	title := "Renamed chat"
+	pinned := true
+	must(t, store.UpdateMetadata(ctx, "u1", "older", MetadataUpdate{Title: &title, Pinned: &pinned}))
+
+	list, err := store.List(ctx, "u1", 10)
+	must(t, err)
+	if len(list) != 2 || list[0].ID != "older" || list[0].Title != title || !list[0].Pinned {
+		t.Fatalf("metadata list = %+v", list)
+	}
+	must(t, store.Delete(ctx, "u1", "older"))
+	history, err := store.History(ctx, "u1", "older", 0)
+	must(t, err)
+	if len(history) != 0 {
+		t.Fatalf("deleted history remains: %+v", history)
+	}
+	if err := store.Delete(ctx, "u1", "older"); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("second delete error = %v", err)
+	}
+}
+
 func must(t *testing.T, err error) {
 	t.Helper()
 	if err != nil {

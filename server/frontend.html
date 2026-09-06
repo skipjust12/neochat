@@ -22,14 +22,14 @@
   .icon-btn{width:42px;height:42px;border:0;border-radius:15px;display:grid;place-items:center;background:transparent;cursor:pointer;transition:background-color .28s var(--ease-gentle),border-color .28s var(--ease-gentle),box-shadow .36s var(--ease-gentle),transform .28s var(--ease-out),color .28s var(--ease-gentle)}.icon-btn:hover{background:var(--hover)}.icon-btn:active{transform:scale(.96)}.close-sidebar{color:var(--muted)}
   .new-chat{width:100%;border:0;border-radius:22px;background:var(--soft);padding:17px 18px;display:flex;align-items:center;gap:15px;font-size:18px;font-weight:620;cursor:pointer;transition:background .18s ease,transform .18s ease}.new-chat svg{width:24px;height:24px}.new-chat:hover{background:var(--soft-hover)}.new-chat:active{transform:scale(.985)}
   .nav{margin-top:18px;display:grid;gap:4px}.nav-item{width:100%;border:0;background:transparent;display:flex;align-items:center;gap:15px;padding:13px 18px;border-radius:18px;color:var(--text);cursor:pointer;text-align:left;font-size:17px;font-weight:520;transition:background .18s ease}.nav-item svg{width:23px;height:23px}.nav-item:hover{background:var(--hover)}.nav-item .trailing{margin-left:auto;color:var(--muted);display:grid;place-items:center}.nav-item .trailing svg{width:19px;height:19px}
-  .chat-history{min-height:0;margin-top:18px;display:flex;flex:1 1 0;flex-direction:column;overflow:hidden;border-top:1px solid var(--line);padding-top:15px}.chat-history-title{flex:none;padding:0 12px 8px;color:var(--muted);font-size:12px;font-weight:680;letter-spacing:.08em;text-transform:uppercase}.conversation-list{min-height:0;display:flex;flex:1 1 auto;flex-direction:column;gap:3px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin}.conversation-item{flex:none;width:100%;border:0;background:transparent;border-radius:14px;padding:10px 12px;text-align:left;cursor:pointer;color:var(--muted);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .18s ease,color .18s ease}.conversation-item:hover{background:var(--hover);color:var(--text)}.conversation-item.is-active{background:var(--soft);color:var(--text);font-weight:620}.conversation-empty{flex:none;padding:10px 12px;color:var(--muted);font-size:12.5px;line-height:1.45}
+  .chat-history{min-height:0;margin-top:18px;display:flex;flex:1 1 0;flex-direction:column;overflow:hidden;border-top:1px solid var(--line);padding-top:15px}.chat-history-title{flex:none;padding:0 12px 8px;color:var(--muted);font-size:12px;font-weight:680;letter-spacing:.08em;text-transform:uppercase}.conversation-list{min-height:0;display:flex;flex:1 1 auto;flex-direction:column;gap:3px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin}.conversation-item{flex:none;width:100%;border:0;background:transparent;border-radius:14px;padding:10px 12px;text-align:left;cursor:pointer;color:var(--muted);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .18s ease,color .18s ease}.conversation-item.has-title{display:flex;align-items:center;gap:7px}.conversation-title{min-width:0;overflow:hidden;text-overflow:ellipsis}.conversation-pin{width:13px;height:13px;flex:none;color:var(--muted)}.conversation-item:hover{background:var(--hover);color:var(--text)}.conversation-item.is-active{background:var(--soft);color:var(--text);font-weight:620}.conversation-empty{flex:none;padding:10px 12px;color:var(--muted);font-size:12.5px;line-height:1.45}
   .profile{flex:none;margin-top:auto;display:flex;align-items:center;gap:12px;padding:13px 9px 7px;border-radius:20px;transition:background .18s ease}.profile:hover{background:var(--hover)}.avatar{width:42px;height:42px;border-radius:50%;background:#909d9c;color:#fff;display:grid;place-items:center;font-size:13px;font-weight:720}.profile-copy{min-width:0;flex:1}.profile-copy strong,.profile-copy span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.profile-copy strong{font-size:15px;font-weight:650}.profile-copy span{font-size:13px;color:var(--muted);margin-top:2px}.store-icon{color:var(--muted)}
   .main{position:relative;isolation:isolate;width:100%;height:100%;min-width:0;border:0;border-radius:0;background:var(--card);backdrop-filter:blur(22px);overflow:hidden;box-shadow:none;transition:background-color .65s var(--ease-gentle)}
   .main::before,.main::after{content:"";position:absolute;z-index:0;left:-12%;right:-12%;bottom:-14%;height:76%;pointer-events:none;opacity:0;transform:translate3d(0,15%,0) scale(.94);transform-origin:50% 100%;will-change:opacity,transform;transition:opacity .9s var(--ease-gentle),transform 1.15s var(--ease-out)}
   .main::before{background:radial-gradient(ellipse 72% 88% at 50% 100%,rgba(4,6,5,.98) 0%,rgba(4,6,5,.88) 29%,rgba(4,6,5,.58) 47%,rgba(4,6,5,.24) 63%,rgba(4,6,5,.07) 74%,transparent 84%)}
   .main::after{background:radial-gradient(ellipse 72% 88% at 50% 100%,rgba(240,242,238,.95) 0%,rgba(238,240,236,.82) 29%,rgba(235,238,233,.55) 47%,rgba(232,235,230,.24) 63%,rgba(232,235,230,.07) 74%,transparent 84%)}
   html:not([data-theme="dark"]) #incognitoState:checked ~ .main::before,html[data-theme="dark"] #incognitoState:checked ~ .main::after{opacity:1;transform:translate3d(0,0,0) scale(1)}
-  .topbar{height:74px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:relative;z-index:20}.top-actions{display:flex;gap:6px;margin-left:auto;position:relative}.sidebar-toggle,.incognito-btn,.top-new-chat,.incognito-exit-btn{width:44px;height:44px;border:1px solid var(--line);border-radius:16px;background:var(--btn);box-shadow:0 8px 20px rgba(23,24,23,.035)}.sidebar-toggle:hover,.incognito-btn:hover,.top-new-chat:hover,.incognito-exit-btn:hover{background:var(--btn-hover)}#incognitoState:checked ~ .main .incognito-btn{background:var(--accent);color:var(--on-accent);border-color:var(--accent);box-shadow:0 12px 28px rgba(23,24,23,.2);transform:scale(1.035)}.top-new-chat,.incognito-exit-wrap{display:none}.main.has-active-chat .incognito-btn{display:none}.main.has-active-chat:not(.is-incognito-chat) .top-new-chat{display:grid}.main.has-active-chat.is-incognito-chat .incognito-exit-wrap{display:block}.incognito-exit-wrap{position:relative}.incognito-exit-confirm{position:absolute;right:0;top:52px;width:min(330px,calc(100vw - 48px));padding:15px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 18px 50px rgba(23,24,23,.16);opacity:0;visibility:hidden;transform:translate3d(18px,-18px,0) scale(.82);transform-origin:top right;transition:opacity .2s var(--ease-gentle),transform .34s var(--ease-out),visibility 0s linear .34s}.incognito-exit-confirm.is-open{opacity:1;visibility:visible;transform:translate3d(0,0,0) scale(1);transition-delay:0s}.incognito-exit-confirm p{margin:0 0 13px;font-size:13px;line-height:1.45;color:var(--text)}.incognito-exit-actions{display:flex;justify-content:flex-end;gap:7px}.incognito-exit-actions button{border:1px solid var(--line);border-radius:11px;padding:7px 11px;background:var(--btn);color:var(--text);cursor:pointer}.incognito-exit-actions .confirm-incognito-exit{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
+  .topbar{height:74px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:relative;z-index:20}.top-actions{display:flex;gap:6px;margin-left:auto;position:relative}.sidebar-toggle,.incognito-btn,.top-new-chat,.chat-actions-trigger,.incognito-exit-btn{width:44px;height:44px;border:1px solid var(--line);border-radius:16px;background:var(--btn);box-shadow:0 8px 20px rgba(23,24,23,.035)}.sidebar-toggle:hover,.incognito-btn:hover,.top-new-chat:hover,.chat-actions-trigger:hover,.incognito-exit-btn:hover{background:var(--btn-hover)}#incognitoState:checked ~ .main .incognito-btn{background:var(--accent);color:var(--on-accent);border-color:var(--accent);box-shadow:0 12px 28px rgba(23,24,23,.2);transform:scale(1.035)}.top-new-chat,.chat-actions-wrap,.incognito-exit-wrap{display:none}.main.has-active-chat .incognito-btn{display:none}.main.has-active-chat:not(.is-incognito-chat) .top-new-chat{display:grid}.main.has-active-chat:not(.is-incognito-chat) .chat-actions-wrap{display:block}.main.has-active-chat.is-incognito-chat .incognito-exit-wrap{display:block}.incognito-exit-wrap,.chat-actions-wrap{position:relative}.incognito-exit-confirm,.chat-actions-panel{position:absolute;right:0;top:52px;width:min(330px,calc(100vw - 32px));padding:15px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 18px 50px rgba(23,24,23,.16);opacity:0;visibility:hidden;transform:translate3d(18px,-18px,0) scale(.82);transform-origin:top right;transition:opacity .2s var(--ease-gentle),transform .34s var(--ease-out),visibility 0s linear .34s}.incognito-exit-confirm{width:min(380px,calc(100vw - 32px))}.incognito-exit-confirm.is-open,.chat-actions-panel.is-open{opacity:1;visibility:visible;transform:translate3d(0,0,0) scale(1);transition-delay:0s}.incognito-exit-confirm p,.chat-confirm-copy{margin:0 0 13px;font-size:13px;line-height:1.45;color:var(--text)}.incognito-exit-actions,.chat-confirm-actions{display:flex;justify-content:flex-end;gap:7px}.incognito-exit-actions button,.chat-confirm-actions button{border:1px solid var(--line);border-radius:11px;padding:7px 11px;background:var(--btn);color:var(--text);cursor:pointer}.incognito-exit-actions .confirm-incognito-exit,.chat-confirm-actions .confirm-delete-chat{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}.chat-actions-list{display:grid;gap:4px}.chat-menu-item{width:100%;display:flex;align-items:center;gap:10px;border:0;border-radius:12px;background:transparent;color:var(--text);padding:10px;cursor:pointer;text-align:left;font-size:14px}.chat-menu-item:hover{background:var(--hover)}.chat-menu-item svg{width:17px;height:17px;color:var(--muted);flex:none}.chat-menu-item:disabled{opacity:.42;cursor:default}.chat-menu-item.danger{color:#c84d46}.chat-rename,.chat-delete-confirm{display:none}.chat-actions-panel.is-renaming .chat-actions-list,.chat-actions-panel.is-deleting .chat-actions-list{display:none}.chat-actions-panel.is-renaming .chat-rename,.chat-actions-panel.is-deleting .chat-delete-confirm{display:block}.chat-rename input{width:100%;border:1px solid var(--line);border-radius:12px;background:var(--soft);color:var(--text);padding:10px 11px;outline:none;margin-bottom:10px}.chat-rename input:focus{box-shadow:0 0 0 2px var(--line)}
   .content{position:absolute;z-index:2;inset:74px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 28px 128px}.hero-stage{position:relative;width:min(760px,100%);min-height:230px;transform:translateY(-7vh)}.hero{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;opacity:0;transform:translate3d(0,16px,0) scale(.982);pointer-events:none;will-change:opacity,transform;transition:opacity .56s var(--ease-gentle),transform .72s var(--ease-out)}.hero.is-visible{opacity:1;transform:translate3d(0,0,0) scale(1);pointer-events:auto}#incognitoState:checked ~ .main .default-hero{opacity:0;transform:translate3d(0,-14px,0) scale(.982);pointer-events:none}#incognitoState:checked ~ .main .incognito-hero{opacity:1;transform:translate3d(0,0,0) scale(1);pointer-events:auto}
   h1{font-family:Charter,"Bitstream Charter","Sitka Text","Iowan Old Style",Georgia,serif;font-size:clamp(38px,5.3vw,72px);line-height:1.03;letter-spacing:-.02em;margin:0;font-weight:600}.home-greeting{opacity:0;transform:translate3d(0,10px,0);transition:opacity .48s var(--ease-gentle),transform .68s var(--ease-out)}.home-greeting.is-ready{opacity:1;transform:translate3d(0,0,0)}.hero p{color:var(--muted);margin:18px auto 0;max-width:560px;line-height:1.55;font-size:15px}.incognito-hero h1{font-size:clamp(38px,4.8vw,64px)}.incognito-hero p{max-width:620px;color:var(--muted)}.incognito-badge{width:48px;height:48px;border-radius:17px;display:grid;place-items:center;background:var(--accent);color:var(--on-accent);margin-bottom:20px;box-shadow:0 12px 28px rgba(23,24,23,.14)}.incognito-badge svg{width:23px;height:23px}
   .suggestions{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin-top:26px}.suggestions button{border:1px solid var(--line);background:var(--btn);border-radius:999px;padding:10px 14px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .18s ease,transform .18s ease,color .18s ease}.suggestions button svg{width:16px;height:16px;flex:none}.suggestions button:hover{background:var(--btn-hover);color:var(--text);transform:translateY(-1px)}
@@ -333,6 +333,19 @@
       <div class="top-actions">
         <label class="icon-btn incognito-btn" for="incognitoState" aria-label="Toggle incognito mode"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></label>
         <button class="icon-btn top-new-chat" type="button" aria-label="Start a new chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+        <div class="chat-actions-wrap">
+          <button class="icon-btn chat-actions-trigger" type="button" aria-label="Chat actions" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          <div class="chat-actions-panel" role="menu">
+            <div class="chat-actions-list">
+              <button class="chat-menu-item pin-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg><span>Pin</span></button>
+              <button class="chat-menu-item" type="button" role="menuitem" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg><span>Add to project</span></button>
+              <button class="chat-menu-item rename-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 22h-1a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4h1"/><path d="M7 22h1a4 4 0 0 0 4-4"/><path d="M7 2h1a4 4 0 0 1 4 4"/></svg><span>Rename</span></button>
+              <button class="chat-menu-item danger delete-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Delete</span></button>
+            </div>
+            <form class="chat-rename"><input maxlength="80" aria-label="Chat name"/><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="submit">Save</button></div></form>
+            <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="button" class="confirm-delete-chat">Delete</button></div></div>
+          </div>
+        </div>
         <div class="incognito-exit-wrap">
           <button class="icon-btn incognito-exit-btn" type="button" aria-label="Leave incognito chat" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
           <div class="incognito-exit-confirm" role="alertdialog" aria-label="Confirm leaving incognito chat"><p>This chat will not be saved, confirm the exit from it</p><div class="incognito-exit-actions"><button class="cancel-incognito-exit" type="button">Cancel</button><button class="confirm-incognito-exit" type="button">Exit</button></div></div>
@@ -1405,6 +1418,10 @@
     const mainPanel=document.querySelector('.main');
     const incognitoState=document.getElementById('incognitoState');
     const topNewChat=document.querySelector('.top-new-chat');
+    const chatActionsTrigger=document.querySelector('.chat-actions-trigger');
+    const chatActionsPanel=document.querySelector('.chat-actions-panel');
+    const renameChatForm=document.querySelector('.chat-rename');
+    const renameChatInput=renameChatForm.querySelector('input');
     const incognitoExitButton=document.querySelector('.incognito-exit-btn');
     const incognitoExitConfirm=document.querySelector('.incognito-exit-confirm');
     const apiKeyStorageKey='neochat-api-key';
@@ -1424,6 +1441,8 @@
       'Kimi K3 Low':'kimi-k3'
     };
     let conversationID='';
+    let currentConversationTitle='New chat';
+    let currentConversationPinned=false;
     let activeChatIncognito=false;
     let incognitoMessages=[];
     let sending=false;
@@ -1444,6 +1463,8 @@
       const token=apiKeyInput.value.trim();
       storeValue(sessionStorage,apiKeyStorageKey,token);
       conversationID='';
+      currentConversationTitle='New chat';
+      currentConversationPinned=false;
       activeChatIncognito=false;
       incognitoMessages=[];
       incognitoState.checked=false;
@@ -1773,6 +1794,8 @@
 
     function resetConversation(){
       conversationID='';
+      currentConversationTitle='New chat';
+      currentConversationPinned=false;
       activeChatIncognito=false;
       incognitoMessages=[];
       incognitoState.checked=false;
@@ -1780,6 +1803,7 @@
       chatLog.replaceChildren();
       chatContent.classList.remove('has-chat');
       closeIncognitoExitConfirm();
+      closeChatActions();
       updateChatModeControls();
       conversationList.querySelectorAll('.conversation-item').forEach(function(item){item.classList.remove('is-active')});
       textarea.value='';
@@ -1796,6 +1820,11 @@
     function closeIncognitoExitConfirm(){
       incognitoExitConfirm.classList.remove('is-open');
       incognitoExitButton.setAttribute('aria-expanded','false');
+    }
+
+    function closeChatActions(){
+      chatActionsPanel.classList.remove('is-open','is-renaming','is-deleting');
+      chatActionsTrigger.setAttribute('aria-expanded','false');
     }
 
     function setConversationListMessage(message){
@@ -1815,12 +1844,21 @@
       conversations.forEach(function(conversation){
         const button=document.createElement('button');
         button.type='button';
-        button.className='conversation-item';
+        button.className='conversation-item has-title';
         button.dataset.conversationId=conversation.conversation_id;
-        button.textContent=conversation.title||'New chat';
+        const title=document.createElement('span');
+        title.className='conversation-title';
+        title.textContent=conversation.title||'New chat';
+        if(conversation.pinned){
+          const pin=document.createElementNS('http://www.w3.org/2000/svg','svg');
+          pin.setAttribute('viewBox','0 0 24 24');pin.setAttribute('aria-label','Pinned');pin.setAttribute('class','conversation-pin');
+          pin.innerHTML='<path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/>';
+          button.append(pin);
+        }
+        button.append(title);
         button.title=conversation.title||'New chat';
         button.classList.toggle('is-active',conversation.conversation_id===conversationID);
-        button.addEventListener('click',function(){loadConversation(conversation.conversation_id)});
+        button.addEventListener('click',function(){loadConversation(conversation.conversation_id,conversation.title,Boolean(conversation.pinned))});
         conversationList.append(button);
       });
     }
@@ -1840,14 +1878,15 @@
         renderConversationList(conversations);
         const savedID=storedValue(localStorage,currentConversationStorageKey);
         if(restoreCurrent&&savedID&&conversations.some(function(item){return item.conversation_id===savedID})){
-          await loadConversation(savedID);
+          const savedConversation=conversations.find(function(item){return item.conversation_id===savedID});
+          await loadConversation(savedID,savedConversation.title,Boolean(savedConversation.pinned));
         }
       }catch(error){
         setConversationListMessage('Could not load saved chats. Check your access key.');
       }
     }
 
-    async function loadConversation(id){
+    async function loadConversation(id,title,pinned){
       if(sending)return;
       const token=apiKeyInput.value.trim();
       if(!token){promptForAPIKey();return}
@@ -1857,6 +1896,9 @@
         const data=await response.json();
         if(apiKeyInput.value.trim()!==token)return;
         conversationID=data.conversation_id||id;
+        currentConversationTitle=title||'New chat';
+        currentConversationPinned=Boolean(pinned);
+        closeChatActions();
         activeChatIncognito=false;
         incognitoMessages=[];
         incognitoState.checked=false;
@@ -2180,7 +2222,10 @@
         return;
       }
 
-      if(!chatLog.querySelector('.chat-message'))activeChatIncognito=Boolean(request.incognito);
+      if(!chatLog.querySelector('.chat-message')){
+        activeChatIncognito=Boolean(request.incognito);
+        if(!activeChatIncognito)currentConversationTitle=Array.from(request.message).slice(0,80).join('');
+      }
 
       chatLog.querySelectorAll('.is-latest-response').forEach(function(message){message.classList.remove('is-latest-response')});
       const userMessage=appendMessage('user',request.message);
@@ -2297,6 +2342,67 @@
       toast('New chat');
     });
 
+    async function updateCurrentConversation(update){
+      const token=apiKeyInput.value.trim();
+      if(!token||!conversationID)throw new Error('This chat is not saved yet.');
+      const response=await fetch('/conversations/'+encodeURIComponent(conversationID),{
+        method:'PATCH',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify(update)
+      });
+      if(!response.ok)throw new Error((await response.text()).trim()||'Could not update chat.');
+    }
+
+    chatActionsTrigger.addEventListener('click',function(){
+      if(sending){toast('Wait for the current response.');return}
+      const willOpen=!chatActionsPanel.classList.contains('is-open');
+      closeIncognitoExitConfirm();
+      chatActionsPanel.classList.remove('is-renaming','is-deleting');
+      chatActionsPanel.classList.toggle('is-open',willOpen);
+      chatActionsTrigger.setAttribute('aria-expanded',String(willOpen));
+      document.querySelector('.pin-chat span').textContent=currentConversationPinned?'Unpin':'Pin';
+    });
+
+    document.querySelector('.pin-chat').addEventListener('click',async function(){
+      try{
+        await updateCurrentConversation({pinned:!currentConversationPinned});
+        currentConversationPinned=!currentConversationPinned;
+        closeChatActions();
+        await loadConversations(false);
+        toast(currentConversationPinned?'Chat pinned':'Chat unpinned');
+      }catch(error){toast(error.message)}
+    });
+
+    document.querySelector('.rename-chat').addEventListener('click',function(){
+      chatActionsPanel.classList.add('is-renaming');
+      renameChatInput.value=currentConversationTitle;
+      setTimeout(function(){renameChatInput.focus();renameChatInput.select()},80);
+    });
+    renameChatForm.addEventListener('submit',async function(event){
+      event.preventDefault();
+      const title=renameChatInput.value.trim();
+      if(!title){toast('Enter a chat name.');return}
+      try{
+        await updateCurrentConversation({title:title});
+        currentConversationTitle=title;
+        closeChatActions();
+        await loadConversations(false);
+        toast('Chat renamed');
+      }catch(error){toast(error.message)}
+    });
+
+    document.querySelector('.delete-chat').addEventListener('click',function(){chatActionsPanel.classList.add('is-deleting')});
+    document.querySelectorAll('.cancel-chat-action').forEach(function(button){button.addEventListener('click',function(){chatActionsPanel.classList.remove('is-renaming','is-deleting')})});
+    document.querySelector('.confirm-delete-chat').addEventListener('click',async function(){
+      const token=apiKeyInput.value.trim();
+      if(!token||!conversationID){toast('This chat is not saved yet.');return}
+      try{
+        const response=await fetch('/conversations/'+encodeURIComponent(conversationID),{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
+        if(!response.ok)throw new Error((await response.text()).trim()||'Could not delete chat.');
+        resetConversation();
+        await loadConversations(false);
+        toast('Chat deleted');
+      }catch(error){toast(error.message)}
+    });
+
     incognitoExitButton.addEventListener('click',function(){
       if(sending){toast('Wait for the current response.');return}
       const willOpen=!incognitoExitConfirm.classList.contains('is-open');
@@ -2310,6 +2416,7 @@
     });
     document.addEventListener('click',function(event){
       if(!event.target.closest('.incognito-exit-wrap'))closeIncognitoExitConfirm();
+      if(!event.target.closest('.chat-actions-wrap'))closeChatActions();
     });
 
     document.querySelectorAll('.nav-item').forEach(function(button){
