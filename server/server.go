@@ -220,6 +220,11 @@ type chatRequest struct {
 	Message        string `json:"message"`
 	RequestedMode  string `json:"requested_mode"` // "auto" | "instant" | "thinking" | "max" | "manual"
 	ManualModelID  string `json:"manual_model_id,omitempty"`
+	Incognito      bool   `json:"incognito,omitempty"`
+	// IncognitoHistory carries the private conversation context back from
+	// the browser. The server uses it for this generation only and never
+	// writes it to the conversation store.
+	IncognitoHistory []incognitoMessage `json:"incognito_history,omitempty"`
 
 	// EstimatedContextTokens is accepted for wire-format backward
 	// compatibility but no longer used: server.prepare now computes the
@@ -246,6 +251,11 @@ type chatRequest struct {
 	// picker once it exists. Empty means "Default". A non-empty value not
 	// in SystemPromptNames is a 400, same as an unknown plan_id.
 	Persona string `json:"persona,omitempty"`
+}
+
+type incognitoMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
 }
 
 // defaultPersona is the persona used when a request doesn't specify one.
@@ -919,30 +929,30 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 		return preparedRequest{}, nil, fmt.Errorf("check thinking_max lock: %w", err)
 	}
 
-	// Send the model this conversation's stored history, plus the new
-	// message -- without this, /chat could never hold more than a
-	// single-turn exchange. Only the part not already folded into the
-	// rolling summary is read back (see loadHistory).
-	summaryState, history, err := s.loadHistory(ctx, req.UserID, conversationID)
-	if err != nil {
-		return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
-	}
-	if req.regenerationHistoryDrop > 0 {
-		if len(history) < req.regenerationHistoryDrop || history[len(history)-1].ID != req.regenerateMessageID {
-			return preparedRequest{}, nil, fmt.Errorf("%w: regeneration target changed", errInvalidRequest)
+	var tail []conversation.Message
+	var summaryText string
+	if req.Incognito {
+		tail = make([]conversation.Message, 0, len(req.IncognitoHistory))
+		for _, message := range req.IncognitoHistory {
+			tail = append(tail, conversation.Message{Role: conversation.Role(message.Role), Content: message.Content})
 		}
-		history = history[:len(history)-req.regenerationHistoryDrop]
+	} else {
+		// Only saved chats load and summarize server-side history. Private
+		// history exists solely in this request body and is discarded after it.
+		summaryState, history, err := s.loadHistory(ctx, req.UserID, conversationID)
+		if err != nil {
+			return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
+		}
+		if req.regenerationHistoryDrop > 0 {
+			if len(history) < req.regenerationHistoryDrop || history[len(history)-1].ID != req.regenerateMessageID {
+				return preparedRequest{}, nil, fmt.Errorf("%w: regeneration target changed", errInvalidRequest)
+			}
+			history = history[:len(history)-req.regenerationHistoryDrop]
+		}
+		summaryServer := *s
+		summaryServer.Summarizer.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Summarizer.Client, inputRate: s.Summarizer.CostInputPerMTok, outputRate: s.Summarizer.CostOutputPerMTok}
+		tail, summaryText = summaryServer.maybeSummarize(ctx, req.UserID, conversationID, summaryState, history)
 	}
-
-	// Fold the older part of a long conversation into a rolling summary
-	// once what's left unsummarized gets big enough that sending it
-	// verbatim risks outgrowing every catalog model's ContextWindow.
-	// summaryText is "" only when this conversation has never been
-	// summarized and isn't being summarized now -- an existing summary is
-	// always carried through even on the paths that fold nothing new.
-	summaryServer := *s
-	summaryServer.Summarizer.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Summarizer.Client, inputRate: s.Summarizer.CostInputPerMTok, outputRate: s.Summarizer.CostOutputPerMTok}
-	tail, summaryText := summaryServer.maybeSummarize(ctx, req.UserID, conversationID, summaryState, history)
 
 	persona := req.Persona
 	if persona == "" {
@@ -1217,7 +1227,10 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	defer cancel()
 	now := time.Now()
 	var regenerated conversation.Message
-	if req.regenerateMessageID > 0 {
+	if req.Incognito {
+		// Incognito turns intentionally never reach Conversations. Usage and
+		// cost accounting below still run so private mode cannot bypass limits.
+	} else if req.regenerateMessageID > 0 {
 		var err error
 		regenerated, err = s.Conversations.AddResponseVersion(ctx, req.UserID, prepared.conversationID, req.regenerateMessageID, conversation.ResponseVersion{Content: genResult.Text, ModelID: model.ID, CreatedAt: now})
 		if err != nil {
@@ -1312,7 +1325,7 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
 // with no IdempotencyKey (or a Server with no Idempotency store configured)
 // always takes this second path -- the guard is opt-in per request.
 func (s *Server) reserveIdempotent(ctx context.Context, req *chatRequest) (chatResponse, bool, error) {
-	if req.IdempotencyKey == "" || s.Idempotency == nil {
+	if req.Incognito || req.IdempotencyKey == "" || s.Idempotency == nil {
 		return chatResponse{}, false, nil
 	}
 
@@ -1349,7 +1362,7 @@ func (s *Server) reserveIdempotent(ctx context.Context, req *chatRequest) (chatR
 func (s *Server) finishIdempotent(ctx context.Context, req chatRequest, resp chatResponse, handleErr error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	if req.IdempotencyKey == "" || s.Idempotency == nil {
+	if req.Incognito || req.IdempotencyKey == "" || s.Idempotency == nil {
 		return
 	}
 
