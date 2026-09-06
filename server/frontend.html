@@ -13,7 +13,7 @@
   body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);background:radial-gradient(circle at 82% 12%,var(--grad1),transparent 27%),radial-gradient(circle at 14% 88%,var(--grad2),transparent 32%),var(--bg);overflow:hidden;transition:background-color .65s var(--ease-gentle),color .5s var(--ease-gentle)}
   button,input,textarea{font:inherit}button{color:inherit}button:focus-visible,textarea:focus-visible{outline:2px solid var(--text);outline-offset:3px}
   svg{width:21px;height:21px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
-  .app{height:100dvh;padding:14px}
+  .app{height:100dvh;padding:0}
   .state-toggle{position:fixed;inline-size:1px;block-size:1px;opacity:0;pointer-events:none}
   .sidebar{position:fixed;z-index:1001;inset:14px auto 14px 14px;width:310px;display:flex;flex-direction:column;overflow:hidden;padding:22px 16px 15px;border:1px solid var(--border-light);border-radius:var(--radius-xl);background:var(--panel);backdrop-filter:blur(28px);box-shadow:var(--shadow-lg);visibility:hidden;opacity:0;transform:translate3d(calc(-100% - 28px),0,0) scale(.985);will-change:transform,opacity;transition:transform .52s var(--ease-out),opacity .36s var(--ease-gentle),visibility .52s}
   .sidebar.is-open,#sidebarState:checked ~ .sidebar{visibility:visible;opacity:1;transform:translate3d(0,0,0) scale(1)}
@@ -24,7 +24,7 @@
   .nav{margin-top:18px;display:grid;gap:4px}.nav-item{width:100%;border:0;background:transparent;display:flex;align-items:center;gap:15px;padding:13px 18px;border-radius:18px;color:var(--text);cursor:pointer;text-align:left;font-size:17px;font-weight:520;transition:background .18s ease}.nav-item svg{width:23px;height:23px}.nav-item:hover{background:var(--hover)}.nav-item .trailing{margin-left:auto;color:var(--muted);display:grid;place-items:center}.nav-item .trailing svg{width:19px;height:19px}
   .chat-history{min-height:0;margin-top:18px;display:flex;flex:1 1 0;flex-direction:column;overflow:hidden;border-top:1px solid var(--line);padding-top:15px}.chat-history-title{flex:none;padding:0 12px 8px;color:var(--muted);font-size:12px;font-weight:680;letter-spacing:.08em;text-transform:uppercase}.conversation-list{min-height:0;display:flex;flex:1 1 auto;flex-direction:column;gap:3px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin}.conversation-item{flex:none;width:100%;border:0;background:transparent;border-radius:14px;padding:10px 12px;text-align:left;cursor:pointer;color:var(--muted);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .18s ease,color .18s ease}.conversation-item:hover{background:var(--hover);color:var(--text)}.conversation-item.is-active{background:var(--soft);color:var(--text);font-weight:620}.conversation-empty{flex:none;padding:10px 12px;color:var(--muted);font-size:12.5px;line-height:1.45}
   .profile{flex:none;margin-top:auto;display:flex;align-items:center;gap:12px;padding:13px 9px 7px;border-radius:20px;transition:background .18s ease}.profile:hover{background:var(--hover)}.avatar{width:42px;height:42px;border-radius:50%;background:#909d9c;color:#fff;display:grid;place-items:center;font-size:13px;font-weight:720}.profile-copy{min-width:0;flex:1}.profile-copy strong,.profile-copy span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.profile-copy strong{font-size:15px;font-weight:650}.profile-copy span{font-size:13px;color:var(--muted);margin-top:2px}.store-icon{color:var(--muted)}
-  .main{position:relative;isolation:isolate;width:100%;height:100%;min-width:0;border:1px solid var(--border-light);border-radius:var(--radius-xl);background:var(--card);backdrop-filter:blur(22px);overflow:hidden;box-shadow:var(--shadow);transition:background-color .65s var(--ease-gentle),border-color .55s var(--ease-gentle),box-shadow .7s var(--ease-gentle)}
+  .main{position:relative;isolation:isolate;width:100%;height:100%;min-width:0;border:0;border-radius:0;background:var(--card);backdrop-filter:blur(22px);overflow:hidden;box-shadow:none;transition:background-color .65s var(--ease-gentle)}
   .main::before,.main::after{content:"";position:absolute;z-index:0;left:-12%;right:-12%;bottom:-14%;height:76%;pointer-events:none;opacity:0;transform:translate3d(0,15%,0) scale(.94);transform-origin:50% 100%;will-change:opacity,transform;transition:opacity .9s var(--ease-gentle),transform 1.15s var(--ease-out)}
   .main::before{background:radial-gradient(ellipse 72% 88% at 50% 100%,rgba(4,6,5,.98) 0%,rgba(4,6,5,.88) 29%,rgba(4,6,5,.58) 47%,rgba(4,6,5,.24) 63%,rgba(4,6,5,.07) 74%,transparent 84%)}
   .main::after{background:radial-gradient(ellipse 72% 88% at 50% 100%,rgba(240,242,238,.95) 0%,rgba(238,240,236,.82) 29%,rgba(235,238,233,.55) 47%,rgba(232,235,230,.24) 63%,rgba(232,235,230,.07) 74%,transparent 84%)}
@@ -271,6 +271,7 @@
   .chat-message{display:flex;width:100%;padding:13px 0;animation:chat-message-in .34s var(--ease-out)}
   .chat-message.user{justify-content:flex-end}
   .chat-message.assistant{justify-content:flex-start}
+  .chat-message.assistant.is-latest-response{min-height:clamp(360px,calc(100dvh - 290px),720px)}
   @keyframes chat-message-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
   .chat-copy{min-width:0;max-width:min(78%,680px)}
   .chat-message.user .chat-copy{padding:13px 17px;border:1px solid var(--line);border-radius:22px 22px 7px 22px;background:var(--btn);box-shadow:inset 0 1px 0 var(--inset-hi)}
@@ -286,12 +287,17 @@
   html[data-theme="dark"] .thinking-label::after{background-image:linear-gradient(90deg,transparent 0%,transparent 40%,#fafafa 50%,transparent 60%,transparent 100%)}
   @keyframes thinkingSweep{0%{background-position:140% 0;opacity:1}100%{background-position:-40% 0;opacity:1}}
   .thought-time{margin-bottom:7px;color:var(--muted);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:12.5px;font-weight:560;letter-spacing:.005em}
+  .message-actions{display:flex;align-items:center;gap:2px;margin-top:12px;opacity:0;visibility:hidden;transform:translateY(3px);transition:opacity .2s ease,transform .28s var(--ease-out),visibility .2s}
+  .chat-message.is-complete .message-actions{opacity:1;visibility:visible;transform:none}
+  .message-action{width:30px;height:30px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;transition:background .16s ease,color .16s ease,transform .16s ease}
+  .message-action:hover{background:var(--hover);color:var(--text)}.message-action:active{transform:scale(.92)}.message-action[aria-pressed="true"]{background:var(--soft);color:var(--text)}
+  .message-action svg{width:16px;height:16px;stroke-width:1.8}
   .chat-message.is-error .chat-text{color:#c3453b}
   .send:disabled{opacity:.45;cursor:wait;transform:none}
   .composer textarea:disabled{opacity:.65}
   .api-key-input{width:min(260px,48vw);border:0;background:var(--soft);color:var(--text);font-size:12.5px;padding:9px 12px;border-radius:12px;outline:none}
   .api-key-input:focus{box-shadow:0 0 0 2px var(--line)}
-  @media (max-width:840px){.chat-log{padding:10px 18px 135px}.chat-copy{max-width:88%}.chat-message.assistant .chat-copy{max-width:100%}}
+  @media (max-width:840px){.chat-log{padding:10px 18px 135px}.chat-copy{max-width:88%}.chat-message.assistant .chat-copy{max-width:100%}.chat-message.assistant.is-latest-response{min-height:max(320px,calc(100dvh - 260px))}}
 </style>
 </head>
 <body>
@@ -1567,10 +1573,82 @@
       copy.prepend(timing);
     }
 
+    function messageActionButton(label,paths){
+      const button=document.createElement('button');
+      button.type='button';
+      button.className='message-action';
+      button.setAttribute('aria-label',label);
+      button.title=label;
+      button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+paths+'</svg>';
+      return button;
+    }
+
+    async function copyMessageText(text){
+      if(navigator.clipboard&&typeof navigator.clipboard.writeText==='function'){
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const fallback=document.createElement('textarea');
+      fallback.value=text;
+      fallback.setAttribute('readonly','');
+      fallback.style.position='fixed';
+      fallback.style.opacity='0';
+      document.body.append(fallback);
+      fallback.select();
+      document.execCommand('copy');
+      fallback.remove();
+    }
+
+    function appendMessageActions(message){
+      const actions=document.createElement('div');
+      actions.className='message-actions';
+      actions.setAttribute('role','toolbar');
+      actions.setAttribute('aria-label','Response actions');
+
+      const copy=messageActionButton('Copy response','<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>');
+      copy.addEventListener('click',async function(){
+        try{
+          await copyMessageText(message.dataset.messageText||message.querySelector('.chat-text').innerText);
+          toast('Response copied.');
+        }catch(error){
+          toast('Could not copy the response.');
+        }
+      });
+
+      const retry=messageActionButton('Use prompt again','<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path>');
+      retry.addEventListener('click',function(){
+        if(sending){toast('Wait for the current response.');return}
+        let previous=message.previousElementSibling;
+        while(previous&&!previous.classList.contains('user'))previous=previous.previousElementSibling;
+        if(!previous)return;
+        textarea.value=previous.dataset.messageText||previous.querySelector('.chat-text').innerText;
+        textarea.dispatchEvent(new Event('input'));
+        textarea.focus();
+        toast('Prompt ready to send again.');
+      });
+
+      const like=messageActionButton('Good response','<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path><path d="M7 10v12"></path>');
+      const dislike=messageActionButton('Bad response','<path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path><path d="M17 14V2"></path>');
+      [like,dislike].forEach(function(button){
+        button.setAttribute('aria-pressed','false');
+        button.addEventListener('click',function(){
+          const selected=button.getAttribute('aria-pressed')!=='true';
+          like.setAttribute('aria-pressed','false');
+          dislike.setAttribute('aria-pressed','false');
+          button.setAttribute('aria-pressed',String(selected));
+          if(selected)toast('Thanks for the feedback.');
+        });
+      });
+
+      actions.append(copy,retry,like,dislike);
+      message.querySelector('.chat-copy').append(actions);
+    }
+
     function appendMessage(role,text){
       chatContent.classList.add('has-chat');
       const message=document.createElement('article');
       message.className='chat-message '+role;
+      message.dataset.messageText=String(text||'');
       const copy=document.createElement('div');
       copy.className='chat-copy';
       const body=document.createElement('div');
@@ -1578,6 +1656,10 @@
       renderMarkdown(body,text);
       copy.append(body);
       message.append(copy);
+      if(role==='assistant'){
+        appendMessageActions(message);
+        if(text)message.classList.add('is-complete');
+      }
       chatLog.append(message);
       chatLog.scrollTop=chatLog.scrollHeight;
       return message;
@@ -1821,6 +1903,7 @@
         replace:function(text){
           if(cancelled)return;
           const completeText=String(text||'');
+          message.dataset.messageText=completeText;
           const currentText=visibleText+queuedCharacters.join('');
           if(completeText===currentText)return;
           if(completeText.startsWith(visibleText)){
@@ -1866,10 +1949,12 @@
         return;
       }
 
-      appendMessage('user',request.message);
+      chatLog.querySelectorAll('.is-latest-response').forEach(function(message){message.classList.remove('is-latest-response')});
+      const userMessage=appendMessage('user',request.message);
       const pending=appendMessage('assistant','');
-      pending.classList.add('is-pending');
+      pending.classList.add('is-pending','is-latest-response');
       setThinkingState(pending);
+      chatLog.scrollTop=Math.max(0,userMessage.offsetTop-12);
       const thinkingStartedAt=performance.now();
       textarea.value='';
       textarea.style.height='auto';
@@ -1923,6 +2008,7 @@
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(apiKeyInput.value.trim()!==token){stream.cancel();return}
         await stream.finish();
+        pending.classList.add('is-complete');
         loadConversations(false);
       }catch(error){
         const partialText=stream.visibleText();
