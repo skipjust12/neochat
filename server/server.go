@@ -193,7 +193,9 @@ type Server struct {
 
 // chatRequest is the wire format for POST /chat.
 type chatRequest struct {
-	idempotencyOwner string
+	idempotencyOwner        string
+	regenerateMessageID     int64
+	regenerationHistoryDrop int
 	// UserID and PlanID are never read from the client, even though a
 	// caller can still send "user_id"/"plan_id" in the JSON body -- json:"-"
 	// means json.Decode silently ignores both. decodeChatRequest fills
@@ -275,6 +277,7 @@ type chatResponse struct {
 	EstimatedCostUSD float64 `json:"estimated_cost_usd"`
 	ActualCostUSD    float64 `json:"actual_cost_usd"`
 	ResponseText     string  `json:"response_text"`
+	MessageID        int64   `json:"message_id,omitempty"`
 
 	// Blocked is true when Layer 1 moderation flagged the request before
 	// any generation happened -- ResponseText is then tosViolationMessage,
@@ -302,6 +305,7 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /{$}", recovered(s.frontend))
 	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
+	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
 	mux.HandleFunc("GET /conversations", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationList))))))
 	mux.HandleFunc("GET /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationHistory))))))
 	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
@@ -664,6 +668,73 @@ func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request, identi
 	if !ok {
 		return
 	}
+	s.writeChatStream(w, r, req, plan)
+}
+
+type regenerateRequest struct {
+	ConversationID string `json:"conversation_id"`
+	MessageID      int64  `json:"message_id,omitempty"`
+	RequestedMode  string `json:"requested_mode"`
+	ManualModelID  string `json:"manual_model_id,omitempty"`
+	IdempotencyKey string `json:"idempotency_key,omitempty"`
+	Persona        string `json:"persona,omitempty"`
+}
+
+func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	r.Body = http.MaxBytesReader(w, r.Body, maxRequestBodyBytes)
+	var input regenerateRequest
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+	if strings.TrimSpace(input.ConversationID) == "" || input.MessageID < 0 {
+		http.Error(w, "conversation_id and a valid message_id are required", http.StatusBadRequest)
+		return
+	}
+	plan, ok := s.Plans[identity.PlanID]
+	if !ok {
+		log.Printf("server: authenticated user_id=%s has unknown plan_id %q", identity.UserID, identity.PlanID)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	history, err := s.Conversations.History(r.Context(), identity.UserID, input.ConversationID, 0)
+	if err != nil {
+		log.Printf("server: load regeneration target for user_id=%s: %v", identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	if len(history) < 2 {
+		http.Error(w, "response is not available for regeneration", http.StatusNotFound)
+		return
+	}
+	target := history[len(history)-1]
+	if target.Role != conversation.RoleAssistant || (input.MessageID != 0 && target.ID != input.MessageID) || history[len(history)-2].Role != conversation.RoleUser {
+		http.Error(w, "only the latest response can be regenerated", http.StatusConflict)
+		return
+	}
+	versionCount := len(target.Versions)
+	if versionCount == 0 {
+		versionCount = 1
+	}
+	if versionCount-1 >= conversation.MaxRegenerationAttempts {
+		http.Error(w, "regeneration limit reached", http.StatusTooManyRequests)
+		return
+	}
+	req := chatRequest{
+		UserID: identity.UserID, PlanID: identity.PlanID,
+		ConversationID: input.ConversationID, Message: history[len(history)-2].Content,
+		RequestedMode: input.RequestedMode, ManualModelID: input.ManualModelID,
+		IdempotencyKey: input.IdempotencyKey, Persona: input.Persona,
+		regenerateMessageID: target.ID, regenerationHistoryDrop: 2,
+	}
+	if req.Persona != "" && !isValidPersona(req.Persona) {
+		http.Error(w, "unknown persona", http.StatusBadRequest)
+		return
+	}
+	s.writeChatStream(w, r, req, plan)
+}
+
+func (s *Server) writeChatStream(w http.ResponseWriter, r *http.Request, req chatRequest, plan limits.PlanLimits) {
 
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -855,6 +926,12 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	summaryState, history, err := s.loadHistory(ctx, req.UserID, conversationID)
 	if err != nil {
 		return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
+	}
+	if req.regenerationHistoryDrop > 0 {
+		if len(history) < req.regenerationHistoryDrop || history[len(history)-1].ID != req.regenerateMessageID {
+			return preparedRequest{}, nil, fmt.Errorf("%w: regeneration target changed", errInvalidRequest)
+		}
+		history = history[:len(history)-req.regenerationHistoryDrop]
 	}
 
 	// Fold the older part of a long conversation into a rolling summary
@@ -1139,11 +1216,20 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	now := time.Now()
-	if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, CreatedAt: now}); err != nil {
-		log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
-	}
-	if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: genResult.Text, ModelID: model.ID, CreatedAt: now}); err != nil {
-		log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
+	var regenerated conversation.Message
+	if req.regenerateMessageID > 0 {
+		var err error
+		regenerated, err = s.Conversations.AddResponseVersion(ctx, req.UserID, prepared.conversationID, req.regenerateMessageID, conversation.ResponseVersion{Content: genResult.Text, ModelID: model.ID, CreatedAt: now})
+		if err != nil {
+			return chatResponse{}, fmt.Errorf("persist regenerated response: %w", err)
+		}
+	} else {
+		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, CreatedAt: now}); err != nil {
+			log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
+		}
+		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: genResult.Text, ModelID: model.ID, CreatedAt: now}); err != nil {
+			log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
+		}
 	}
 
 	actualCost := router.ComputeCostUSD(model, genResult.InputTokens, genResult.OutputTokens)
@@ -1158,7 +1244,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		log.Printf("server: failed to record cost log entry for request_id=%s: %v", prepared.requestID, err)
 	}
 
-	return chatResponse{
+	response := chatResponse{
 		ConversationID:   prepared.conversationID,
 		SelectedModelID:  result.SelectedModelID,
 		SelectedMode:     result.SelectedMode,
@@ -1166,7 +1252,11 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		EstimatedCostUSD: result.EstimatedCostUSD,
 		ActualCostUSD:    actualCost,
 		ResponseText:     genResult.Text,
-	}, nil
+	}
+	if req.regenerateMessageID > 0 {
+		response.MessageID = regenerated.ID
+	}
+	return response, nil
 }
 
 // abortedSpendTimeout bounds the accounting writes recordAbortedSpend
@@ -1415,6 +1505,17 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 	resp, err := s.finalize(ctx, req, prepared, result, model, genResult)
 	if err != nil {
 		return chatResponse{}, err
+	}
+	if req.regenerateMessageID > 0 {
+		history, err := s.Conversations.History(ctx, req.UserID, prepared.conversationID, 0)
+		if err != nil {
+			return chatResponse{}, fmt.Errorf("load regenerated response versions: %w", err)
+		}
+		if len(history) == 0 {
+			return chatResponse{}, fmt.Errorf("load regenerated response versions: %w", conversation.ErrMessageNotFound)
+		}
+		latest := history[len(history)-1]
+		send("versions", map[string]any{"message_id": latest.ID, "versions": latest.Versions})
 	}
 	send("done", resp)
 	return resp, nil

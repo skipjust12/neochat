@@ -2,6 +2,7 @@ package conversation
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 )
@@ -25,6 +26,30 @@ func TestInMemoryStore_AppendAndHistoryPreserveOrder(t *testing.T) {
 	}
 	if history[1].Role != RoleAssistant || history[1].ModelID != "m1" {
 		t.Errorf("unexpected second message: %+v", history[1])
+	}
+}
+
+func TestInMemoryStore_ResponseVersionsReplaceCurrentAndEnforceLimit(t *testing.T) {
+	ctx := context.Background()
+	store := NewInMemoryStore()
+	now := time.Now()
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: "original", ModelID: "m1", CreatedAt: now}))
+
+	updated, err := store.AddResponseVersion(ctx, "u1", "c1", 1, ResponseVersion{Content: "alternate", ModelID: "m2", CreatedAt: now.Add(time.Second)})
+	if err != nil {
+		t.Fatalf("AddResponseVersion: %v", err)
+	}
+	if updated.Content != "alternate" || len(updated.Versions) != 2 || updated.Versions[0].Content != "original" {
+		t.Fatalf("updated message = %+v", updated)
+	}
+	for attempt := 1; attempt < MaxRegenerationAttempts; attempt++ {
+		_, err = store.AddResponseVersion(ctx, "u1", "c1", 1, ResponseVersion{Content: "another", CreatedAt: now})
+		if err != nil {
+			t.Fatalf("regeneration %d: %v", attempt+1, err)
+		}
+	}
+	if _, err := store.AddResponseVersion(ctx, "u1", "c1", 1, ResponseVersion{Content: "too many", CreatedAt: now}); !errors.Is(err, ErrRegenerationLimit) {
+		t.Fatalf("eleventh regeneration error = %v, want ErrRegenerationLimit", err)
 	}
 }
 

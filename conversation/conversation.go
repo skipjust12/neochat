@@ -39,7 +39,16 @@ type Message struct {
 	// yet, reserved for when summarizer-produced text needs to be told
 	// apart from ordinary history (e.g. excluding it from re-summarization
 	// input, or flagging it in a transcript export).
-	IsSummary bool `json:"is_summary,omitempty"`
+	IsSummary bool              `json:"is_summary,omitempty"`
+	Versions  []ResponseVersion `json:"versions,omitempty"`
+}
+
+const MaxRegenerationAttempts = 10
+
+type ResponseVersion struct {
+	Content   string    `json:"content"`
+	ModelID   string    `json:"model_id,omitempty"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 // Overview is the compact representation used by conversation lists.

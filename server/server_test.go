@@ -1489,6 +1489,43 @@ func TestServeHTTP_ChatStream(t *testing.T) {
 	}
 }
 
+func TestServeHTTP_RegenerateStreamStoresVersionWithoutDuplicatingPrompt(t *testing.T) {
+	s, _ := newTestServer(t, []provider.GenerateResult{
+		{Text: "original answer", InputTokens: 10, OutputTokens: 5},
+		{Text: "alternate answer", InputTokens: 10, OutputTokens: 5},
+	})
+	repeatableAuxClients(s)
+	initial, err := s.handle(context.Background(), chatRequest{UserID: "u1", PlanID: "pro", Message: "question", RequestedMode: "instant"}, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("initial response: %v", err)
+	}
+
+	history, err := s.Conversations.History(context.Background(), "u1", initial.ConversationID, 0)
+	if err != nil || len(history) != 2 {
+		t.Fatalf("initial history = %+v, err=%v", history, err)
+	}
+	body, _ := json.Marshal(regenerateRequest{ConversationID: initial.ConversationID, MessageID: history[1].ID, RequestedMode: "instant"})
+	req := httptest.NewRequest(http.MethodPost, "/chat/regenerate/stream", bytes.NewReader(body))
+	req.Header.Set("Authorization", authHeader(t, s, "u1", "pro"))
+	rec := httptest.NewRecorder()
+	s.Mux().ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	out := rec.Body.String()
+	if !strings.Contains(out, "event: versions\n") || !strings.Contains(out, `"content":"original answer"`) || !strings.Contains(out, `"content":"alternate answer"`) {
+		t.Fatalf("version event missing saved alternatives: %s", out)
+	}
+	history, err = s.Conversations.History(context.Background(), "u1", initial.ConversationID, 0)
+	if err != nil || len(history) != 2 {
+		t.Fatalf("regenerated history = %+v, err=%v", history, err)
+	}
+	if history[0].Content != "question" || history[1].Content != "alternate answer" || len(history[1].Versions) != 2 {
+		t.Fatalf("regenerated history = %+v", history)
+	}
+}
+
 // TestHandle_IdempotencyKeyReplaysWithoutRegenerating checks the core
 // duplicate-billing guard: retrying the exact same (user_id,
 // idempotency_key) must not call the generation model a second time or

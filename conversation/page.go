@@ -2,6 +2,7 @@ package conversation
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"slices"
 )
@@ -48,7 +49,7 @@ func (s *PostgresStore) HistoryPage(ctx context.Context, userID, conversationID 
 	}
 	// Bound both row count and large legacy message values at the database.
 	rows, err := s.db.QueryContext(ctx, `
- SELECT id,role,LEFT(content,$5),model_id,is_summary,created_at,LENGTH(content)>$5
+ SELECT id,role,LEFT(content,$5),model_id,is_summary,created_at,LENGTH(content)>$5,versions
  FROM conversation_messages
  WHERE user_id=$1 AND conversation_id=$2 AND ($3::bigint=0 OR id<$3)
  ORDER BY id DESC LIMIT $4
@@ -64,8 +65,14 @@ func (s *PostgresStore) HistoryPage(ctx context.Context, userID, conversationID 
 			break
 		}
 		var msg Message
-		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &msg.ModelID, &msg.IsSummary, &msg.CreatedAt, &msg.Truncated); err != nil {
+		var encoded []byte
+		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &msg.ModelID, &msg.IsSummary, &msg.CreatedAt, &msg.Truncated, &encoded); err != nil {
 			return Page{}, err
+		}
+		if len(encoded) > 0 {
+			if err := json.Unmarshal(encoded, &msg.Versions); err != nil {
+				return Page{}, err
+			}
 		}
 		page.Messages = append(page.Messages, msg)
 	}

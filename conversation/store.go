@@ -2,10 +2,14 @@ package conversation
 
 import (
 	"context"
+	"errors"
 	"sort"
 	"strings"
 	"sync"
 )
+
+var ErrMessageNotFound = errors.New("conversation: message not found")
+var ErrRegenerationLimit = errors.New("conversation: regeneration limit reached")
 
 // Store is the seam between this package and wherever conversation
 // history actually lives. InMemoryStore (below) is a deliberately
@@ -24,6 +28,7 @@ type Store interface {
 	// Append adds one message to (userID, conversationID)'s history, in
 	// order.
 	Append(ctx context.Context, userID, conversationID string, msg Message) error
+	AddResponseVersion(ctx context.Context, userID, conversationID string, messageID int64, version ResponseVersion) (Message, error)
 
 	// History returns messages recorded for (userID, conversationID),
 	// oldest first, skipping the first offset of them. An unknown
@@ -91,8 +96,35 @@ func (s *InMemoryStore) Append(_ context.Context, userID, conversationID string,
 	defer s.mu.Unlock()
 	key := conversationKey{userID: userID, conversationID: conversationID}
 	msg.ID = int64(len(s.history[key]) + 1)
+	if msg.Role == RoleAssistant && len(msg.Versions) == 0 {
+		msg.Versions = []ResponseVersion{{Content: msg.Content, ModelID: msg.ModelID, CreatedAt: msg.CreatedAt}}
+	}
 	s.history[key] = append(s.history[key], msg)
 	return nil
+}
+
+func (s *InMemoryStore) AddResponseVersion(_ context.Context, userID, conversationID string, messageID int64, version ResponseVersion) (Message, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := conversationKey{userID, conversationID}
+	for index := range s.history[key] {
+		message := &s.history[key][index]
+		if message.ID != messageID || message.Role != RoleAssistant {
+			continue
+		}
+		if len(message.Versions) == 0 {
+			message.Versions = []ResponseVersion{{Content: message.Content, ModelID: message.ModelID, CreatedAt: message.CreatedAt}}
+		}
+		if len(message.Versions)-1 >= MaxRegenerationAttempts {
+			return Message{}, ErrRegenerationLimit
+		}
+		message.Versions = append(message.Versions, version)
+		message.Content = version.Content
+		message.ModelID = version.ModelID
+		message.CreatedAt = version.CreatedAt
+		return *message, nil
+	}
+	return Message{}, ErrMessageNotFound
 }
 
 func (s *InMemoryStore) History(_ context.Context, userID, conversationID string, offset int) ([]Message, error) {
