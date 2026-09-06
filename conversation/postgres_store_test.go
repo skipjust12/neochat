@@ -68,6 +68,39 @@ func TestPostgresStore_IsolatesByUserAndConversation(t *testing.T) {
 	}
 }
 
+func TestPostgresStore_ProjectChatsStayOutOfGeneralList(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "conversation_metadata", "conversation_messages", "projects")
+	store := NewPostgresStore(pgDB)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	project := Project{ID: "project-1", Name: "Research", Description: "Use research context", CreatedAt: now}
+	must(t, store.CreateProject(ctx, "u1", project))
+	must(t, store.Append(ctx, "u1", "project-chat", Message{Role: RoleUser, Content: "Project question", CreatedAt: now}))
+	must(t, store.UpdateMetadata(ctx, "u1", "project-chat", MetadataUpdate{ProjectID: &project.ID}))
+
+	general, err := store.List(ctx, "u1", 10)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	projectChats, err := store.ListByProject(ctx, "u1", project.ID, 10)
+	if err != nil {
+		t.Fatalf("ListByProject: %v", err)
+	}
+	if len(general) != 0 || len(projectChats) != 1 || projectChats[0].ID != "project-chat" {
+		t.Fatalf("general=%+v project=%+v", general, projectChats)
+	}
+
+	projects, err := store.ListProjects(ctx, "u1")
+	if err != nil {
+		t.Fatalf("ListProjects: %v", err)
+	}
+	if len(projects) != 1 || projects[0].Description != project.Description {
+		t.Fatalf("projects=%+v", projects)
+	}
+}
+
 func TestPostgresStore_GetSummaryUnknownConversationReturnsZeroValue(t *testing.T) {
 	pgDB := dbtest.Postgres(t)
 	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_summaries")

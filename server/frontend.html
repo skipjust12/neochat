@@ -263,6 +263,7 @@
   @media (max-width:840px){body{overflow:auto}.app{padding:0;height:100dvh}.sidebar{inset:10px auto 10px 10px;width:min(330px,calc(100vw - 30px));border-radius:30px}.main{height:100dvh;border-radius:0;border:0}.topbar{padding:0 14px;height:68px}.content{inset:68px 0 0;padding:24px 18px 118px}.hero-stage{transform:translateY(-5vh)}h1{font-size:46px}.hero p{font-size:14px}.composer-wrap{bottom:14px;width:calc(100% - 24px)}.composer{border-radius:26px}.settings{width:100vw;height:100dvh;border-radius:0;border:0;top:0;left:0;transform:translate(0,10px) scale(1)}.settings.is-open{transform:none}.settings-head{padding:22px 16px 0 20px}.settings-tabs{padding:12px 14px 0}.settings-divider{margin:0 14px}.settings-pane{padding:18px 16px 40px}}
   @media (max-width:520px){.suggestions{display:none}h1,.incognito-hero h1{font-size:40px}.hero p{max-width:340px}.mode-panel{width:min(280px,calc(100vw - 70px))}#mode-manual:checked ~ .mode-panel{width:min(310px,calc(100vw - 70px))}.mode-copy strong{font-size:15px}.mode-copy span{font-size:11px}.attach-panel{width:min(308px,calc(100vw - 62px))}}
   @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;transition-delay:0ms!important;animation-duration:.01ms!important}.mode-panel,.attach-panel{clip-path:none!important}}
+  .projects-page{position:absolute;z-index:8;inset:74px 0 0;padding:28px clamp(24px,6vw,76px);display:none;overflow:auto}.main.projects-index .projects-page{display:block}.main.projects-index .content,.main.projects-index .top-actions{display:none}.projects-heading{display:flex;align-items:center;gap:10px;font:600 28px Charter,Georgia,serif}.projects-heading>svg{width:22px}.projects-heading .project-create-btn{margin-left:auto;font:500 14px Inter,sans-serif}.projects-empty{min-height:calc(100dvh - 210px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}.projects-empty-icon{width:52px;height:52px;padding:13px;border:1px solid var(--line);border-radius:18px;background:var(--btn);margin-bottom:18px}.projects-empty h2{margin:0;font:600 32px Charter,Georgia,serif}.projects-empty p{margin:10px 0 22px;color:var(--muted);font-size:14px}.project-create-btn{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:13px;padding:10px 15px;background:var(--accent);color:var(--on-accent);cursor:pointer}.project-create-btn svg{width:16px}.projects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:28px}.project-card{display:flex;align-items:center;gap:11px;padding:17px;border:1px solid var(--line);border-radius:18px;background:var(--card);color:var(--text);cursor:pointer;text-align:left}.project-card:hover{background:var(--btn-hover)}.project-card svg{width:20px}.project-card span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.project-create-overlay{position:fixed;z-index:1300;inset:0;background:rgba(10,12,11,.28);backdrop-filter:blur(5px);display:grid;place-items:center;opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s}.project-create-overlay.is-open{opacity:1;visibility:visible}.project-create-dialog{width:min(430px,calc(100vw - 32px));border:1px solid var(--line);border-radius:24px;background:var(--panel);padding:22px;box-shadow:var(--shadow-lg);transform:translateY(15px) scale(.97);transition:transform .35s var(--ease-out)}.project-create-overlay.is-open .project-create-dialog{transform:none}.project-create-title{display:flex;align-items:center;gap:10px;font:600 22px Charter,Georgia,serif;margin-bottom:18px}.project-create-title svg{width:20px}.project-create-dialog label{display:block;font-size:12px;color:var(--muted);margin:12px 0 6px}.project-create-dialog input,.project-create-dialog textarea{width:100%;border:1px solid var(--line);border-radius:14px;background:var(--soft);color:var(--text);padding:11px;outline:none}.project-create-dialog textarea{min-height:96px;resize:vertical}.project-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:17px}.project-dialog-actions button{border:1px solid var(--line);border-radius:13px;padding:9px 13px;background:var(--btn);color:var(--text);cursor:pointer}.project-dialog-actions .project-submit{display:flex;align-items:center;gap:6px;background:var(--accent);color:var(--on-accent)}.project-dialog-actions svg{width:15px}.project-back{display:none}.main.project-mode .sidebar-toggle,.main.project-mode .incognito-btn{display:none}.main.project-mode .project-back{display:grid}.main.project-mode .suggestions{display:none}.main.project-mode .hero-stage{width:min(980px,100%)}.main.project-mode .home-greeting{font-size:clamp(38px,4vw,56px)}.project-context{display:none;margin-top:18px;width:min(620px,100%)}.main.project-mode:not(.has-active-chat) .project-context{display:block}.project-context p{margin:0 0 16px;color:var(--muted);font-size:14px}.project-chat-list{display:grid;gap:7px;max-height:190px;overflow:auto}.project-chat-item{border:1px solid var(--line);border-radius:14px;background:var(--btn);color:var(--text);padding:10px 13px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.project-chat-empty{font-size:13px;color:var(--muted)}.project-picker{display:none;padding-top:4px}.chat-actions-panel.is-projecting .chat-actions-list{display:none}.chat-actions-panel.is-projecting .project-picker{display:block}.project-picker-title{font-size:12px;color:var(--muted);margin:0 4px 8px}.project-picker-list{display:grid;gap:4px;max-height:220px;overflow:auto}
 
   /* ——— live chat integration ——— */
   .chat-log{display:none;position:absolute;inset:0;overflow-y:auto;padding:22px max(24px,calc((100% - 820px)/2)) 150px;scroll-behavior:smooth}
@@ -316,7 +317,7 @@
     <button class="new-chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>New chat</button>
     <nav class="nav">
       <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 6H6M18 10H6M18 14H6"/></svg>Library</button>
-      <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h5l2 2h11v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 7V5a2 2 0 0 1 2-2h3l2 2h9a2 2 0 0 1 2 2v2"/></svg>Projects<span class="trailing" aria-label="Add project"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></button>
+      <button class="nav-item" id="projectsNav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h5l2 2h11v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 7V5a2 2 0 0 1 2-2h3l2 2h9a2 2 0 0 1 2 2v2"/></svg>Projects<span class="trailing" aria-label="Add project"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></button>
       <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l-3 2"/></svg>Scheduled</button>
       <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>Plugins</button>
       <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></svg>More</button>
@@ -329,7 +330,7 @@
   </aside>
   <main class="main">
     <header class="topbar">
-      <label class="icon-btn sidebar-toggle" for="sidebarState" aria-label="Open sidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9 4.5v15"/></svg></label>
+      <label class="icon-btn sidebar-toggle" for="sidebarState" aria-label="Open sidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9 4.5v15"/></svg></label><button class="icon-btn project-back" type="button" aria-label="Back to project"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
       <div class="top-actions">
         <label class="icon-btn incognito-btn" for="incognitoState" aria-label="Toggle incognito mode"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></label>
         <button class="icon-btn top-new-chat" type="button" aria-label="Start a new chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
@@ -338,12 +339,13 @@
           <div class="chat-actions-panel" role="menu">
             <div class="chat-actions-list">
               <button class="chat-menu-item pin-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg><span>Pin</span></button>
-              <button class="chat-menu-item" type="button" role="menuitem" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg><span>Add to project</span></button>
+              <button class="chat-menu-item add-project-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg><span>Add to project</span></button>
               <button class="chat-menu-item rename-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 22h-1a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4h1"/><path d="M7 22h1a4 4 0 0 0 4-4"/><path d="M7 2h1a4 4 0 0 1 4 4"/></svg><span>Rename</span></button>
               <button class="chat-menu-item danger delete-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Delete</span></button>
             </div>
             <form class="chat-rename"><input maxlength="80" aria-label="Chat name"/><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="submit">Save</button></div></form>
             <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="button" class="confirm-delete-chat">Delete</button></div></div>
+            <div class="project-picker"><div class="project-picker-title">Choose a project</div><div class="project-picker-list"></div></div>
           </div>
         </div>
         <div class="incognito-exit-wrap">
@@ -352,10 +354,11 @@
         </div>
       </div>
     </header>
+    <section class="projects-page"><div class="projects-heading"><svg viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span>Projects</span><button class="project-create-btn" type="button"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-empty"><svg class="projects-empty-icon" viewBox="0 0 24 24"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg><h2>Welcome to Projects</h2><p>Organize your workflow, set custom instructions in one place</p><button class="project-create-btn"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-grid"></div></section>
     <section class="content">
       <div class="chat-log" id="chatLog" aria-live="polite" aria-label="Conversation"></div>
       <div class="hero-stage" aria-live="polite">
-        <div class="hero default-hero is-visible" id="defaultHero"><h1 class="home-greeting" id="homeGreeting">How can I help?</h1><div class="suggestions" aria-label="Prompt suggestions"></div></div>
+        <div class="hero default-hero is-visible" id="defaultHero"><h1 class="home-greeting" id="homeGreeting">How can I help?</h1><div class="suggestions" aria-label="Prompt suggestions"></div><div class="project-context"><p class="project-description"></p><div class="project-chat-list"></div></div></div>
         <div class="hero incognito-hero" id="incognitoHero"><div class="incognito-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></div><h1>Incognito mode.</h1><p>The chat will not be saved. For security reasons, we may retain a copy of it for up to 30 days.</p></div>
       </div>
       <div class="composer-wrap">
@@ -678,6 +681,8 @@
       </div>
     </section>
   </main>
+
+  <div class="project-create-overlay" aria-hidden="true"><form class="project-create-dialog"><div class="project-create-title"><svg viewBox="0 0 24 24"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Creation of the Project</div><label for="projectName">Name your Project</label><input id="projectName" maxlength="80" required/><label for="projectDescription">Describe your Project</label><textarea id="projectDescription" maxlength="2000"></textarea><div class="project-dialog-actions"><button type="button" class="project-cancel">Cancel</button><button class="project-submit" type="submit"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div></form></div>
 
   <div class="settings-backdrop" id="settingsBackdrop"></div>
 
@@ -1422,6 +1427,13 @@
     const chatActionsPanel=document.querySelector('.chat-actions-panel');
     const renameChatForm=document.querySelector('.chat-rename');
     const renameChatInput=renameChatForm.querySelector('input');
+    const projectsNav=document.getElementById('projectsNav');
+    const projectsPage=document.querySelector('.projects-page');
+    const projectsGrid=document.querySelector('.projects-grid');
+    const projectsEmpty=document.querySelector('.projects-empty');
+    const projectOverlay=document.querySelector('.project-create-overlay');
+    const projectForm=document.querySelector('.project-create-dialog');
+    const projectChatList=document.querySelector('.project-chat-list');
     const incognitoExitButton=document.querySelector('.incognito-exit-btn');
     const incognitoExitConfirm=document.querySelector('.incognito-exit-confirm');
     const apiKeyStorageKey='neochat-api-key';
@@ -1443,6 +1455,8 @@
     let conversationID='';
     let currentConversationTitle='New chat';
     let currentConversationPinned=false;
+    let activeProject=null;
+    let activeProjectChats=[];
     let activeChatIncognito=false;
     let incognitoMessages=[];
     let sending=false;
@@ -1808,6 +1822,7 @@
       conversationList.querySelectorAll('.conversation-item').forEach(function(item){item.classList.remove('is-active')});
       textarea.value='';
       textarea.style.height='auto';
+      if(activeProject){renderProjectHome()}else{textarea.placeholder='Ask anything…';renderHomeGreeting()}
       textarea.focus();
     }
 
@@ -1823,8 +1838,50 @@
     }
 
     function closeChatActions(){
-      chatActionsPanel.classList.remove('is-open','is-renaming','is-deleting');
+      chatActionsPanel.classList.remove('is-open','is-renaming','is-deleting','is-projecting');
       chatActionsTrigger.setAttribute('aria-expanded','false');
+    }
+
+    function projectIcon(){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>'}
+
+    async function fetchProjects(){
+      const token=apiKeyInput.value.trim();
+      if(!token){promptForAPIKey();return []}
+      const response=await fetch('/projects',{headers:{'Authorization':'Bearer '+token}});
+      if(!response.ok)throw new Error((await response.text()).trim()||'Could not load projects.');
+      const data=await response.json();return Array.isArray(data.projects)?data.projects:[];
+    }
+
+    function renderProjects(projects){
+      projectsGrid.replaceChildren();projectsEmpty.style.display=projects.length?'none':'flex';
+      projects.forEach(function(project){const button=document.createElement('button');button.className='project-card';button.type='button';button.innerHTML=projectIcon()+'<span></span>';button.querySelector('span').textContent=project.name;button.addEventListener('click',function(){openProject(project.project_id)});projectsGrid.append(button)});
+    }
+
+    async function showProjectsIndex(){
+      activeProject=null;activeProjectChats=[];mainPanel.classList.remove('project-mode','has-active-chat');mainPanel.classList.add('projects-index');sidebarState.checked=false;resetConversation();
+      try{renderProjects(await fetchProjects())}catch(error){toast(error.message)}
+    }
+
+    function renderProjectHome(){
+      if(!activeProject)return;
+      mainPanel.classList.remove('projects-index');mainPanel.classList.add('project-mode');
+      homeGreeting.textContent='What should we do in '+activeProject.name+' ?';homeGreeting.classList.add('is-ready');
+      document.querySelector('.project-description').textContent=activeProject.description||'Chats and instructions for this project';
+      textarea.placeholder='Do anything';projectChatList.replaceChildren();
+      if(!activeProjectChats.length){const empty=document.createElement('div');empty.className='project-chat-empty';empty.textContent='No chats in this project yet.';projectChatList.append(empty);return}
+      activeProjectChats.forEach(function(chat){const button=document.createElement('button');button.className='project-chat-item';button.type='button';button.textContent=chat.title||'New chat';button.addEventListener('click',function(){loadConversation(chat.conversation_id,chat.title,Boolean(chat.pinned))});projectChatList.append(button)});
+    }
+
+    async function openProject(id){
+      const token=apiKeyInput.value.trim();if(!token){promptForAPIKey();return}
+      try{const response=await fetch('/projects/'+encodeURIComponent(id),{headers:{'Authorization':'Bearer '+token}});if(!response.ok)throw new Error('Could not open project.');const data=await response.json();activeProject=data.project;activeProjectChats=data.conversations||[];resetConversation();renderProjectHome()}catch(error){toast(error.message)}
+    }
+
+    async function refreshActiveProject(){
+      if(!activeProject)return;
+      const token=apiKeyInput.value.trim();
+      const response=await fetch('/projects/'+encodeURIComponent(activeProject.project_id),{headers:{'Authorization':'Bearer '+token}});
+      if(response.ok){const data=await response.json();activeProject=data.project;activeProjectChats=data.conversations||[]}
     }
 
     function setConversationListMessage(message){
@@ -1961,6 +2018,7 @@
         request.incognito=true;
         request.incognito_history=incognitoMessages.slice();
       }else if(conversationID)request.conversation_id=conversationID;
+      if(activeProject)request.project_id=activeProject.project_id;
       if(mode==='manual'){
         const selectedModel=document.getElementById('manualState').textContent.trim();
         request.manual_model_id=manualModelIDs[selectedModel]||'';
@@ -2139,6 +2197,7 @@
         request.manual_model_id=manualModelIDs[selectedModel]||'';
         if(!request.manual_model_id){toast('That model is not available on the current backend yet.');return}
       }
+      if(activeProject)request.project_id=activeProject.project_id;
 
       const previousIndex=message.responseVersionIndex;
       message.classList.remove('is-complete');
@@ -2193,7 +2252,7 @@
         if(versionsData&&versionsData.message_id)message.dataset.messageId=String(versionsData.message_id);
         renderResponseVersion(message,message.responseVersionIndex);
         message.classList.add('is-complete');
-        if(!isIncognito)loadConversations(false);
+        if(!isIncognito){if(activeProject)refreshActiveProject();else loadConversations(false)}
       }catch(error){
         stream.cancel();
         message.classList.remove('is-pending');
@@ -2298,7 +2357,7 @@
         if(activeChatIncognito&&!terminalData.blocked){
           incognitoMessages.push({role:'user',content:request.message},{role:'assistant',content:terminalData.response_text||''});
         }else if(!activeChatIncognito){
-          loadConversations(false);
+          if(activeProject)refreshActiveProject();else loadConversations(false);
         }
       }catch(error){
         const partialText=stream.visibleText();
@@ -2331,9 +2390,22 @@
 
     document.querySelector('.new-chat').addEventListener('click',function(){
       if(sending){toast('Wait for the current response.');return}
+      activeProject=null;activeProjectChats=[];mainPanel.classList.remove('project-mode','projects-index');textarea.placeholder='Ask anything…';renderHomeGreeting();
       resetConversation();
       sidebarState.checked=false;
       toast('New chat');
+    });
+
+    projectsNav.addEventListener('click',showProjectsIndex);
+    document.querySelectorAll('.project-create-btn').forEach(function(button){button.addEventListener('click',function(){projectOverlay.classList.add('is-open');projectOverlay.setAttribute('aria-hidden','false');setTimeout(function(){document.getElementById('projectName').focus()},100)})});
+    document.querySelector('.project-cancel').addEventListener('click',function(){projectOverlay.classList.remove('is-open');projectOverlay.setAttribute('aria-hidden','true')});
+    projectOverlay.addEventListener('click',function(event){if(event.target===projectOverlay)document.querySelector('.project-cancel').click()});
+    projectForm.addEventListener('submit',async function(event){event.preventDefault();const token=apiKeyInput.value.trim();if(!token){promptForAPIKey();return}const name=document.getElementById('projectName').value.trim(),description=document.getElementById('projectDescription').value.trim();if(!name)return;try{const response=await fetch('/projects',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({name:name,description:description})});if(!response.ok)throw new Error((await response.text()).trim()||'Could not create project.');projectForm.reset();document.querySelector('.project-cancel').click();renderProjects(await fetchProjects());toast('Project created')}catch(error){toast(error.message)}});
+    document.querySelector('.project-back').addEventListener('click',function(){if(chatLog.querySelector('.chat-message')){resetConversation();renderProjectHome()}else{showProjectsIndex()}});
+
+    document.querySelector('.add-project-chat').addEventListener('click',async function(){
+      chatActionsPanel.classList.add('is-projecting');const list=document.querySelector('.project-picker-list');list.replaceChildren();
+      try{const projects=await fetchProjects();if(!projects.length){list.textContent='No projects yet.';return}projects.forEach(function(project){const button=document.createElement('button');button.type='button';button.className='chat-menu-item';button.innerHTML=projectIcon()+'<span></span>';button.querySelector('span').textContent=project.name;button.addEventListener('click',async function(){try{await updateCurrentConversation({project_id:project.project_id});closeChatActions();await openProject(project.project_id);toast('Chat added to project')}catch(error){toast(error.message)}});list.append(button)})}catch(error){toast(error.message)}
     });
 
     topNewChat.addEventListener('click',function(){
@@ -2366,7 +2438,7 @@
         await updateCurrentConversation({pinned:!currentConversationPinned});
         currentConversationPinned=!currentConversationPinned;
         closeChatActions();
-        await loadConversations(false);
+        if(activeProject){await refreshActiveProject();renderProjectHome()}else await loadConversations(false);
         toast(currentConversationPinned?'Chat pinned':'Chat unpinned');
       }catch(error){toast(error.message)}
     });
@@ -2384,7 +2456,7 @@
         await updateCurrentConversation({title:title});
         currentConversationTitle=title;
         closeChatActions();
-        await loadConversations(false);
+        if(activeProject){await refreshActiveProject();renderProjectHome()}else await loadConversations(false);
         toast('Chat renamed');
       }catch(error){toast(error.message)}
     });
@@ -2398,7 +2470,7 @@
         const response=await fetch('/conversations/'+encodeURIComponent(conversationID),{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
         if(!response.ok)throw new Error((await response.text()).trim()||'Could not delete chat.');
         resetConversation();
-        await loadConversations(false);
+        if(activeProject){await refreshActiveProject();renderProjectHome()}else await loadConversations(false);
         toast('Chat deleted');
       }catch(error){toast(error.message)}
     });
@@ -2419,7 +2491,7 @@
       if(!event.target.closest('.chat-actions-wrap'))closeChatActions();
     });
 
-    document.querySelectorAll('.nav-item').forEach(function(button){
+    document.querySelectorAll('.nav-item:not(#projectsNav)').forEach(function(button){
       button.addEventListener('click',function(){toast(button.textContent.trim()+' is not part of this preview.')});
     });
 

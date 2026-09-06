@@ -108,11 +108,14 @@ func (s *Server) validateRequest(req chatRequest) error {
 	default:
 		return fmt.Errorf("%w: unknown requested mode", errInvalidRequest)
 	}
-	if len(req.IdempotencyKey) > 128 || len(req.ConversationID) > 128 {
+	if len(req.IdempotencyKey) > 128 || len(req.ConversationID) > 128 || len(req.ProjectID) > 128 {
 		return fmt.Errorf("%w: identifier too long", errInvalidRequest)
 	}
 	if req.Incognito && req.ConversationID != "" {
 		return fmt.Errorf("%w: incognito requests cannot use a saved conversation", errInvalidRequest)
+	}
+	if req.Incognito && req.ProjectID != "" {
+		return fmt.Errorf("%w: incognito requests cannot use a project", errInvalidRequest)
 	}
 	if !req.Incognito && len(req.IncognitoHistory) > 0 {
 		return fmt.Errorf("%w: incognito history requires incognito mode", errInvalidRequest)

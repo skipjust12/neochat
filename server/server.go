@@ -220,6 +220,7 @@ type chatRequest struct {
 	Message        string `json:"message"`
 	RequestedMode  string `json:"requested_mode"` // "auto" | "instant" | "thinking" | "max" | "manual"
 	ManualModelID  string `json:"manual_model_id,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
 	Incognito      bool   `json:"incognito,omitempty"`
 	// IncognitoHistory carries the private conversation context back from
 	// the browser. The server uses it for this generation only and never
@@ -320,6 +321,9 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationHistory))))))
 	mux.HandleFunc("PATCH /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationUpdate))))))
 	mux.HandleFunc("DELETE /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationDelete))))))
+	mux.HandleFunc("GET /projects", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectList))))))
+	mux.HandleFunc("POST /projects", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectCreate))))))
+	mux.HandleFunc("GET /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectGet))))))
 	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -337,8 +341,84 @@ type conversationHistoryResponse struct {
 }
 
 type conversationUpdateRequest struct {
-	Title  *string `json:"title"`
-	Pinned *bool   `json:"pinned"`
+	Title     *string `json:"title"`
+	Pinned    *bool   `json:"pinned"`
+	ProjectID *string `json:"project_id"`
+}
+
+type projectCreateRequest struct {
+	Name        string `json:"name"`
+	Description string `json:"description"`
+}
+
+type projectDetailResponse struct {
+	Project       conversation.Project    `json:"project"`
+	Conversations []conversation.Overview `json:"conversations"`
+}
+
+func (s *Server) handleProjectList(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	projects, err := s.Conversations.ListProjects(r.Context(), identity.UserID)
+	if err != nil {
+		log.Printf("server: list projects for user_id=%s: %v", identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(map[string]any{"projects": projects}); err != nil {
+		log.Printf("server: encode project list: %v", err)
+	}
+}
+
+func (s *Server) handleProjectCreate(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	r.Body = http.MaxBytesReader(w, r.Body, 4096)
+	var request projectCreateRequest
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&request); err != nil {
+		http.Error(w, "invalid project", http.StatusBadRequest)
+		return
+	}
+	request.Name = strings.TrimSpace(request.Name)
+	request.Description = strings.TrimSpace(request.Description)
+	if request.Name == "" || len([]rune(request.Name)) > 80 || len([]rune(request.Description)) > 2000 {
+		http.Error(w, "invalid project", http.StatusBadRequest)
+		return
+	}
+	project := conversation.Project{ID: conversation.NewID(), Name: request.Name, Description: request.Description, CreatedAt: time.Now()}
+	if err := s.Conversations.CreateProject(r.Context(), identity.UserID, project); err != nil {
+		log.Printf("server: create project for user_id=%s: %v", identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusCreated)
+	if err := json.NewEncoder(w).Encode(project); err != nil {
+		log.Printf("server: encode created project: %v", err)
+	}
+}
+
+func (s *Server) handleProjectGet(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	id := strings.TrimSpace(r.PathValue("project_id"))
+	project, err := s.Conversations.GetProject(r.Context(), identity.UserID, id)
+	if errors.Is(err, conversation.ErrConversationNotFound) {
+		http.Error(w, "project not found", http.StatusNotFound)
+		return
+	}
+	if err != nil {
+		log.Printf("server: get project_id=%s for user_id=%s: %v", id, identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	chats, err := s.Conversations.ListByProject(r.Context(), identity.UserID, id, 100)
+	if err != nil {
+		log.Printf("server: list conversations for project_id=%s user_id=%s: %v", id, identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	if err := json.NewEncoder(w).Encode(projectDetailResponse{Project: project, Conversations: chats}); err != nil {
+		log.Printf("server: encode project detail: %v", err)
+	}
 }
 
 func conversationIDFromRequest(w http.ResponseWriter, r *http.Request) (string, bool) {
@@ -359,7 +439,7 @@ func (s *Server) handleConversationUpdate(w http.ResponseWriter, r *http.Request
 	var request conversationUpdateRequest
 	decoder := json.NewDecoder(r.Body)
 	decoder.DisallowUnknownFields()
-	if err := decoder.Decode(&request); err != nil || (request.Title == nil && request.Pinned == nil) {
+	if err := decoder.Decode(&request); err != nil || (request.Title == nil && request.Pinned == nil && request.ProjectID == nil) {
 		http.Error(w, "invalid update", http.StatusBadRequest)
 		return
 	}
@@ -371,7 +451,13 @@ func (s *Server) handleConversationUpdate(w http.ResponseWriter, r *http.Request
 		}
 		request.Title = &title
 	}
-	if err := s.Conversations.UpdateMetadata(r.Context(), identity.UserID, conversationID, conversation.MetadataUpdate{Title: request.Title, Pinned: request.Pinned}); err != nil {
+	if request.ProjectID != nil && *request.ProjectID != "" {
+		if _, err := s.Conversations.GetProject(r.Context(), identity.UserID, *request.ProjectID); err != nil {
+			http.Error(w, "project not found", http.StatusNotFound)
+			return
+		}
+	}
+	if err := s.Conversations.UpdateMetadata(r.Context(), identity.UserID, conversationID, conversation.MetadataUpdate{Title: request.Title, Pinned: request.Pinned, ProjectID: request.ProjectID}); err != nil {
 		if errors.Is(err, conversation.ErrConversationNotFound) {
 			http.Error(w, "conversation not found", http.StatusNotFound)
 			return
@@ -754,6 +840,7 @@ type regenerateRequest struct {
 	ManualModelID  string `json:"manual_model_id,omitempty"`
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
 	Persona        string `json:"persona,omitempty"`
+	ProjectID      string `json:"project_id,omitempty"`
 }
 
 func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
@@ -801,6 +888,7 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		ConversationID: input.ConversationID, Message: history[len(history)-2].Content,
 		RequestedMode: input.RequestedMode, ManualModelID: input.ManualModelID,
 		IdempotencyKey: input.IdempotencyKey, Persona: input.Persona,
+		ProjectID:           input.ProjectID,
 		regenerateMessageID: target.ID, regenerationHistoryDrop: 2,
 	}
 	if req.Persona != "" && !isValidPersona(req.Persona) {
@@ -876,6 +964,16 @@ type preparedRequest struct {
 func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanLimits) (prepared preparedRequest, blocked *chatResponse, err error) {
 	if err := s.validateRequest(req); err != nil {
 		return preparedRequest{}, nil, err
+	}
+	var project conversation.Project
+	if req.ProjectID != "" {
+		project, err = s.Conversations.GetProject(ctx, req.UserID, req.ProjectID)
+		if errors.Is(err, conversation.ErrConversationNotFound) {
+			return preparedRequest{}, nil, fmt.Errorf("%w: unknown project", errInvalidRequest)
+		}
+		if err != nil {
+			return preparedRequest{}, nil, fmt.Errorf("load project: %w", err)
+		}
 	}
 	classifierForRequest := s.Classifier
 	classifierForRequest.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Classifier.Client, inputRate: s.Classifier.CostInputPerMTok, outputRate: s.Classifier.CostOutputPerMTok}
@@ -1029,6 +1127,9 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	messages := make([]provider.Message, 0, len(tail)+3)
 	if systemPrompt != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: systemPrompt})
+	}
+	if project.ID != "" && project.Description != "" {
+		messages = append(messages, provider.Message{Role: "system", Content: "Project " + project.Name + " instructions:\n" + project.Description})
 	}
 	if summaryText != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: "Earlier in this conversation:\n" + summaryText})
@@ -1308,6 +1409,16 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		}
 		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: genResult.Text, ModelID: model.ID, CreatedAt: now}); err != nil {
 			log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
+		}
+	}
+	if !req.Incognito && req.ProjectID != "" {
+		if err := s.Conversations.UpdateMetadata(ctx, req.UserID, prepared.conversationID, conversation.MetadataUpdate{ProjectID: &req.ProjectID}); err != nil {
+			log.Printf("server: assign conversation_id=%s to project_id=%s: %v", prepared.conversationID, req.ProjectID, err)
+			if req.ConversationID == "" {
+				if cleanupErr := s.Conversations.Delete(ctx, req.UserID, prepared.conversationID); cleanupErr != nil && !errors.Is(cleanupErr, conversation.ErrConversationNotFound) {
+					log.Printf("server: clean up unassigned project conversation_id=%s: %v", prepared.conversationID, cleanupErr)
+				}
+			}
 		}
 	}
 

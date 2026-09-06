@@ -158,6 +158,7 @@ func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]O
 		) grouped
 		LEFT JOIN conversation_metadata metadata
 		  ON metadata.user_id = $1 AND metadata.conversation_id = grouped.conversation_id
+		WHERE COALESCE(metadata.project_id, '') = ''
 		ORDER BY COALESCE(metadata.pinned, FALSE) DESC, grouped.updated_at DESC
 		LIMIT $2
 	`, userID, limit, RoleUser)
@@ -177,6 +178,53 @@ func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]O
 	return out, rows.Err()
 }
 
+func (s *PostgresStore) ListByProject(ctx context.Context, userID, projectID string, limit int) ([]Overview, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT grouped.conversation_id,
+		       COALESCE(
+		           NULLIF(metadata.title, ''),
+		           NULLIF((
+		               SELECT LEFT(BTRIM(message.content), 80)
+		               FROM conversation_messages message
+		               WHERE message.user_id = $1
+		                 AND message.conversation_id = grouped.conversation_id
+		                 AND message.role = $4
+		               ORDER BY message.id
+		               LIMIT 1
+		           ), ''),
+		           'New chat'
+		       ),
+		       COALESCE(metadata.pinned, FALSE),
+		       metadata.project_id,
+		       grouped.updated_at
+		FROM (
+		    SELECT conversation_id, MAX(created_at) AS updated_at
+		    FROM conversation_messages
+		    WHERE user_id = $1
+		    GROUP BY conversation_id
+		) grouped
+		JOIN conversation_metadata metadata
+		  ON metadata.user_id = $1
+		 AND metadata.conversation_id = grouped.conversation_id
+		WHERE metadata.project_id = $2
+		ORDER BY metadata.pinned DESC, grouped.updated_at DESC
+		LIMIT $3
+	`, userID, projectID, limit, RoleUser)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Overview{}
+	for rows.Next() {
+		var item Overview
+		if err := rows.Scan(&item.ID, &item.Title, &item.Pinned, &item.ProjectID, &item.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, item)
+	}
+	return out, rows.Err()
+}
+
 func (s *PostgresStore) UpdateMetadata(ctx context.Context, userID, conversationID string, update MetadataUpdate) error {
 	var exists bool
 	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM conversation_messages WHERE user_id = $1 AND conversation_id = $2)`, userID, conversationID).Scan(&exists); err != nil {
@@ -186,13 +234,57 @@ func (s *PostgresStore) UpdateMetadata(ctx context.Context, userID, conversation
 		return ErrConversationNotFound
 	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO conversation_metadata (user_id, conversation_id, title, pinned)
-		VALUES ($1, $2, COALESCE($3, ''), COALESCE($4, FALSE))
+		INSERT INTO conversation_metadata (user_id, conversation_id, title, pinned, project_id)
+		VALUES ($1, $2, COALESCE($3, ''), COALESCE($4, FALSE), COALESCE($5, ''))
 		ON CONFLICT (user_id, conversation_id) DO UPDATE SET
 			title = CASE WHEN $3::TEXT IS NULL THEN conversation_metadata.title ELSE $3 END,
-			pinned = CASE WHEN $4::BOOLEAN IS NULL THEN conversation_metadata.pinned ELSE $4 END
-	`, userID, conversationID, update.Title, update.Pinned)
+			pinned = CASE WHEN $4::BOOLEAN IS NULL THEN conversation_metadata.pinned ELSE $4 END,
+			project_id = CASE WHEN $5::TEXT IS NULL THEN conversation_metadata.project_id ELSE $5 END
+	`, userID, conversationID, update.Title, update.Pinned, update.ProjectID)
 	return err
+}
+
+func (s *PostgresStore) CreateProject(ctx context.Context, userID string, project Project) error {
+	_, err := s.db.ExecContext(ctx, `
+		INSERT INTO projects (user_id, project_id, name, description, created_at)
+		VALUES ($1, $2, $3, $4, $5)
+	`, userID, project.ID, project.Name, project.Description, project.CreatedAt)
+	return err
+}
+
+func (s *PostgresStore) ListProjects(ctx context.Context, userID string) ([]Project, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT project_id, name, description, created_at
+		FROM projects
+		WHERE user_id = $1
+		ORDER BY created_at DESC
+	`, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	projects := []Project{}
+	for rows.Next() {
+		var project Project
+		if err := rows.Scan(&project.ID, &project.Name, &project.Description, &project.CreatedAt); err != nil {
+			return nil, err
+		}
+		projects = append(projects, project)
+	}
+	return projects, rows.Err()
+}
+
+func (s *PostgresStore) GetProject(ctx context.Context, userID, projectID string) (Project, error) {
+	var project Project
+	err := s.db.QueryRowContext(ctx, `
+		SELECT project_id, name, description, created_at
+		FROM projects
+		WHERE user_id = $1 AND project_id = $2
+	`, userID, projectID).Scan(&project.ID, &project.Name, &project.Description, &project.CreatedAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		return Project{}, ErrConversationNotFound
+	}
+	return project, err
 }
 
 func (s *PostgresStore) Delete(ctx context.Context, userID, conversationID string) error {
