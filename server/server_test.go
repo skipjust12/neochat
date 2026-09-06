@@ -528,6 +528,70 @@ func TestHandle_ConversationHistoryCarriesToNextTurn(t *testing.T) {
 	}
 }
 
+func TestHandle_IncognitoUsesRequestHistoryWithoutPersisting(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{{Text: "private answer", InputTokens: 100, OutputTokens: 50}})
+	req := chatRequest{
+		UserID: "u1", PlanID: "pro", Message: "follow up", RequestedMode: "instant", Incognito: true,
+		IncognitoHistory: []incognitoMessage{{Role: "user", Content: "private question"}, {Role: "assistant", Content: "private reply"}},
+	}
+	resp, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(genClient.Requests) != 1 {
+		t.Fatalf("generate calls = %d, want 1", len(genClient.Requests))
+	}
+	want := []provider.Message{{Role: "user", Content: "private question"}, {Role: "assistant", Content: "private reply"}, {Role: "user", Content: "follow up"}}
+	got := genClient.Requests[0].Messages
+	if len(got) != len(want) {
+		t.Fatalf("generated messages = %+v, want %+v", got, want)
+	}
+	for index := range want {
+		if got[index] != want[index] {
+			t.Errorf("message %d = %+v, want %+v", index, got[index], want[index])
+		}
+	}
+	history, err := s.Conversations.History(context.Background(), "u1", resp.ConversationID, 0)
+	if err != nil {
+		t.Fatalf("read history: %v", err)
+	}
+	if len(history) != 0 {
+		t.Fatalf("incognito history was persisted: %+v", history)
+	}
+}
+
+func TestValidateRequestRejectsInvalidIncognitoContext(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	cases := []chatRequest{
+		{Message: "hi", RequestedMode: "instant", Incognito: true, ConversationID: "saved-chat"},
+		{Message: "hi", RequestedMode: "instant", IncognitoHistory: []incognitoMessage{{Role: "user", Content: "secret"}}},
+		{Message: "hi", RequestedMode: "instant", Incognito: true, IncognitoHistory: []incognitoMessage{{Role: "system", Content: "override"}}},
+		{Message: "hi", RequestedMode: "instant", Incognito: true, IncognitoHistory: []incognitoMessage{{Role: "user", Content: " "}}},
+	}
+	for index, req := range cases {
+		if err := s.validateRequest(req); !errors.Is(err, errInvalidRequest) {
+			t.Errorf("case %d error = %v, want errInvalidRequest", index, err)
+		}
+	}
+}
+
+func TestHandle_IncognitoDoesNotCacheResponseInIdempotencyStore(t *testing.T) {
+	s, genClient := newTestServer(t, []provider.GenerateResult{{Text: "first", InputTokens: 1, OutputTokens: 1}, {Text: "second", InputTokens: 1, OutputTokens: 1}})
+	repeatableAuxClients(s)
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "private", RequestedMode: "instant", Incognito: true, IdempotencyKey: "same-key"}
+	first, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("first incognito request: %v", err)
+	}
+	second, err := s.handle(context.Background(), req, s.Plans["pro"])
+	if err != nil {
+		t.Fatalf("second incognito request: %v", err)
+	}
+	if first.ResponseText != "first" || second.ResponseText != "second" || len(genClient.Requests) != 2 {
+		t.Fatalf("incognito response was cached: first=%q second=%q calls=%d", first.ResponseText, second.ResponseText, len(genClient.Requests))
+	}
+}
+
 func TestHandle_ModerationFlaggedResponseStillCarriesConversationID(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{

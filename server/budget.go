@@ -7,6 +7,7 @@ import (
 	"log"
 	"math"
 	"net/http"
+	"strings"
 	"time"
 
 	"neochat/limits"
@@ -109,6 +110,20 @@ func (s *Server) validateRequest(req chatRequest) error {
 	}
 	if len(req.IdempotencyKey) > 128 || len(req.ConversationID) > 128 {
 		return fmt.Errorf("%w: identifier too long", errInvalidRequest)
+	}
+	if req.Incognito && req.ConversationID != "" {
+		return fmt.Errorf("%w: incognito requests cannot use a saved conversation", errInvalidRequest)
+	}
+	if !req.Incognito && len(req.IncognitoHistory) > 0 {
+		return fmt.Errorf("%w: incognito history requires incognito mode", errInvalidRequest)
+	}
+	if len(req.IncognitoHistory) > 50 {
+		return fmt.Errorf("%w: incognito history is too long", errInvalidRequest)
+	}
+	for _, message := range req.IncognitoHistory {
+		if (message.Role != "user" && message.Role != "assistant") || strings.TrimSpace(message.Content) == "" {
+			return fmt.Errorf("%w: invalid incognito history", errInvalidRequest)
+		}
 	}
 	return nil
 }

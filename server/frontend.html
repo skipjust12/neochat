@@ -29,7 +29,7 @@
   .main::before{background:radial-gradient(ellipse 72% 88% at 50% 100%,rgba(4,6,5,.98) 0%,rgba(4,6,5,.88) 29%,rgba(4,6,5,.58) 47%,rgba(4,6,5,.24) 63%,rgba(4,6,5,.07) 74%,transparent 84%)}
   .main::after{background:radial-gradient(ellipse 72% 88% at 50% 100%,rgba(240,242,238,.95) 0%,rgba(238,240,236,.82) 29%,rgba(235,238,233,.55) 47%,rgba(232,235,230,.24) 63%,rgba(232,235,230,.07) 74%,transparent 84%)}
   html:not([data-theme="dark"]) #incognitoState:checked ~ .main::before,html[data-theme="dark"] #incognitoState:checked ~ .main::after{opacity:1;transform:translate3d(0,0,0) scale(1)}
-  .topbar{height:74px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:relative;z-index:20}.top-actions{display:flex;gap:6px;margin-left:auto}.sidebar-toggle,.incognito-btn{width:44px;height:44px;border:1px solid var(--line);border-radius:16px;background:var(--btn);box-shadow:0 8px 20px rgba(23,24,23,.035)}.sidebar-toggle:hover,.incognito-btn:hover{background:var(--btn-hover)}#incognitoState:checked ~ .main .incognito-btn{background:var(--accent);color:var(--on-accent);border-color:var(--accent);box-shadow:0 12px 28px rgba(23,24,23,.2);transform:scale(1.035)}
+  .topbar{height:74px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:relative;z-index:20}.top-actions{display:flex;gap:6px;margin-left:auto;position:relative}.sidebar-toggle,.incognito-btn,.top-new-chat,.incognito-exit-btn{width:44px;height:44px;border:1px solid var(--line);border-radius:16px;background:var(--btn);box-shadow:0 8px 20px rgba(23,24,23,.035)}.sidebar-toggle:hover,.incognito-btn:hover,.top-new-chat:hover,.incognito-exit-btn:hover{background:var(--btn-hover)}#incognitoState:checked ~ .main .incognito-btn{background:var(--accent);color:var(--on-accent);border-color:var(--accent);box-shadow:0 12px 28px rgba(23,24,23,.2);transform:scale(1.035)}.top-new-chat,.incognito-exit-wrap{display:none}.main.has-active-chat .incognito-btn{display:none}.main.has-active-chat:not(.is-incognito-chat) .top-new-chat{display:grid}.main.has-active-chat.is-incognito-chat .incognito-exit-wrap{display:block}.incognito-exit-wrap{position:relative}.incognito-exit-confirm{position:absolute;right:0;top:52px;width:min(330px,calc(100vw - 48px));padding:15px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 18px 50px rgba(23,24,23,.16);opacity:0;visibility:hidden;transform:translate3d(18px,-18px,0) scale(.82);transform-origin:top right;transition:opacity .2s var(--ease-gentle),transform .34s var(--ease-out),visibility 0s linear .34s}.incognito-exit-confirm.is-open{opacity:1;visibility:visible;transform:translate3d(0,0,0) scale(1);transition-delay:0s}.incognito-exit-confirm p{margin:0 0 13px;font-size:13px;line-height:1.45;color:var(--text)}.incognito-exit-actions{display:flex;justify-content:flex-end;gap:7px}.incognito-exit-actions button{border:1px solid var(--line);border-radius:11px;padding:7px 11px;background:var(--btn);color:var(--text);cursor:pointer}.incognito-exit-actions .confirm-incognito-exit{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
   .content{position:absolute;z-index:2;inset:74px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 28px 128px}.hero-stage{position:relative;width:min(760px,100%);min-height:230px;transform:translateY(-7vh)}.hero{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;opacity:0;transform:translate3d(0,16px,0) scale(.982);pointer-events:none;will-change:opacity,transform;transition:opacity .56s var(--ease-gentle),transform .72s var(--ease-out)}.hero.is-visible{opacity:1;transform:translate3d(0,0,0) scale(1);pointer-events:auto}#incognitoState:checked ~ .main .default-hero{opacity:0;transform:translate3d(0,-14px,0) scale(.982);pointer-events:none}#incognitoState:checked ~ .main .incognito-hero{opacity:1;transform:translate3d(0,0,0) scale(1);pointer-events:auto}
   h1{font-family:Charter,"Bitstream Charter","Sitka Text","Iowan Old Style",Georgia,serif;font-size:clamp(38px,5.3vw,72px);line-height:1.03;letter-spacing:-.02em;margin:0;font-weight:600}.hero p{color:var(--muted);margin:18px auto 0;max-width:560px;line-height:1.55;font-size:15px}.incognito-hero h1{font-size:clamp(38px,4.8vw,64px)}.incognito-hero p{max-width:620px;color:var(--muted)}.incognito-badge{width:48px;height:48px;border-radius:17px;display:grid;place-items:center;background:var(--accent);color:var(--on-accent);margin-bottom:20px;box-shadow:0 12px 28px rgba(23,24,23,.14)}.incognito-badge svg{width:23px;height:23px}
   .suggestions{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin-top:26px}.suggestions button{border:1px solid var(--line);background:var(--btn);border-radius:999px;padding:10px 14px;color:var(--muted);cursor:pointer;transition:background .18s ease,transform .18s ease,color .18s ease}.suggestions button:hover{background:var(--btn-hover);color:var(--text);transform:translateY(-1px)}
@@ -330,7 +330,14 @@
   <main class="main">
     <header class="topbar">
       <label class="icon-btn sidebar-toggle" for="sidebarState" aria-label="Open sidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9 4.5v15"/></svg></label>
-      <div class="top-actions"><label class="icon-btn incognito-btn" for="incognitoState" aria-label="Toggle incognito mode"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></label></div>
+      <div class="top-actions">
+        <label class="icon-btn incognito-btn" for="incognitoState" aria-label="Toggle incognito mode"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></label>
+        <button class="icon-btn top-new-chat" type="button" aria-label="Start a new chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+        <div class="incognito-exit-wrap">
+          <button class="icon-btn incognito-exit-btn" type="button" aria-label="Leave incognito chat" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          <div class="incognito-exit-confirm" role="alertdialog" aria-label="Confirm leaving incognito chat"><p>This chat will not be saved, confirm the exit from it</p><div class="incognito-exit-actions"><button class="cancel-incognito-exit" type="button">Cancel</button><button class="confirm-incognito-exit" type="button">Exit</button></div></div>
+        </div>
+      </div>
     </header>
     <section class="content">
       <div class="chat-log" id="chatLog" aria-live="polite" aria-label="Conversation"></div>
@@ -1339,6 +1346,11 @@
     const chatLog=document.getElementById('chatLog');
     const apiKeyInput=document.getElementById('apiKey');
     const conversationList=document.getElementById('conversationList');
+    const mainPanel=document.querySelector('.main');
+    const incognitoState=document.getElementById('incognitoState');
+    const topNewChat=document.querySelector('.top-new-chat');
+    const incognitoExitButton=document.querySelector('.incognito-exit-btn');
+    const incognitoExitConfirm=document.querySelector('.incognito-exit-confirm');
     const apiKeyStorageKey='neochat-api-key';
     const currentConversationStorageKey='neochat-current-conversation';
     const manualModelIDs={
@@ -1356,6 +1368,8 @@
       'Kimi K3 Low':'kimi-k3'
     };
     let conversationID='';
+    let activeChatIncognito=false;
+    let incognitoMessages=[];
     let sending=false;
     let keyReloadTimer=null;
 
@@ -1374,8 +1388,12 @@
       const token=apiKeyInput.value.trim();
       storeValue(sessionStorage,apiKeyStorageKey,token);
       conversationID='';
+      activeChatIncognito=false;
+      incognitoMessages=[];
+      incognitoState.checked=false;
       chatLog.replaceChildren();
       chatContent.classList.remove('has-chat');
+      updateChatModeControls();
       clearTimeout(keyReloadTimer);
       keyReloadTimer=setTimeout(function(){loadConversations(true)},350);
     });
@@ -1675,6 +1693,7 @@
       const message=document.createElement('article');
       message.className='chat-message '+role;
       message.dataset.messageText=String(text||'');
+      if(activeChatIncognito)message.dataset.incognito='true';
       const copy=document.createElement('div');
       copy.className='chat-copy';
       const body=document.createElement('div');
@@ -1691,19 +1710,36 @@
         if(text)message.classList.add('is-complete');
       }
       chatLog.append(message);
+      updateChatModeControls();
       chatLog.scrollTop=chatLog.scrollHeight;
       return message;
     }
 
     function resetConversation(){
       conversationID='';
+      activeChatIncognito=false;
+      incognitoMessages=[];
+      incognitoState.checked=false;
       storeValue(localStorage,currentConversationStorageKey,'');
       chatLog.replaceChildren();
       chatContent.classList.remove('has-chat');
+      closeIncognitoExitConfirm();
+      updateChatModeControls();
       conversationList.querySelectorAll('.conversation-item').forEach(function(item){item.classList.remove('is-active')});
       textarea.value='';
       textarea.style.height='auto';
       textarea.focus();
+    }
+
+    function updateChatModeControls(){
+      const hasActiveChat=chatLog.querySelector('.chat-message')!==null;
+      mainPanel.classList.toggle('has-active-chat',hasActiveChat);
+      mainPanel.classList.toggle('is-incognito-chat',hasActiveChat&&activeChatIncognito);
+    }
+
+    function closeIncognitoExitConfirm(){
+      incognitoExitConfirm.classList.remove('is-open');
+      incognitoExitButton.setAttribute('aria-expanded','false');
     }
 
     function setConversationListMessage(message){
@@ -1765,6 +1801,9 @@
         const data=await response.json();
         if(apiKeyInput.value.trim()!==token)return;
         conversationID=data.conversation_id||id;
+        activeChatIncognito=false;
+        incognitoMessages=[];
+        incognitoState.checked=false;
         storeValue(localStorage,currentConversationStorageKey,conversationID);
         chatLog.replaceChildren();
         (Array.isArray(data.messages)?data.messages:[]).forEach(function(message){
@@ -1773,6 +1812,7 @@
         });
         showOlderMessagesButton(id,data.next_cursor,token);
         if(!chatLog.children.length)chatContent.classList.remove('has-chat');
+        updateChatModeControls();
         conversationList.querySelectorAll('.conversation-item').forEach(function(item){
           item.classList.toggle('is-active',item.dataset.conversationId===conversationID);
         });
@@ -1819,7 +1859,10 @@
         persona:document.getElementById('toneTriggerLabel').textContent.trim()||'Default',
         idempotency_key:createIdempotencyKey()
       };
-      if(conversationID)request.conversation_id=conversationID;
+      if(activeChatIncognito||incognitoState.checked){
+        request.incognito=true;
+        request.incognito_history=incognitoMessages.slice();
+      }else if(conversationID)request.conversation_id=conversationID;
       if(mode==='manual'){
         const selectedModel=document.getElementById('manualState').textContent.trim();
         request.manual_model_id=manualModelIDs[selectedModel]||'';
@@ -1973,17 +2016,26 @@
       }
       const token=apiKeyInput.value.trim();
       if(!token){promptForAPIKey();return}
-      if(!conversationID){toast('This response is not saved yet.');return}
+      const isIncognito=message.dataset.incognito==='true';
+      if(!isIncognito&&!conversationID){toast('This response is not saved yet.');return}
 
       const selectedMode=document.querySelector('input[name="work-mode"]:checked');
       const mode=(selectedMode?selectedMode.value:'Auto').toLowerCase();
-      const request={
+      const request=isIncognito?{
+        message:incognitoMessages.length>=2?incognitoMessages[incognitoMessages.length-2].content:'',
+        incognito:true,
+        incognito_history:incognitoMessages.slice(0,-2),
+        requested_mode:mode,
+        persona:document.getElementById('toneTriggerLabel').textContent.trim()||'Default',
+        idempotency_key:createIdempotencyKey()
+      }:{
         conversation_id:conversationID,
         message_id:Number(message.dataset.messageId||0),
         requested_mode:mode,
         persona:document.getElementById('toneTriggerLabel').textContent.trim()||'Default',
         idempotency_key:createIdempotencyKey()
       };
+      if(isIncognito&&!request.message){toast('This response cannot be regenerated.');return}
       if(mode==='manual'){
         const selectedModel=document.getElementById('manualState').textContent.trim();
         request.manual_model_id=manualModelIDs[selectedModel]||'';
@@ -2002,7 +2054,7 @@
       let receivedFirstText=false;
 
       try{
-        const response=await fetch('/chat/regenerate/stream',{
+        const response=await fetch(isIncognito?'/chat/stream':'/chat/regenerate/stream',{
           method:'POST',
           headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},
           body:JSON.stringify(request)
@@ -2033,12 +2085,17 @@
         });
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
-        message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
+        if(isIncognito){
+          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||''}]);
+          incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||''};
+        }else{
+          message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
+        }
         message.responseVersionIndex=message.responseVersions.length-1;
         if(versionsData&&versionsData.message_id)message.dataset.messageId=String(versionsData.message_id);
         renderResponseVersion(message,message.responseVersionIndex);
         message.classList.add('is-complete');
-        loadConversations(false);
+        if(!isIncognito)loadConversations(false);
       }catch(error){
         stream.cancel();
         message.classList.remove('is-pending');
@@ -2058,10 +2115,6 @@
       if(sending)return;
       if(!request.message){toast('Type something first.');return}
       if(!token){promptForAPIKey();return}
-      if(document.getElementById('incognitoState').checked){
-        toast('Incognito is not supported by the current backend yet.');
-        return;
-      }
       if(document.getElementById('attachmentsInner').children.length){
         toast('Attachments are not supported by the current backend yet.');
         return;
@@ -2070,6 +2123,8 @@
         toast('That model is not available on the current backend yet.');
         return;
       }
+
+      if(!chatLog.querySelector('.chat-message'))activeChatIncognito=Boolean(request.incognito);
 
       chatLog.querySelectorAll('.is-latest-response').forEach(function(message){message.classList.remove('is-latest-response')});
       const userMessage=appendMessage('user',request.message);
@@ -2105,8 +2160,10 @@
         await readServerSentEvents(response,function(event,data){
           if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
           if(event==='meta'){
-            conversationID=data.conversation_id||conversationID;
-            storeValue(localStorage,currentConversationStorageKey,conversationID);
+            if(!activeChatIncognito){
+              conversationID=data.conversation_id||conversationID;
+              storeValue(localStorage,currentConversationStorageKey,conversationID);
+            }
             return;
           }
           if(event==='delta'){
@@ -2122,8 +2179,10 @@
           if(event==='done'||event==='blocked'){
             receivedTerminalEvent=true;
             terminalData=data;
-            conversationID=data.conversation_id||conversationID;
-            storeValue(localStorage,currentConversationStorageKey,conversationID);
+            if(!activeChatIncognito){
+              conversationID=data.conversation_id||conversationID;
+              storeValue(localStorage,currentConversationStorageKey,conversationID);
+            }
             pending.classList.remove('is-pending');
             if(!receivedFirstText)showThoughtTime(pending,performance.now()-thinkingStartedAt);
             stream.replace(data.response_text||'The server returned an empty response.');
@@ -2135,7 +2194,11 @@
         pending.responseVersions=normalizeResponseVersions(null,terminalData.response_text);
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
-        loadConversations(false);
+        if(activeChatIncognito&&!terminalData.blocked){
+          incognitoMessages.push({role:'user',content:request.message},{role:'assistant',content:terminalData.response_text||''});
+        }else if(!activeChatIncognito){
+          loadConversations(false);
+        }
       }catch(error){
         const partialText=stream.visibleText();
         stream.cancel();
@@ -2166,9 +2229,31 @@
     });
 
     document.querySelector('.new-chat').addEventListener('click',function(){
+      if(sending){toast('Wait for the current response.');return}
       resetConversation();
       sidebarState.checked=false;
       toast('New chat');
+    });
+
+    topNewChat.addEventListener('click',function(){
+      if(sending){toast('Wait for the current response.');return}
+      resetConversation();
+      toast('New chat');
+    });
+
+    incognitoExitButton.addEventListener('click',function(){
+      if(sending){toast('Wait for the current response.');return}
+      const willOpen=!incognitoExitConfirm.classList.contains('is-open');
+      incognitoExitConfirm.classList.toggle('is-open',willOpen);
+      incognitoExitButton.setAttribute('aria-expanded',String(willOpen));
+    });
+    document.querySelector('.cancel-incognito-exit').addEventListener('click',closeIncognitoExitConfirm);
+    document.querySelector('.confirm-incognito-exit').addEventListener('click',function(){
+      resetConversation();
+      toast('Incognito chat cleared');
+    });
+    document.addEventListener('click',function(event){
+      if(!event.target.closest('.incognito-exit-wrap'))closeIncognitoExitConfirm();
     });
 
     document.querySelectorAll('.nav-item').forEach(function(button){
