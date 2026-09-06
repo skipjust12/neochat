@@ -31,8 +31,8 @@
   html:not([data-theme="dark"]) #incognitoState:checked ~ .main::before,html[data-theme="dark"] #incognitoState:checked ~ .main::after{opacity:1;transform:translate3d(0,0,0) scale(1)}
   .topbar{height:74px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:relative;z-index:20}.top-actions{display:flex;gap:6px;margin-left:auto;position:relative}.sidebar-toggle,.incognito-btn,.top-new-chat,.incognito-exit-btn{width:44px;height:44px;border:1px solid var(--line);border-radius:16px;background:var(--btn);box-shadow:0 8px 20px rgba(23,24,23,.035)}.sidebar-toggle:hover,.incognito-btn:hover,.top-new-chat:hover,.incognito-exit-btn:hover{background:var(--btn-hover)}#incognitoState:checked ~ .main .incognito-btn{background:var(--accent);color:var(--on-accent);border-color:var(--accent);box-shadow:0 12px 28px rgba(23,24,23,.2);transform:scale(1.035)}.top-new-chat,.incognito-exit-wrap{display:none}.main.has-active-chat .incognito-btn{display:none}.main.has-active-chat:not(.is-incognito-chat) .top-new-chat{display:grid}.main.has-active-chat.is-incognito-chat .incognito-exit-wrap{display:block}.incognito-exit-wrap{position:relative}.incognito-exit-confirm{position:absolute;right:0;top:52px;width:min(330px,calc(100vw - 48px));padding:15px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 18px 50px rgba(23,24,23,.16);opacity:0;visibility:hidden;transform:translate3d(18px,-18px,0) scale(.82);transform-origin:top right;transition:opacity .2s var(--ease-gentle),transform .34s var(--ease-out),visibility 0s linear .34s}.incognito-exit-confirm.is-open{opacity:1;visibility:visible;transform:translate3d(0,0,0) scale(1);transition-delay:0s}.incognito-exit-confirm p{margin:0 0 13px;font-size:13px;line-height:1.45;color:var(--text)}.incognito-exit-actions{display:flex;justify-content:flex-end;gap:7px}.incognito-exit-actions button{border:1px solid var(--line);border-radius:11px;padding:7px 11px;background:var(--btn);color:var(--text);cursor:pointer}.incognito-exit-actions .confirm-incognito-exit{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}
   .content{position:absolute;z-index:2;inset:74px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 28px 128px}.hero-stage{position:relative;width:min(760px,100%);min-height:230px;transform:translateY(-7vh)}.hero{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;opacity:0;transform:translate3d(0,16px,0) scale(.982);pointer-events:none;will-change:opacity,transform;transition:opacity .56s var(--ease-gentle),transform .72s var(--ease-out)}.hero.is-visible{opacity:1;transform:translate3d(0,0,0) scale(1);pointer-events:auto}#incognitoState:checked ~ .main .default-hero{opacity:0;transform:translate3d(0,-14px,0) scale(.982);pointer-events:none}#incognitoState:checked ~ .main .incognito-hero{opacity:1;transform:translate3d(0,0,0) scale(1);pointer-events:auto}
-  h1{font-family:Charter,"Bitstream Charter","Sitka Text","Iowan Old Style",Georgia,serif;font-size:clamp(38px,5.3vw,72px);line-height:1.03;letter-spacing:-.02em;margin:0;font-weight:600}.hero p{color:var(--muted);margin:18px auto 0;max-width:560px;line-height:1.55;font-size:15px}.incognito-hero h1{font-size:clamp(38px,4.8vw,64px)}.incognito-hero p{max-width:620px;color:var(--muted)}.incognito-badge{width:48px;height:48px;border-radius:17px;display:grid;place-items:center;background:var(--accent);color:var(--on-accent);margin-bottom:20px;box-shadow:0 12px 28px rgba(23,24,23,.14)}.incognito-badge svg{width:23px;height:23px}
-  .suggestions{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin-top:26px}.suggestions button{border:1px solid var(--line);background:var(--btn);border-radius:999px;padding:10px 14px;color:var(--muted);cursor:pointer;transition:background .18s ease,transform .18s ease,color .18s ease}.suggestions button:hover{background:var(--btn-hover);color:var(--text);transform:translateY(-1px)}
+  h1{font-family:Charter,"Bitstream Charter","Sitka Text","Iowan Old Style",Georgia,serif;font-size:clamp(38px,5.3vw,72px);line-height:1.03;letter-spacing:-.02em;margin:0;font-weight:600}.home-greeting{opacity:0;transform:translate3d(0,10px,0);transition:opacity .48s var(--ease-gentle),transform .68s var(--ease-out)}.home-greeting.is-ready{opacity:1;transform:translate3d(0,0,0)}.hero p{color:var(--muted);margin:18px auto 0;max-width:560px;line-height:1.55;font-size:15px}.incognito-hero h1{font-size:clamp(38px,4.8vw,64px)}.incognito-hero p{max-width:620px;color:var(--muted)}.incognito-badge{width:48px;height:48px;border-radius:17px;display:grid;place-items:center;background:var(--accent);color:var(--on-accent);margin-bottom:20px;box-shadow:0 12px 28px rgba(23,24,23,.14)}.incognito-badge svg{width:23px;height:23px}
+  .suggestions{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin-top:26px}.suggestions button{border:1px solid var(--line);background:var(--btn);border-radius:999px;padding:10px 14px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .18s ease,transform .18s ease,color .18s ease}.suggestions button svg{width:16px;height:16px;flex:none}.suggestions button:hover{background:var(--btn-hover);color:var(--text);transform:translateY(-1px)}
   .composer-wrap{position:absolute;left:50%;bottom:22px;transform:translate3d(-50%,0,0);width:min(720px,calc(100% - 44px));z-index:10}.composer{position:relative;border:1px solid var(--line);background:var(--composer);backdrop-filter:blur(24px);border-radius:27px;box-shadow:0 20px 50px rgba(23,24,23,.10);padding:10px;transition:background-color .55s var(--ease-gentle),border-color .55s var(--ease-gentle),box-shadow .7s var(--ease-gentle),transform .42s var(--ease-out)}#incognitoState:checked ~ .main .composer{box-shadow:0 22px 58px rgba(0,0,0,.2);transform:translateY(-2px)}.composer textarea{width:100%;border:0;outline:none;resize:none;min-height:46px;max-height:150px;padding:7px 9px 8px;background:transparent;color:var(--text);font-size:15px;transition:color .45s var(--ease-gentle)}.composer textarea::placeholder{color:var(--muted);transition:color .45s var(--ease-gentle)}.composer-bottom{display:flex;align-items:center;gap:6px;position:relative}.round-btn,.send{width:40px;height:40px;border-radius:14px;display:grid;place-items:center;cursor:pointer;transition:transform .28s var(--ease-out),background-color .28s var(--ease-gentle),color .28s var(--ease-gentle),box-shadow .36s var(--ease-gentle)}.round-btn{border:1px solid var(--line);background:var(--btn)}.round-btn:hover{background:var(--btn-hover)}.send{border:0;background:var(--accent);color:var(--on-accent);box-shadow:0 8px 18px rgba(23,24,23,.18)}.send:hover{transform:translateY(-1px)}
   .attachments{display:grid;grid-template-rows:0fr;transition:grid-template-rows .32s var(--ease-out)}
   .attachments.is-open{grid-template-rows:1fr}
@@ -342,7 +342,7 @@
     <section class="content">
       <div class="chat-log" id="chatLog" aria-live="polite" aria-label="Conversation"></div>
       <div class="hero-stage" aria-live="polite">
-        <div class="hero default-hero is-visible" id="defaultHero"><h1 id="homeGreeting">How can I help?</h1><div class="suggestions"><button>Brainstorm an idea</button><button>Analyze a document</button><button>Write some code</button></div></div>
+        <div class="hero default-hero is-visible" id="defaultHero"><h1 class="home-greeting" id="homeGreeting">How can I help?</h1><div class="suggestions" aria-label="Prompt suggestions"></div></div>
         <div class="hero incognito-hero" id="incognitoHero"><div class="incognito-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></div><h1>Incognito mode.</h1><p>The chat will not be saved. For security reasons, we may retain a copy of it for up to 30 days.</p></div>
       </div>
       <div class="composer-wrap">
@@ -1299,6 +1299,11 @@
     const nameInput=document.getElementById('displayName');
     const sidebarName=document.querySelector('.profile-copy strong');
     const homeGreeting=document.getElementById('homeGreeting');
+    const homeSuggestions=document.querySelector('.suggestions');
+    try{
+      const savedPreferences=JSON.parse(localStorage.getItem('neochat-preferences-v1')||'{}');
+      if(typeof savedPreferences.displayName==='string')nameInput.value=savedPreferences.displayName;
+    }catch(error){}
 
     function greetingPoolForHour(hour){
       if(hour>=9&&hour<=13)return ['What do we do?','Good afternoon, NICK_OF_SETTINGS','How can I help?'];
@@ -1315,8 +1320,39 @@
       homeGreeting.textContent=selectedGreeting.replace('NICK_OF_SETTINGS',nameInput.value.trim()||'skipjust');
     }
 
+    const suggestionPool=[
+      {label:'Explain something complex',iconClass:'lucide-brain-circuit',paths:'<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M9 13a4.5 4.5 0 0 0 3-4"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M12 13h4"/><path d="M12 18h6a2 2 0 0 1 2 2v1"/><path d="M12 8h8"/><path d="M16 8V5a2 2 0 0 1 2-2"/><circle cx="16" cy="13" r=".5"/><circle cx="18" cy="3" r=".5"/><circle cx="20" cy="21" r=".5"/><circle cx="20" cy="8" r=".5"/>'},
+      {label:'Improve my writing',iconClass:'lucide-pencil-sparkles',paths:'<path d="M10 3H8"/><path d="m15.007 5.008 3.987 3.986"/><path d="M20 15v4"/><path d="M21.174 6.813a2.82 2.82 0 0 0-3.986-3.987L3.842 16.175a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="M22 17h-4"/><path d="M4 5v4"/><path d="M6 7H2"/><path d="M9 2v2"/>'},
+      {label:'Brainstorm an idea',iconClass:'lucide-atom',paths:'<circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z"/><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z"/>'},
+      {label:'Schedule task',iconClass:'lucide-clock',paths:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'},
+      {label:'Help me understand',iconClass:'lucide-graduation-cap',paths:'<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>'}
+    ];
+
+    function renderHomeSuggestions(){
+      const shuffled=suggestionPool.slice();
+      for(let index=shuffled.length-1;index>0;index--){
+        const swapIndex=Math.floor(Math.random()*(index+1));
+        [shuffled[index],shuffled[swapIndex]]=[shuffled[swapIndex],shuffled[index]];
+      }
+      shuffled.slice(0,3).forEach(function(suggestion){
+        const button=document.createElement('button');
+        button.type='button';
+        const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
+        icon.setAttribute('viewBox','0 0 24 24');
+        icon.setAttribute('aria-hidden','true');
+        icon.setAttribute('class','lucide '+suggestion.iconClass);
+        icon.innerHTML=suggestion.paths;
+        const label=document.createElement('span');
+        label.textContent=suggestion.label;
+        button.append(icon,label);
+        homeSuggestions.append(button);
+      });
+    }
+
     sidebarName.textContent=nameInput.value.trim()||'skipjust';
     renderHomeGreeting();
+    renderHomeSuggestions();
+    requestAnimationFrame(function(){requestAnimationFrame(function(){homeGreeting.classList.add('is-ready')})});
     nameInput.addEventListener('input',function(){
       sidebarName.textContent=nameInput.value.trim()||'skipjust';
       if(selectedGreeting.includes('NICK_OF_SETTINGS'))renderHomeGreeting();
