@@ -57,7 +57,13 @@ type ResponseVersion struct {
 type Overview struct {
 	ID        string    `json:"conversation_id"`
 	Title     string    `json:"title"`
+	Pinned    bool      `json:"pinned,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
+}
+
+type MetadataUpdate struct {
+	Title  *string
+	Pinned *bool
 }
 
 // Summary is the rolling, machine-generated compression of a

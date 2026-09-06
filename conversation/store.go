@@ -10,6 +10,7 @@ import (
 
 var ErrMessageNotFound = errors.New("conversation: message not found")
 var ErrRegenerationLimit = errors.New("conversation: regeneration limit reached")
+var ErrConversationNotFound = errors.New("conversation: not found")
 
 // Store is the seam between this package and wherever conversation
 // history actually lives. InMemoryStore (below) is a deliberately
@@ -52,6 +53,8 @@ type Store interface {
 	// List returns the user's most recently active conversations. Titles
 	// are derived from the first user message in each conversation.
 	List(ctx context.Context, userID string, limit int) ([]Overview, error)
+	UpdateMetadata(ctx context.Context, userID, conversationID string, update MetadataUpdate) error
+	Delete(ctx context.Context, userID, conversationID string) error
 
 	// GetSummary returns the current rolling Summary for (userID,
 	// conversationID). An unknown conversation, or one that has never
@@ -76,6 +79,12 @@ type InMemoryStore struct {
 	mu        sync.Mutex
 	history   map[conversationKey][]Message
 	summaries map[conversationKey]Summary
+	metadata  map[conversationKey]conversationMetadata
+}
+
+type conversationMetadata struct {
+	title  string
+	pinned bool
 }
 
 type conversationKey struct {
@@ -88,6 +97,7 @@ func NewInMemoryStore() *InMemoryStore {
 	return &InMemoryStore{
 		history:   make(map[conversationKey][]Message),
 		summaries: make(map[conversationKey]Summary),
+		metadata:  make(map[conversationKey]conversationMetadata),
 	}
 }
 
@@ -159,12 +169,16 @@ func (s *InMemoryStore) List(_ context.Context, userID string, limit int) ([]Ove
 		if key.userID != userID || len(messages) == 0 {
 			continue
 		}
-		overview := Overview{ID: key.conversationID, Title: "New chat"}
+		meta := s.metadata[key]
+		overview := Overview{ID: key.conversationID, Title: meta.title, Pinned: meta.pinned}
+		if overview.Title == "" {
+			overview.Title = "New chat"
+		}
 		for _, message := range messages {
 			if message.CreatedAt.After(overview.UpdatedAt) {
 				overview.UpdatedAt = message.CreatedAt
 			}
-			if overview.Title == "New chat" && message.Role == RoleUser && strings.TrimSpace(message.Content) != "" {
+			if meta.title == "" && overview.Title == "New chat" && message.Role == RoleUser && strings.TrimSpace(message.Content) != "" {
 				title := []rune(strings.TrimSpace(message.Content))
 				if len(title) > 80 {
 					title = title[:80]
@@ -175,12 +189,46 @@ func (s *InMemoryStore) List(_ context.Context, userID string, limit int) ([]Ove
 		out = append(out, overview)
 	}
 	sort.SliceStable(out, func(i, j int) bool {
+		if out[i].Pinned != out[j].Pinned {
+			return out[i].Pinned
+		}
 		return out[i].UpdatedAt.After(out[j].UpdatedAt)
 	})
 	if len(out) > limit {
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func (s *InMemoryStore) UpdateMetadata(_ context.Context, userID, conversationID string, update MetadataUpdate) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := conversationKey{userID: userID, conversationID: conversationID}
+	if len(s.history[key]) == 0 {
+		return ErrConversationNotFound
+	}
+	meta := s.metadata[key]
+	if update.Title != nil {
+		meta.title = *update.Title
+	}
+	if update.Pinned != nil {
+		meta.pinned = *update.Pinned
+	}
+	s.metadata[key] = meta
+	return nil
+}
+
+func (s *InMemoryStore) Delete(_ context.Context, userID, conversationID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := conversationKey{userID: userID, conversationID: conversationID}
+	if len(s.history[key]) == 0 {
+		return ErrConversationNotFound
+	}
+	delete(s.history, key)
+	delete(s.summaries, key)
+	delete(s.metadata, key)
+	return nil
 }
 
 func (s *InMemoryStore) GetSummary(_ context.Context, userID, conversationID string) (Summary, error) {

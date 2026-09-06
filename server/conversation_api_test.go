@@ -1,10 +1,10 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
-	"neochat/idempotency"
-	"neochat/ratelimit"
+	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
@@ -12,6 +12,8 @@ import (
 
 	"neochat/auth"
 	"neochat/conversation"
+	"neochat/idempotency"
+	"neochat/ratelimit"
 )
 
 func TestConversationReadEndpointsAreScopedToAuthenticatedUser(t *testing.T) {
@@ -52,6 +54,44 @@ func TestConversationReadEndpointsAreScopedToAuthenticatedUser(t *testing.T) {
 	}
 	if len(history.Messages) != 1 || history.Messages[0].Content != "Saved title" {
 		t.Fatalf("history response = %#v", history)
+	}
+}
+
+func TestConversationUpdateAndDeleteEndpoints(t *testing.T) {
+	store := conversation.NewInMemoryStore()
+	mustAppend := func(user, id string) {
+		if err := store.Append(context.Background(), user, id, conversation.Message{Role: conversation.RoleUser, Content: "Original", CreatedAt: time.Now()}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mustAppend("owner", "chat")
+	mustAppend("other", "chat")
+	srv := &Server{Conversations: store}
+	identity := auth.Identity{UserID: "owner"}
+
+	updateRequest := httptest.NewRequest(http.MethodPatch, "/conversations/chat", bytes.NewBufferString(`{"title":"Renamed","pinned":true}`))
+	updateRequest.SetPathValue("conversation_id", "chat")
+	updateRecorder := httptest.NewRecorder()
+	srv.handleConversationUpdate(updateRecorder, updateRequest, identity)
+	if updateRecorder.Code != http.StatusNoContent {
+		t.Fatalf("update status = %d: %s", updateRecorder.Code, updateRecorder.Body.String())
+	}
+	list, err := store.List(context.Background(), "owner", 10)
+	if err != nil || len(list) != 1 || list[0].Title != "Renamed" || !list[0].Pinned {
+		t.Fatalf("updated list = %+v, err = %v", list, err)
+	}
+
+	deleteRequest := httptest.NewRequest(http.MethodDelete, "/conversations/chat", nil)
+	deleteRequest.SetPathValue("conversation_id", "chat")
+	deleteRecorder := httptest.NewRecorder()
+	srv.handleConversationDelete(deleteRecorder, deleteRequest, identity)
+	if deleteRecorder.Code != http.StatusNoContent {
+		t.Fatalf("delete status = %d: %s", deleteRecorder.Code, deleteRecorder.Body.String())
+	}
+	ownerHistory, _ := store.History(context.Background(), "owner", "chat", 0)
+	otherHistory, _ := store.History(context.Background(), "other", "chat", 0)
+	if len(ownerHistory) != 0 || len(otherHistory) != 1 {
+		t.Fatalf("delete scope owner=%+v other=%+v", ownerHistory, otherHistory)
 	}
 }
 
