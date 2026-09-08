@@ -428,12 +428,82 @@
   .row-state{font-size:10.5px;font-weight:520}
   .row-chevron{width:14px;height:14px}
 
+  .connectors-page{position:absolute;z-index:30;inset:0;display:none;overflow:auto;background:var(--bg)}
+  .main.connectors-open .connectors-page{display:block;animation:connectors-page-in .38s var(--ease-out) both}
+  .main.connectors-open>.topbar,.main.connectors-open>.projects-page,.main.connectors-open>.content{display:none}
+  @keyframes connectors-page-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+  .connectors-shell{width:min(1020px,100%);min-height:100%;margin:0 auto;padding:24px clamp(22px,5vw,58px) 64px}
+  .connectors-back{display:inline-flex;align-items:center;gap:9px;border:0;border-radius:8px;background:transparent;color:var(--muted);padding:7px 9px;margin-left:-9px;font-size:12.5px;cursor:pointer;transition:color .18s ease,background .18s ease}
+  .connectors-back:hover{color:var(--text);background:var(--hover)}
+  .connectors-back svg{width:17px;height:17px}
+  .connectors-hero{margin:58px 0 38px}
+  .connectors-kicker{width:42px;height:42px;display:grid;place-items:center;border:1px solid var(--line);border-radius:11px;background:var(--btn);color:var(--text);margin-bottom:17px}
+  .connectors-kicker svg{width:20px;height:20px}
+  .connectors-hero h1{margin:0;font:400 clamp(34px,4vw,48px)/1.08 Georgia,'Times New Roman',serif;letter-spacing:-1.2px}
+  .connectors-hero p{margin:9px 0 0;color:var(--muted);font-size:13px}
+  .connectors-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
+  .connector-card{width:100%;min-height:90px;display:grid;grid-template-columns:46px minmax(0,1fr) 20px;align-items:center;gap:14px;border:1px solid var(--line);border-radius:12px;background:var(--btn);padding:15px;color:var(--text);text-align:left;cursor:pointer;transition:background .2s ease,border-color .2s ease,transform .24s var(--ease-out)}
+  .connector-card:hover{background:var(--btn-hover);border-color:var(--picker-line);transform:translateY(-1px)}
+  .connector-card>svg:last-child{width:15px;height:15px;color:var(--muted);justify-self:end}
+  .connector-logo{width:46px;height:46px;display:grid;place-items:center;border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden;flex:none}
+  .connector-logo svg{width:27px;height:27px}
+  .connector-logo.connector-canva svg{width:31px;height:31px}
+  .connector-copy{min-width:0}
+  .connector-copy strong{display:block;font-size:14px;font-weight:570;letter-spacing:-.01em}
+  .connector-copy span{display:block;margin-top:4px;color:var(--muted);font-size:11.5px;line-height:1.35}
+  .connector-detail{display:none;padding-top:50px}
+  .connectors-page.is-detail .connectors-index{display:none}
+  .connectors-page.is-detail .connector-detail{display:block;animation:connector-detail-in .36s var(--ease-out) both}
+  @keyframes connector-detail-in{from{opacity:0;transform:translateX(9px)}to{opacity:1;transform:none}}
+  .connector-detail-head{display:grid;grid-template-columns:66px minmax(0,1fr) auto;align-items:center;gap:18px;padding-bottom:29px;border-bottom:1px solid var(--line)}
+  .connector-detail-head .connector-logo{width:66px;height:66px;border-radius:15px}
+  .connector-detail-head .connector-logo svg{width:38px;height:38px}
+  .connector-detail-title{font:400 clamp(30px,4vw,42px)/1.08 Georgia,'Times New Roman',serif;letter-spacing:-1px}
+  .connector-connect{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:8px;background:var(--accent);color:var(--on-accent);padding:9px 13px;font-size:12px;font-weight:560;cursor:pointer}
+  .connector-connect svg{width:15px;height:15px}
+  .connector-detail-description{max-width:680px;margin:28px 0 0;color:var(--muted);font-size:14px;line-height:1.65}
+
+  .attach-connectors-screen{display:none}
+  .attach-panel.is-connectors>.attach-tiles,.attach-panel.is-connectors>.attach-divider,.attach-panel.is-connectors>.attach-list{display:none}
+  .attach-panel.is-connectors>.attach-connectors-screen{display:block;animation:attach-connectors-in .25s var(--ease-out) both}
+  @keyframes attach-connectors-in{from{opacity:0;transform:translateX(7px)}to{opacity:1;transform:none}}
+  .attach-connectors-back{width:100%;display:flex;align-items:center;gap:7px;border:0;border-radius:7px;background:transparent;color:var(--muted);padding:7px 8px 8px;font-size:11.5px;cursor:pointer}
+  .attach-connectors-back:hover{background:var(--picker-hover);color:var(--text)}
+  .attach-connectors-back svg{width:14px;height:14px}
+  .attach-connector-row,.browse-connectors{width:100%;display:grid;grid-template-columns:27px minmax(0,1fr) 14px;align-items:center;gap:9px;border:0;border-radius:7px;background:transparent;color:var(--text);padding:7px 8px;text-align:left;cursor:pointer;transition:background .16s ease}
+  .attach-connector-row:hover,.browse-connectors:hover{background:var(--picker-hover)}
+  .attach-connector-row .connector-logo{width:27px;height:27px;border:0;border-radius:6px;background:transparent}
+  .attach-connector-row .connector-logo svg{width:19px;height:19px}
+  .attach-connector-row span:nth-child(2),.browse-connectors span{font-size:12.5px;font-weight:520}
+  .attach-connector-row>svg,.browse-connectors>svg:last-child{width:13px;height:13px;color:var(--muted)}
+  .browse-connectors{grid-template-columns:27px minmax(0,1fr);margin-top:5px;padding-top:9px;border-top:1px solid var(--picker-line);border-radius:0 0 7px 7px}
+  .browse-connectors>svg{width:17px;height:17px;color:var(--muted)}
+  .prompt-entry{position:relative}
+  .connector-prefix{display:none;position:absolute;z-index:2;left:6px;top:3px;width:29px;height:29px;align-items:center;justify-content:center;pointer-events:none}
+  .connector-prefix svg{width:20px;height:20px}
+  .prompt-entry.has-connector:not(:has(textarea:placeholder-shown)) .connector-prefix{display:flex}
+  .prompt-entry.has-connector:not(:has(textarea:placeholder-shown)) textarea{padding-left:40px}
+
   @media(min-width:900px){#sidebarState:checked~.main{margin-left:248px;width:calc(100% - 248px)}#sidebarState:checked~.sidebar-backdrop{display:none}}
   @media(max-width:899px){.sidebar{width:248px}.content:not(.has-chat){padding-bottom:45px}.topbar{padding:0 17px}.home-greeting,h1{font-size:33px}.content:not(.has-chat) .composer-wrap{width:calc(100% - 36px)}.hero-stage{width:calc(100% - 36px)}.suggestions{display:flex;gap:6px}.suggestions button{font-size:10px;padding:6px 7px}}
   @media(max-width:520px){.mode-panel,#mode-manual:checked~.mode-panel{width:min(286px,calc(100vw - 70px))}.attach-panel{width:min(286px,calc(100vw - 62px))}.mode-copy strong{font-size:13px}.mode-copy span{font-size:10.5px}}
+  @media(max-width:680px){.connectors-shell{padding:18px 18px 44px}.connectors-hero{margin:42px 0 28px}.connectors-grid{grid-template-columns:1fr}.connector-detail{padding-top:34px}.connector-detail-head{grid-template-columns:54px 1fr;gap:13px}.connector-detail-head .connector-logo{width:54px;height:54px}.connector-connect{grid-column:1/-1;justify-self:start}.connector-detail-description{font-size:13px}}
 </style>
 </head>
 <body>
+<svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
+  <defs>
+    <linearGradient id="gmail-side" x1="165" x2="165" y1="44" y2="166" gradientUnits="userSpaceOnUse"><stop stop-color="#60d673"/><stop offset=".17" stop-color="#42c868"/><stop offset=".39" stop-color="#0ebc5f"/><stop offset=".62" stop-color="#00a9bb"/><stop offset=".86" stop-color="#3c90ff"/><stop offset="1" stop-color="#3186ff"/></linearGradient>
+    <linearGradient id="gmail-fold" x1="8" x2="184" y1="46.13" y2="46.13" gradientUnits="userSpaceOnUse"><stop offset=".08" stop-color="#ff63a0"/><stop offset=".3" stop-color="#fc413d"/><stop offset=".65" stop-color="#fc413d"/><stop offset=".72" stop-color="#fc5c30"/><stop offset=".86" stop-color="#feb10c"/><stop offset=".91" stop-color="#fec700"/><stop offset=".96" stop-color="#ffdb0f"/></linearGradient>
+    <radialGradient id="canva-purple" cx="0" cy="0" r="1" gradientTransform="matrix(25.1579 -29.3684 29.3684 25.1579 59.6579 64.5964)" gradientUnits="userSpaceOnUse"><stop stop-color="#6420ff"/><stop offset="1" stop-color="#6420ff" stop-opacity="0"/></radialGradient>
+    <radialGradient id="canva-cyan" cx="0" cy="0" r="1" gradientTransform="matrix(25.1973 35.5921 -35.5921 25.1973 63.2368 25.965)" gradientUnits="userSpaceOnUse"><stop stop-color="#00c4cc"/><stop offset="1" stop-color="#00c4cc" stop-opacity="0"/></radialGradient>
+  </defs>
+  <symbol id="connector-gmail" viewBox="0 0 192 192"><path fill="url(#gmail-side)" stroke="none" d="M146 44h38v110c0 6.627-5.373 12-12 12h-20a6 6 0 0 1-6-6z"/><path fill="#fc413d" stroke="none" d="M46 44H8v110c0 6.627 5.373 12 12 12h20a6 6 0 0 0 6-6z"/><path fill="url(#gmail-fold)" stroke="none" d="M39.226 30.456c-8.033-6.752-20.018-5.714-26.77 2.319-6.752 8.032-5.714 20.017 2.319 26.77l76.078 63.949a8 8 0 0 0 10.295 0l76.078-63.95c8.032-6.752 9.07-18.737 2.318-26.77-6.752-8.032-18.737-9.07-26.769-2.318L96 78.18z"/></symbol>
+  <symbol id="connector-github" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M12 .297c-6.63 0-12 5.373-12 12 0 5.303 3.438 9.8 8.205 11.385.6.113.82-.258.82-.577 0-.285-.01-1.04-.015-2.04-3.338.724-4.042-1.61-4.042-1.61C4.422 18.07 3.633 17.7 3.633 17.7c-1.087-.744.084-.729.084-.729 1.205.084 1.838 1.236 1.838 1.236 1.07 1.835 2.809 1.305 3.495.998.108-.776.417-1.305.76-1.605-2.665-.3-5.466-1.332-5.466-5.93 0-1.31.465-2.38 1.235-3.22-.135-.303-.54-1.523.105-3.176 0 0 1.005-.322 3.3 1.23.96-.267 1.98-.399 3-.405 1.02.006 2.04.138 3 .405 2.28-1.552 3.285-1.23 3.285-1.23.645 1.653.24 2.873.12 3.176.765.84 1.23 1.91 1.23 3.22 0 4.61-2.805 5.625-5.475 5.92.42.36.81 1.096.81 2.22 0 1.606-.015 2.896-.015 3.286 0 .315.21.69.825.57C20.565 22.092 24 17.592 24 12.297c0-6.627-5.373-12-12-12"/></symbol>
+  <symbol id="connector-notion" viewBox="0 0 24 24"><path fill="currentColor" stroke="none" d="M4.459 4.208c.746.606 1.026.56 2.428.466l13.215-.793c.28 0 .047-.28-.046-.326L17.86 1.968c-.42-.326-.981-.7-2.055-.607L3.01 2.295c-.466.046-.56.28-.374.466zm.793 3.08v13.904c0 .747.373 1.027 1.214.98l14.523-.84c.841-.046.935-.56.935-1.167V6.354c0-.606-.233-.933-.748-.887l-15.177.887c-.56.047-.747.327-.747.933zm14.337.745c.093.42 0 .84-.42.888l-.7.14v10.264c-.608.327-1.168.514-1.635.514-.748 0-.935-.234-1.495-.933l-4.577-7.186v6.952L12.21 19s0 .84-1.168.84l-3.222.186c-.093-.186 0-.653.327-.746l.84-.233V9.854L7.822 9.76c-.094-.42.14-1.026.793-1.073l3.456-.233 4.764 7.279v-6.44l-1.215-.139c-.093-.514.28-.887.747-.933zM1.936 1.035l13.31-.98c1.634-.14 2.055-.047 3.082.7l4.249 2.986c.7.513.934.653.934 1.213v16.378c0 1.026-.373 1.634-1.68 1.726l-15.458.934c-.98.047-1.448-.093-1.962-.747l-3.129-4.06c-.56-.747-.793-1.306-.793-1.96V2.667c0-.839.374-1.54 1.447-1.632z"/></symbol>
+  <symbol id="connector-slack" viewBox="0 0 24 24"><path fill="#36C5F0" stroke="none" d="M9.35 2.5a2.35 2.35 0 1 1 0 4.7H7V4.85A2.35 2.35 0 0 1 9.35 2.5M9.35 8.4a2.35 2.35 0 0 1 0 4.7H4.85a2.35 2.35 0 1 1 0-4.7z"/><path fill="#2EB67D" stroke="none" d="M21.5 9.35a2.35 2.35 0 1 1-4.7 0V7h2.35a2.35 2.35 0 0 1 2.35 2.35M15.6 9.35a2.35 2.35 0 0 1-4.7 0v-4.5a2.35 2.35 0 1 1 4.7 0z"/><path fill="#ECB22E" stroke="none" d="M14.65 21.5a2.35 2.35 0 1 1 0-4.7H17v2.35a2.35 2.35 0 0 1-2.35 2.35M14.65 15.6a2.35 2.35 0 0 1 0-4.7h4.5a2.35 2.35 0 1 1 0 4.7z"/><path fill="#E01E5A" stroke="none" d="M2.5 14.65a2.35 2.35 0 1 1 4.7 0V17H4.85a2.35 2.35 0 0 1-2.35-2.35M8.4 14.65a2.35 2.35 0 0 1 4.7 0v4.5a2.35 2.35 0 1 1-4.7 0z"/></symbol>
+  <symbol id="connector-canva" viewBox="0 0 50 50"><g transform="translate(-50 -20.281)"><path fill="#7d2ae7" stroke="none" d="M50 20.281h50v50H50z"/><path fill="url(#canva-purple)" stroke="none" d="M50 20.281h50v50H50z"/><path fill="url(#canva-cyan)" stroke="none" d="M50 20.281h50v50H50z"/><path fill="#fff" stroke="none" d="M85.07 49.99c-.176 0-.331.149-.492.474-1.821 3.692-4.966 6.304-8.605 6.304-4.208 0-6.814-3.798-6.814-9.046 0-8.889 4.953-14.028 9.303-14.028 2.033 0 3.274 1.277 3.274 3.31 0 2.413-1.37 3.69-1.37 4.541 0 .382.237.613.708.613 1.893 0 4.115-2.175 4.115-5.248 0-2.979-2.593-5.169-6.943-5.169-7.189 0-13.579 6.665-13.579 15.887 0 7.138 4.077 11.856 10.366 11.856 6.675 0 10.535-6.642 10.535-8.798 0-.477-.244-.696-.498-.696"/></g></symbol>
+</svg>
 <div class="app" id="app">
   <input class="state-toggle" type="checkbox" id="sidebarState" aria-label="Sidebar state" />
   <input class="state-toggle" type="checkbox" id="incognitoState" aria-label="Incognito mode" />
@@ -448,7 +518,7 @@
       <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 6H6M18 10H6M18 14H6"/></svg>Library</button>
       <button class="nav-item" id="projectsNav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h5l2 2h11v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 7V5a2 2 0 0 1 2-2h3l2 2h9a2 2 0 0 1 2 2v2"/></svg>Projects<span class="trailing" aria-label="Add project"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></button>
       <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l-3 2"/></svg>Scheduled</button>
-      <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>Plugins</button>
+      <button class="nav-item" id="connectorsNav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M15 8V2"/><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z"/><path d="M9 8V2"/></svg>Connectors</button>
       <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></svg>More</button>
     </nav>
     <section class="chat-history" aria-label="Saved chats">
@@ -484,6 +554,25 @@
       </div>
     </header>
     <section class="projects-page"><div class="projects-heading"><svg viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span>Projects</span><button class="project-create-btn" type="button"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-empty"><svg class="projects-empty-icon" viewBox="0 0 24 24"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg><h2>Welcome to Projects</h2><p>Organize your workflow, set custom instructions in one place</p><button class="project-create-btn"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-grid"></div></section>
+    <section class="connectors-page" aria-label="Connectors">
+      <div class="connectors-shell">
+        <button class="connectors-back" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8 2 12l4 4"/><path d="M2 12h20"/></svg>Back</button>
+        <div class="connectors-index">
+          <header class="connectors-hero"><span class="connectors-kicker"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M15 8V2"/><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z"/><path d="M9 8V2"/></svg></span><h1>Connectors</h1><p>Connect your favorite services to NeoChat</p></header>
+          <div class="connectors-grid">
+            <button class="connector-card" type="button" data-connector="gmail"><span class="connector-logo"><svg viewBox="0 0 192 192" aria-hidden="true"><use href="#connector-gmail"/></svg></span><span class="connector-copy"><strong>Gmail</strong><span>Search, read, and draft email</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="github"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-github"/></svg></span><span class="connector-copy"><strong>GitHub</strong><span>Work with repositories, issues, and pull requests</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="notion"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-notion"/></svg></span><span class="connector-copy"><strong>Notion</strong><span>Bring workspace knowledge into your chats</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="slack"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-slack"/></svg></span><span class="connector-copy"><strong>Slack</strong><span>Find messages and follow team conversations</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="canva"><span class="connector-logo connector-canva"><svg viewBox="0 0 50 50" aria-hidden="true"><use href="#connector-canva"/></svg></span><span class="connector-copy"><strong>Canva</strong><span>Use designs and creative assets in NeoChat</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+          </div>
+        </div>
+        <article class="connector-detail">
+          <div class="connector-detail-head"><span class="connector-logo" id="connectorDetailLogo"></span><h1 class="connector-detail-title"></h1><button class="connector-connect" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Connect</button></div>
+          <p class="connector-detail-description"></p>
+        </article>
+      </div>
+    </section>
     <section class="content">
       <div class="chat-log" id="chatLog" aria-live="polite" aria-label="Conversation"></div>
       <div class="hero-stage" aria-live="polite">
@@ -493,7 +582,7 @@
       <div class="composer-wrap">
         <div class="composer">
           <div class="attachments" id="attachments"><div class="attachments-inner" id="attachmentsInner"></div></div>
-          <textarea id="message" rows="1" placeholder="Ask anything…"></textarea><div class="composer-bottom">
+          <div class="prompt-entry" id="promptEntry"><span class="connector-prefix" id="connectorPrefix" aria-hidden="true"></span><textarea id="message" rows="1" placeholder="Ask anything…"></textarea></div><div class="composer-bottom">
           <div class="attach-wrap" id="attachWrap">
             <button class="round-btn" id="attachBtn" aria-label="Add to message" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
             <div class="attach-panel" id="attachPanel" role="menu" aria-label="Add to message">
@@ -513,9 +602,9 @@
               </div>
               <div class="attach-divider"></div>
               <div class="attach-list">
-                <button class="attach-row" data-toast="Plugins aren't part of this preview yet." role="menuitem">
+                <button class="attach-row" id="openConnectorPicker" role="menuitem">
                   <span class="row-symbol"><svg viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg></span>
-                  <span class="row-copy"><strong>Plugins</strong><span>Connect apps and databases to automate actions for you</span></span>
+                  <span class="row-copy"><strong>Connectors</strong><span>Mention a service in your message</span></span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
                 <button class="attach-row" data-toast="Skills aren't part of this preview yet." role="menuitem">
@@ -529,6 +618,15 @@
                   <span class="row-state" id="webSearchState">Auto</span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
+              </div>
+              <div class="attach-connectors-screen">
+                <button class="attach-connectors-back" id="connectorPickerBack" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>Back</button>
+                <button class="attach-connector-row" type="button" data-connector-mention="gmail"><span class="connector-logo"><svg viewBox="0 0 192 192"><use href="#connector-gmail"/></svg></span><span>Gmail</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+                <button class="attach-connector-row" type="button" data-connector-mention="github"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-github"/></svg></span><span>GitHub</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+                <button class="attach-connector-row" type="button" data-connector-mention="notion"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-notion"/></svg></span><span>Notion</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+                <button class="attach-connector-row" type="button" data-connector-mention="slack"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-slack"/></svg></span><span>Slack</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+                <button class="attach-connector-row" type="button" data-connector-mention="canva"><span class="connector-logo connector-canva"><svg viewBox="0 0 50 50"><use href="#connector-canva"/></svg></span><span>Canva</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
+                <button class="browse-connectors" id="browseConnectors" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 5h6v6"/><path d="M19 5 5 19"/></svg><span>Browse connectors</span></button>
               </div>
             </div>
             <input type="file" id="fileInput" multiple hidden />
@@ -839,7 +937,7 @@
           </div>
           <div class="set-row">
             <span class="label label-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M15 8V2"/><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z"/><path d="M9 8V2"/></svg>Connectors</span>
-            <span class="val"><button class="link-btn" data-toast="Connectors aren't part of this preview yet.">Manage</button></span>
+            <span class="val"><button class="link-btn" id="manageConnectors">Manage</button></span>
           </div>
           <div class="tone-wrap" id="toneWrap">
             <button class="set-row tone-trigger-row" id="toneTrigger" type="button" aria-expanded="false">
@@ -1563,6 +1661,11 @@
     const projectOverlay=document.querySelector('.project-create-overlay');
     const projectForm=document.querySelector('.project-create-dialog');
     const projectChatList=document.querySelector('.project-chat-list');
+    const connectorsPage=document.querySelector('.connectors-page');
+    const connectorDetailLogo=document.getElementById('connectorDetailLogo');
+    const connectorDetailTitle=document.querySelector('.connector-detail-title');
+    const connectorDetailDescription=document.querySelector('.connector-detail-description');
+    const mainSidebarState=document.getElementById('sidebarState');
     const incognitoExitButton=document.querySelector('.incognito-exit-btn');
     const incognitoExitConfirm=document.querySelector('.incognito-exit-confirm');
     const apiKeyStorageKey='neochat-api-key';
@@ -1590,9 +1693,40 @@
     let incognitoMessages=[];
     let sending=false;
     let keyReloadTimer=null;
+    const connectors={
+      gmail:{name:'Gmail',viewBox:'0 0 192 192',description:'Search your inbox, find the right thread, and draft clear replies without leaving the conversation.'},
+      github:{name:'GitHub',viewBox:'0 0 24 24',description:'Work with repositories, issues, pull requests, and recent code activity from one focused place.'},
+      notion:{name:'Notion',viewBox:'0 0 24 24',description:'Find pages and bring the knowledge stored in your Notion workspace into a NeoChat conversation.'},
+      slack:{name:'Slack',viewBox:'0 0 24 24',description:'Search messages, catch up on channels, and keep team conversations close to the work you are doing.'},
+      canva:{name:'Canva',viewBox:'0 0 50 50',description:'Create and review designs, presentations, and visual assets as part of your NeoChat workflow.'}
+    };
 
     function storedValue(storage,key){
       try{return storage.getItem(key)||''}catch(error){return ''}
+    }
+
+    function connectorLogoMarkup(id){
+      const connector=connectors[id];
+      if(!connector)return '';
+      const canvaClass=id==='canva'?' connector-canva':'';
+      return '<span class="connector-logo'+canvaClass+'"><svg viewBox="'+connector.viewBox+'" aria-hidden="true"><use href="#connector-'+id+'"></use></svg></span>';
+    }
+
+    function showConnectorsIndex(){
+      connectorsPage.classList.remove('is-detail');
+      mainPanel.classList.add('connectors-open');
+      mainSidebarState.checked=false;
+    }
+
+    function showConnectorDetail(id){
+      const connector=connectors[id];
+      if(!connector)return;
+      connectorDetailLogo.className='connector-logo'+(id==='canva'?' connector-canva':'');
+      connectorDetailLogo.innerHTML='<svg viewBox="'+connector.viewBox+'" aria-hidden="true"><use href="#connector-'+id+'"></use></svg>';
+      connectorDetailTitle.textContent=connector.name;
+      connectorDetailDescription.textContent=connector.description;
+      connectorsPage.classList.add('is-detail');
+      connectorsPage.scrollTop=0;
     }
     function storeValue(storage,key,value){
       try{
@@ -1987,13 +2121,13 @@
     }
 
     async function showProjectsIndex(){
-      activeProject=null;activeProjectChats=[];mainPanel.classList.remove('project-mode','has-active-chat');mainPanel.classList.add('projects-index');sidebarState.checked=false;resetConversation();
+      activeProject=null;activeProjectChats=[];mainPanel.classList.remove('project-mode','has-active-chat','connectors-open');mainPanel.classList.add('projects-index');sidebarState.checked=false;resetConversation();
       try{renderProjects(await fetchProjects())}catch(error){toast(error.message)}
     }
 
     function renderProjectHome(){
       if(!activeProject)return;
-      mainPanel.classList.remove('projects-index');mainPanel.classList.add('project-mode');
+      mainPanel.classList.remove('projects-index','connectors-open');mainPanel.classList.add('project-mode');
       homeGreeting.textContent='What should we do in '+activeProject.name+' ?';homeGreeting.classList.add('is-ready');
       document.querySelector('.project-description').textContent=activeProject.description||'Chats and instructions for this project';
       textarea.placeholder='Do anything';projectChatList.replaceChildren();
@@ -2519,13 +2653,30 @@
 
     document.querySelector('.new-chat').addEventListener('click',function(){
       if(sending){toast('Wait for the current response.');return}
-      activeProject=null;activeProjectChats=[];mainPanel.classList.remove('project-mode','projects-index');textarea.placeholder='Ask anything…';renderHomeGreeting();
+      activeProject=null;activeProjectChats=[];mainPanel.classList.remove('project-mode','projects-index','connectors-open');textarea.placeholder='Ask anything…';renderHomeGreeting();
       resetConversation();
       sidebarState.checked=false;
       toast('New chat');
     });
 
     projectsNav.addEventListener('click',showProjectsIndex);
+    document.getElementById('connectorsNav').addEventListener('click',showConnectorsIndex);
+    document.getElementById('manageConnectors').addEventListener('click',function(){
+      document.getElementById('settingsClose').click();
+      setTimeout(showConnectorsIndex,180);
+    });
+    document.querySelectorAll('.connector-card').forEach(function(button){
+      button.addEventListener('click',function(){showConnectorDetail(button.dataset.connector)});
+    });
+    document.querySelector('.connectors-back').addEventListener('click',function(){
+      if(connectorsPage.classList.contains('is-detail')){
+        connectorsPage.classList.remove('is-detail');
+        connectorsPage.scrollTop=0;
+      }else{
+        mainPanel.classList.remove('connectors-open');
+      }
+    });
+    document.addEventListener('connectors:open',showConnectorsIndex);
     document.querySelectorAll('.project-create-btn').forEach(function(button){button.addEventListener('click',function(){projectOverlay.classList.add('is-open');projectOverlay.setAttribute('aria-hidden','false');setTimeout(function(){document.getElementById('projectName').focus()},100)})});
     document.querySelector('.project-cancel').addEventListener('click',function(){projectOverlay.classList.remove('is-open');projectOverlay.setAttribute('aria-hidden','true')});
     projectOverlay.addEventListener('click',function(event){if(event.target===projectOverlay)document.querySelector('.project-cancel').click()});
@@ -2620,7 +2771,7 @@
       if(!event.target.closest('.chat-actions-wrap'))closeChatActions();
     });
 
-    document.querySelectorAll('.nav-item:not(#projectsNav)').forEach(function(button){
+    document.querySelectorAll('.nav-item:not(#projectsNav):not(#connectorsNav)').forEach(function(button){
       button.addEventListener('click',function(){toast(button.textContent.trim()+' is not part of this preview.')});
     });
 
@@ -2650,9 +2801,18 @@
     const attachmentsInner=document.getElementById('attachmentsInner');
     const webSearchRow=document.getElementById('webSearchRow');
     const webSearchState=document.getElementById('webSearchState');
+    const connectorPickerOpen=document.getElementById('openConnectorPicker');
+    const connectorPickerBack=document.getElementById('connectorPickerBack');
+    const browseConnectors=document.getElementById('browseConnectors');
+    const promptEntry=document.getElementById('promptEntry');
+    const connectorPrefix=document.getElementById('connectorPrefix');
+    const textarea=document.getElementById('message');
     const reduced=window.matchMedia('(prefers-reduced-motion:reduce)');
+    const connectorNames={gmail:'Gmail',github:'GitHub',notion:'Notion',slack:'Slack',canva:'Canva'};
+    const connectorViewBoxes={gmail:'0 0 192 192',github:'0 0 24 24',notion:'0 0 24 24',slack:'0 0 24 24',canva:'0 0 50 50'};
     const CLOSE_MS=190,CONFIRM_MS=140;
     let closeTimer=null,selectTimer=null,pendingTile=null;
+    let activeConnector='';
 
     function isOpen(){return wrap.classList.contains('is-open')&&!wrap.classList.contains('is-closing')}
 
@@ -2671,7 +2831,7 @@
       wrap.classList.remove('is-open');
       wrap.classList.add('is-closing');
       btn.setAttribute('aria-expanded','false');
-      closeTimer=setTimeout(function(){wrap.classList.remove('is-closing')},reduced.matches?0:CLOSE_MS);
+      closeTimer=setTimeout(function(){wrap.classList.remove('is-closing');panel.classList.remove('is-connectors')},reduced.matches?0:CLOSE_MS);
     }
     btn.addEventListener('click',function(){isOpen()?closePanel():openPanel()});
     document.addEventListener('panel:opening',function(e){if(e.detail!=='attach')closePanel()});
@@ -2680,6 +2840,36 @@
       if(e.key==='Escape'&&isOpen()){e.preventDefault();closePanel();btn.focus({preventScroll:true})}
     });
     window.addEventListener('blur',closePanel);
+
+    connectorPickerOpen.addEventListener('click',function(){panel.classList.add('is-connectors')});
+    connectorPickerBack.addEventListener('click',function(){panel.classList.remove('is-connectors')});
+    browseConnectors.addEventListener('click',function(){
+      closePanel();
+      document.dispatchEvent(new CustomEvent('connectors:open'));
+    });
+    document.querySelectorAll('[data-connector-mention]').forEach(function(row){
+      row.addEventListener('click',function(){
+        const id=row.dataset.connectorMention;
+        const name=connectorNames[id];
+        if(!name)return;
+        activeConnector=id;
+        promptEntry.classList.add('has-connector');
+        connectorPrefix.className='connector-prefix'+(id==='canva'?' connector-canva':'');
+        connectorPrefix.innerHTML='<svg viewBox="'+connectorViewBoxes[id]+'" aria-hidden="true"><use href="#connector-'+id+'"></use></svg>';
+        textarea.value=name+' ';
+        textarea.dispatchEvent(new Event('input'));
+        textarea.focus();
+        closePanel();
+      });
+    });
+    textarea.addEventListener('input',function(){
+      if(activeConnector&&textarea.value.indexOf(connectorNames[activeConnector])!==0){
+        activeConnector='';
+        promptEntry.classList.remove('has-connector');
+        connectorPrefix.className='connector-prefix';
+        connectorPrefix.replaceChildren();
+      }
+    });
 
     /* ---------- file picking ---------- */
     function iconFor(name){
