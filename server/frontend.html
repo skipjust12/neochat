@@ -479,11 +479,10 @@
   .browse-connectors{grid-template-columns:27px minmax(0,1fr);margin-top:5px;padding-top:9px;border-top:1px solid var(--picker-line);border-radius:0 0 7px 7px}
   .browse-connectors>svg{width:17px;height:17px;color:var(--muted)}
   .prompt-entry{position:relative}
-  .connector-prefix{display:none;position:absolute;z-index:2;left:10px;top:7px;height:22px;align-items:center;gap:6px;color:var(--text);pointer-events:none}
-  .connector-prefix svg{width:16px;height:16px;flex:none}
-  .connector-prefix span{font-size:12.5px;font-weight:520;line-height:1}
+  .connector-prefix{display:none;position:absolute;z-index:2;left:11px;top:8px;height:20px;align-items:center;color:var(--text);pointer-events:none}
+  .connector-prefix svg{width:15px;height:15px;flex:none}
   .prompt-entry.has-connector .connector-prefix{display:flex}
-  .prompt-entry.has-connector textarea{padding-left:var(--connector-prefix-width,76px)}
+  .prompt-entry.has-connector textarea{padding-left:34px}
   .prompt-entry.has-connector textarea::placeholder{color:transparent}
 
   @media(min-width:900px){#sidebarState:checked~.main{margin-left:248px;width:calc(100% - 248px)}#sidebarState:checked~.sidebar-backdrop{display:none}}
@@ -2275,8 +2274,10 @@
       const selectedMode=document.querySelector('input[name="work-mode"]:checked');
       const mode=(selectedMode?selectedMode.value:'Auto').toLowerCase();
       const pluginMention=textarea.dataset.pluginMention||'';
+      const visibleMessage=textarea.value.trim();
+      const pluginBody=pluginMention&&visibleMessage.toLowerCase().indexOf(pluginMention.toLowerCase())===0?visibleMessage.slice(pluginMention.length).trimStart():visibleMessage;
       const request={
-        message:(pluginMention?'@'+pluginMention+' ':'')+textarea.value.trim(),
+        message:(pluginMention?'@'+pluginMention+(pluginBody?' ':''):'')+pluginBody,
         requested_mode:mode,
         persona:document.getElementById('toneTriggerLabel').textContent.trim()||'Default',
         idempotency_key:createIdempotencyKey()
@@ -2859,21 +2860,23 @@
       textarea.dataset.pluginMention=name;
       promptEntry.classList.add('has-connector');
       connectorPrefix.className='connector-prefix'+(id==='canva'?' connector-canva':'');
-      connectorPrefix.innerHTML='<svg viewBox="'+connectorViewBoxes[id]+'" aria-hidden="true"><use href="#connector-'+id+'"></use></svg><span></span>';
-      connectorPrefix.querySelector('span').textContent=name;
-      requestAnimationFrame(function(){promptEntry.style.setProperty('--connector-prefix-width',(connectorPrefix.offsetWidth+22)+'px')});
+      connectorPrefix.innerHTML='<svg viewBox="'+connectorViewBoxes[id]+'" aria-hidden="true"><use href="#connector-'+id+'"></use></svg>';
     }
     function clearPlugin(){
       activeConnector='';
       delete textarea.dataset.pluginMention;
       promptEntry.classList.remove('has-connector');
-      promptEntry.style.removeProperty('--connector-prefix-width');
       connectorPrefix.className='connector-prefix';
       connectorPrefix.replaceChildren();
     }
     document.querySelectorAll('[data-connector-mention]').forEach(function(row){
       row.addEventListener('click',function(){
         const id=row.dataset.connectorMention;
+        const name=connectorNames[id];
+        const previousName=activeConnector?connectorNames[activeConnector]:'';
+        let existing=textarea.value.trimStart();
+        if(previousName&&existing.toLowerCase().indexOf(previousName.toLowerCase())===0)existing=existing.slice(previousName.length).trimStart();
+        textarea.value=name+(existing?' '+existing:' ');
         setPlugin(id);
         textarea.focus();
         closePanel();
@@ -2886,8 +2889,8 @@
       let before=textarea.value.slice(0,match.index);
       let after=textarea.value.slice(match.index+match[0].length);
       if(/\s$/.test(before)&&/^\s/.test(after))after=after.slice(1);
-      textarea.value=before+after;
-      const caret=before.length;
+      textarea.value=before+match[0].slice(1)+after;
+      const caret=before.length+match[0].length-1;
       textarea.setSelectionRange(caret,caret);
       setPlugin(id);
     });
