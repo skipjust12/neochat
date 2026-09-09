@@ -479,11 +479,14 @@
   .browse-connectors{grid-template-columns:27px minmax(0,1fr);margin-top:5px;padding-top:9px;border-top:1px solid var(--picker-line);border-radius:0 0 7px 7px}
   .browse-connectors>svg{width:17px;height:17px;color:var(--muted)}
   .prompt-entry{position:relative}
-  .connector-prefix{display:none;position:absolute;z-index:2;left:11px;top:8px;height:20px;align-items:center;color:var(--text);pointer-events:none}
-  .connector-prefix svg{width:15px;height:15px;flex:none}
-  .prompt-entry.has-connector .connector-prefix{display:flex}
-  .prompt-entry.has-connector textarea{padding-left:34px}
-  .prompt-entry.has-connector textarea::placeholder{color:transparent}
+  .connector-highlights{position:absolute;z-index:0;inset:0;min-height:63px;max-height:150px;padding:2px 4px 12px;overflow:auto;scrollbar-width:none;pointer-events:none;white-space:pre-wrap;overflow-wrap:break-word;color:var(--text);font-size:14px;line-height:1.55}
+  .connector-highlights::-webkit-scrollbar{display:none}
+  .prompt-entry textarea{scrollbar-width:none}
+  .prompt-entry textarea::-webkit-scrollbar{display:none}
+  .prompt-entry.has-value textarea{position:relative;z-index:1;color:transparent;-webkit-text-fill-color:transparent;caret-color:var(--text)}
+  .connector-mention{position:relative;border-radius:4px;background:var(--picker-active);box-shadow:0 0 0 2px var(--picker-active)}
+  .connector-mention-at{position:relative;color:transparent}
+  .connector-mention-at svg{position:absolute;left:50%;top:50%;width:.9em;height:.9em;color:var(--text);transform:translate(-50%,-50%)}
 
   @media(min-width:900px){#sidebarState:checked~.main{margin-left:248px;width:calc(100% - 248px)}#sidebarState:checked~.sidebar-backdrop{display:none}}
   @media(max-width:899px){.sidebar{width:248px}.content:not(.has-chat){padding-bottom:45px}.topbar{padding:0 17px}.home-greeting,h1{font-size:33px}.content:not(.has-chat) .composer-wrap{width:calc(100% - 36px)}.hero-stage{width:calc(100% - 36px)}.suggestions{display:flex;gap:6px}.suggestions button{font-size:10px;padding:6px 7px}}
@@ -583,7 +586,7 @@
       <div class="composer-wrap">
         <div class="composer">
           <div class="attachments" id="attachments"><div class="attachments-inner" id="attachmentsInner"></div></div>
-          <div class="prompt-entry" id="promptEntry"><span class="connector-prefix" id="connectorPrefix" aria-hidden="true"></span><textarea id="message" rows="1" placeholder="Ask anything…"></textarea></div><div class="composer-bottom">
+          <div class="prompt-entry" id="promptEntry"><div class="connector-highlights" id="connectorHighlights" aria-hidden="true"></div><textarea id="message" rows="1" placeholder="Ask anything…"></textarea></div><div class="composer-bottom">
           <div class="attach-wrap" id="attachWrap">
             <button class="round-btn" id="attachBtn" aria-label="Add to message" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
             <div class="attach-panel" id="attachPanel" role="menu" aria-label="Add to message">
@@ -2273,11 +2276,9 @@
     function selectedRequest(){
       const selectedMode=document.querySelector('input[name="work-mode"]:checked');
       const mode=(selectedMode?selectedMode.value:'Auto').toLowerCase();
-      const pluginMention=textarea.dataset.pluginMention||'';
       const visibleMessage=textarea.value.trim();
-      const pluginBody=pluginMention&&visibleMessage.toLowerCase().indexOf(pluginMention.toLowerCase())===0?visibleMessage.slice(pluginMention.length).trimStart():visibleMessage;
       const request={
-        message:(pluginMention?'@'+pluginMention+(pluginBody?' ':''):'')+pluginBody,
+        message:visibleMessage,
         requested_mode:mode,
         persona:document.getElementById('toneTriggerLabel').textContent.trim()||'Default',
         idempotency_key:createIdempotencyKey()
@@ -2811,14 +2812,13 @@
     const connectorPickerBack=document.getElementById('connectorPickerBack');
     const browseConnectors=document.getElementById('browseConnectors');
     const promptEntry=document.getElementById('promptEntry');
-    const connectorPrefix=document.getElementById('connectorPrefix');
+    const connectorHighlights=document.getElementById('connectorHighlights');
     const textarea=document.getElementById('message');
     const reduced=window.matchMedia('(prefers-reduced-motion:reduce)');
     const connectorNames={gmail:'Gmail',github:'GitHub',notion:'Notion',slack:'Slack',canva:'Canva'};
     const connectorViewBoxes={gmail:'0 0 192 192',github:'0 0 24 24',notion:'0 0 24 24',slack:'0 0 24 24',canva:'0 0 50 50'};
     const CLOSE_MS=190,CONFIRM_MS=140;
     let closeTimer=null,selectTimer=null,pendingTile=null;
-    let activeConnector='';
 
     function isOpen(){return wrap.classList.contains('is-open')&&!wrap.classList.contains('is-closing')}
 
@@ -2853,54 +2853,52 @@
       closePanel();
       document.dispatchEvent(new CustomEvent('connectors:open'));
     });
-    function setPlugin(id){
+    function escapeMarkup(value){
+      return value.replace(/[&<>]/g,function(character){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[character]});
+    }
+    function renderConnectorMentions(){
+      const pattern=/(^|\s)@(gmail|github|notion|slack|canva)(?=\s|$)/gi;
+      let cursor=0;
+      let markup='';
+      let match;
+      while((match=pattern.exec(textarea.value))!==null){
+        const id=match[2].toLowerCase();
+        const mentionStart=match.index+match[1].length;
+        markup+=escapeMarkup(textarea.value.slice(cursor,mentionStart));
+        markup+='<span class="connector-mention"><span class="connector-mention-at">@<svg viewBox="'+connectorViewBoxes[id]+'" aria-hidden="true"><use href="#connector-'+id+'"></use></svg></span>'+escapeMarkup(textarea.value.slice(mentionStart+1,pattern.lastIndex))+'</span>';
+        cursor=pattern.lastIndex;
+      }
+      markup+=escapeMarkup(textarea.value.slice(cursor));
+      connectorHighlights.innerHTML=markup+(textarea.value.endsWith('\n')?'\n':'');
+      promptEntry.classList.toggle('has-value',textarea.value.length>0);
+      connectorHighlights.scrollTop=textarea.scrollTop;
+    }
+    function insertConnectorMention(id){
       const name=connectorNames[id];
       if(!name)return;
-      activeConnector=id;
-      textarea.dataset.pluginMention=name;
-      promptEntry.classList.add('has-connector');
-      connectorPrefix.className='connector-prefix'+(id==='canva'?' connector-canva':'');
-      connectorPrefix.innerHTML='<svg viewBox="'+connectorViewBoxes[id]+'" aria-hidden="true"><use href="#connector-'+id+'"></use></svg>';
-    }
-    function clearPlugin(){
-      activeConnector='';
-      delete textarea.dataset.pluginMention;
-      promptEntry.classList.remove('has-connector');
-      connectorPrefix.className='connector-prefix';
-      connectorPrefix.replaceChildren();
+      const start=textarea.selectionStart;
+      const end=textarea.selectionEnd;
+      const before=textarea.value.slice(0,start);
+      const after=textarea.value.slice(end);
+      const leadingSpace=before&&!/\s$/.test(before)?' ':'';
+      const trailingSpace=!after||!/\s/.test(after.charAt(0))?' ':'';
+      const mention='@'+name;
+      textarea.value=before+leadingSpace+mention+trailingSpace+after;
+      const caret=before.length+leadingSpace.length+mention.length+trailingSpace.length;
+      textarea.setSelectionRange(caret,caret);
+      textarea.dispatchEvent(new Event('input',{bubbles:true}));
     }
     document.querySelectorAll('[data-connector-mention]').forEach(function(row){
       row.addEventListener('click',function(){
-        const id=row.dataset.connectorMention;
-        const name=connectorNames[id];
-        const previousName=activeConnector?connectorNames[activeConnector]:'';
-        let existing=textarea.value.trimStart();
-        if(previousName&&existing.toLowerCase().indexOf(previousName.toLowerCase())===0)existing=existing.slice(previousName.length).trimStart();
-        textarea.value=name+(existing?' '+existing:' ');
-        setPlugin(id);
+        insertConnectorMention(row.dataset.connectorMention);
         textarea.focus();
         closePanel();
       });
     });
-    textarea.addEventListener('input',function(){
-      const match=textarea.value.match(/@(gmail|github|notion|slack|canva)(?=\s|$)/i);
-      if(!match)return;
-      const id=match[1].toLowerCase();
-      let before=textarea.value.slice(0,match.index);
-      let after=textarea.value.slice(match.index+match[0].length);
-      if(/\s$/.test(before)&&/^\s/.test(after))after=after.slice(1);
-      textarea.value=before+match[0].slice(1)+after;
-      const caret=before.length+match[0].length-1;
-      textarea.setSelectionRange(caret,caret);
-      setPlugin(id);
-    });
-    textarea.addEventListener('keydown',function(event){
-      if(event.key==='Backspace'&&activeConnector&&textarea.selectionStart===0&&textarea.selectionEnd===0){
-        event.preventDefault();
-        clearPlugin();
-      }
-    });
-    document.addEventListener('plugin:clear',clearPlugin);
+    textarea.addEventListener('input',renderConnectorMentions);
+    textarea.addEventListener('scroll',function(){connectorHighlights.scrollTop=textarea.scrollTop});
+    document.addEventListener('plugin:clear',renderConnectorMentions);
+    renderConnectorMentions();
 
     /* ---------- file picking ---------- */
     function iconFor(name){
