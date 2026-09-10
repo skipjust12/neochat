@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
-<title>NeoChat — Minimal AI Chat</title>
+<title>NeoChat</title>
 <style>
   html{--bg:#fafaf8;--grad1:rgba(214,226,217,.5);--grad2:rgba(231,228,216,.5);--text:#171817;--muted:#8f918d;--line:rgba(23,24,23,.08);--panel:rgba(253,253,252,.97);--card:rgba(253,253,251,.72);--soft:#f1f1ef;--soft-hover:#eaeae7;--btn:rgba(255,255,255,.7);--btn-hover:rgba(255,255,255,.98);--composer:rgba(255,255,255,.9);--hover:rgba(23,24,23,.05);--raise:rgba(255,255,255,.78);--inset-hi:rgba(255,255,255,.72);--border-light:rgba(255,255,255,.85);--accent:#1d211f;--on-accent:#fff;--shadow:0 24px 60px rgba(25,27,24,.07);--shadow-lg:0 26px 72px rgba(25,27,24,.16);--radius-xl:34px;--ease-out:cubic-bezier(.16,1,.3,1);--ease-in:cubic-bezier(.4,.05,.7,.2);--ease-smooth:cubic-bezier(.22,.61,.36,1);--ease-gentle:cubic-bezier(.25,.46,.45,.94)}
   html[data-theme="dark"]{--bg:#0f1110;--grad1:rgba(86,106,94,.22);--grad2:rgba(116,112,92,.16);--text:#edefeb;--muted:#8a8e89;--line:rgba(255,255,255,.09);--panel:rgba(25,27,26,.97);--card:rgba(24,26,25,.72);--soft:#212422;--soft-hover:#282c29;--btn:rgba(255,255,255,.06);--btn-hover:rgba(255,255,255,.12);--composer:rgba(27,29,28,.9);--hover:rgba(255,255,255,.06);--raise:rgba(255,255,255,.07);--inset-hi:rgba(255,255,255,.06);--border-light:rgba(255,255,255,.08);--accent:#edefeb;--on-accent:#161817;--shadow:0 24px 60px rgba(0,0,0,.4);--shadow-lg:0 26px 72px rgba(0,0,0,.55)}
@@ -493,8 +493,275 @@
   @media(max-width:520px){.mode-panel,#mode-manual:checked~.mode-panel{width:min(286px,calc(100vw - 70px))}.attach-panel{width:min(286px,calc(100vw - 62px))}.mode-copy strong{font-size:13px}.mode-copy span{font-size:10.5px}}
   @media(max-width:680px){.connectors-shell{padding:18px 18px 44px}.connectors-hero{margin:42px 0 28px}.connectors-grid{grid-template-columns:1fr}.connector-detail{padding-top:34px}.connector-detail-head{grid-template-columns:54px 1fr;gap:13px}.connector-detail-head .connector-logo{width:54px;height:54px}.connector-connect{grid-column:1/-1;justify-self:start}.connector-detail-description{font-size:13px}}
 </style>
+<style id="fluid-functionalism-theme">
+  /* Fluid Functionalism-inspired design system: Inter, stepped surfaces,
+     36/28px control rhythm, restrained shape, and responsive motion. */
+  :root,
+  html,
+  html[data-theme="dark"]{
+    color-scheme:dark;
+    --bg:#171717;
+    --text:#f5f5f5;
+    --muted:#9a9a9a;
+    --muted-strong:#b8b8b8;
+    --line:rgba(255,255,255,.075);
+    --line-strong:rgba(255,255,255,.12);
+    --panel:#1d1d1d;
+    --card:#171717;
+    --soft:#252525;
+    --soft-hover:#2b2b2b;
+    --btn:#202020;
+    --btn-hover:#2a2a2a;
+    --composer:#252525;
+    --hover:rgba(255,255,255,.055);
+    --raise:#2d2d2d;
+    --accent:#f2f2f2;
+    --on-accent:#171717;
+    --border-light:rgba(255,255,255,.08);
+    --shadow-lg:0 18px 46px rgba(0,0,0,.32),0 2px 8px rgba(0,0,0,.2);
+    --inset-hi:rgba(255,255,255,.035);
+    --picker-bg:#252525;
+    --picker-line:rgba(255,255,255,.08);
+    --picker-hover:rgba(255,255,255,.06);
+    --picker-active:rgba(255,255,255,.10);
+    --focus:#78a8ff;
+    --danger:#ff7069;
+    --surface-1:#171717;
+    --surface-2:#1d1d1d;
+    --surface-3:#252525;
+    --surface-4:#2d2d2d;
+    --radius-control:8px;
+    --radius-panel:12px;
+    --spring-fast:80ms;
+    --spring-moderate:160ms;
+    --spring-slow:240ms;
+    --ease-fluid:cubic-bezier(.22,1,.36,1);
+  }
+  html[data-theme="light"]{
+    color-scheme:light;
+    --bg:#f7f7f5;
+    --text:#1d1d1b;
+    --muted:#777772;
+    --muted-strong:#575752;
+    --line:rgba(29,29,27,.09);
+    --line-strong:rgba(29,29,27,.14);
+    --panel:#ffffff;
+    --card:#f7f7f5;
+    --soft:#efefec;
+    --soft-hover:#e8e8e4;
+    --btn:#ffffff;
+    --btn-hover:#f2f2ef;
+    --composer:#ffffff;
+    --hover:rgba(29,29,27,.055);
+    --raise:#ffffff;
+    --accent:#20201e;
+    --on-accent:#ffffff;
+    --border-light:rgba(29,29,27,.10);
+    --shadow-lg:0 18px 46px rgba(29,29,27,.11),0 2px 8px rgba(29,29,27,.06);
+    --inset-hi:rgba(255,255,255,.8);
+    --picker-bg:#ffffff;
+    --picker-line:rgba(29,29,27,.10);
+    --picker-hover:rgba(29,29,27,.05);
+    --picker-active:rgba(29,29,27,.08);
+    --focus:#2563eb;
+    --danger:#c83e38;
+    --surface-1:#f7f7f5;
+    --surface-2:#ffffff;
+    --surface-3:#ffffff;
+    --surface-4:#ffffff;
+  }
+  *{scrollbar-width:thin;scrollbar-color:rgba(150,150,150,.28) transparent}
+  *::-webkit-scrollbar{width:8px;height:8px}
+  *::-webkit-scrollbar-track{background:transparent}
+  *::-webkit-scrollbar-thumb{min-height:36px;border:3px solid transparent;border-radius:999px;background:rgba(150,150,150,.28);background-clip:padding-box;transition:background-color var(--spring-fast) ease}
+  *::-webkit-scrollbar-thumb:hover{border-width:2px;background:rgba(150,150,150,.5);background-clip:padding-box}
+  body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;background:var(--surface-1);letter-spacing:-.008em}
+  h1,h2,h3,h4,h5,h6,.home-greeting,.projects-heading,.projects-empty h2,.project-create-title,.connectors-hero h1,.connector-detail-title,.chat-text{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+  button,input,textarea,select{font-family:inherit}
+  button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
+  svg{width:16px;height:16px;stroke-width:1.75}
+
+  .sidebar{width:260px;inset:0 auto 0 0;padding:16px 12px 12px;border:0;border-right:1px solid var(--line);border-radius:0;background:var(--surface-2);box-shadow:none}
+  .sidebar .brand-row{height:36px;padding:0 6px 0 10px;margin-bottom:14px}
+  .brand-mark{height:28px;font-size:16px;font-weight:600;letter-spacing:-.035em}
+  .brand-mark svg{width:18px;height:18px}
+  .icon-btn{width:28px;height:28px;border-radius:7px}
+  .new-chat{height:36px;padding:0 10px;gap:8px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface-3);font-size:13px;font-weight:550}
+  .new-chat:hover{background:var(--surface-4);border-color:var(--line-strong)}
+  .new-chat svg,.nav-item svg{width:16px;height:16px}
+  .nav{margin-top:8px;gap:1px}
+  .nav-item{min-height:36px;padding:8px 10px;gap:9px;border-radius:var(--radius-control);color:var(--muted-strong);font-size:13px;font-weight:450}
+  .nav-item:hover{background:var(--hover);color:var(--text)}
+  .chat-history{margin-top:26px;border:0;padding:0}
+  .chat-history-title{padding:0 10px 8px;color:var(--muted);font-size:11px;font-weight:500;letter-spacing:0;text-transform:none}
+  .conversation-list{gap:1px;padding-right:2px;mask-image:linear-gradient(to bottom,transparent,#000 10px,#000 calc(100% - 10px),transparent)}
+  .conversation-item{min-height:32px;padding:7px 10px;border-radius:7px;color:var(--muted-strong);font-size:12px}
+  .conversation-item:hover{background:var(--hover)}
+  .conversation-item.is-active{background:var(--picker-active);font-weight:550}
+  .profile{min-height:48px;margin-top:auto;padding:10px 6px 0;border-top:1px solid var(--line);border-radius:0;gap:9px}
+  .avatar{width:28px;height:28px;background:var(--surface-4)!important;font-size:10px;font-weight:600}
+  .profile-copy strong{font-size:12px;font-weight:550}.profile-copy span{font-size:10px}
+
+  .main{background:var(--surface-1);backdrop-filter:none;transition:margin var(--spring-slow) var(--ease-fluid),width var(--spring-slow) var(--ease-fluid)}
+  .main::before,.main::after{display:none}
+  .topbar{height:56px;padding:0 18px;border-bottom:1px solid transparent}
+  .sidebar-toggle,.incognito-btn,.top-new-chat,.chat-actions-trigger,.incognito-exit-btn{width:28px;height:28px;border:0;border-radius:7px;background:transparent;box-shadow:none;color:var(--muted-strong)}
+  .sidebar-toggle:hover,.incognito-btn:hover,.top-new-chat:hover,.chat-actions-trigger:hover,.incognito-exit-btn:hover{background:var(--hover);color:var(--text)}
+  .content{inset:56px 0 0;padding:0}
+  .content:not(.has-chat){display:grid;align-content:center;justify-items:center;gap:22px;padding:0 24px 72px}
+  .hero-stage{width:min(720px,100%);height:54px;min-height:0;transform:none}
+  .home-greeting,h1,.main.project-mode .home-greeting{font-size:clamp(28px,3vw,38px);font-weight:600;line-height:1.15;letter-spacing:-.045em}
+  .hero p{font-size:13px;line-height:1.5}
+
+  .content:not(.has-chat) .composer-wrap{position:relative;left:auto;bottom:auto;transform:none;width:min(720px,100%)}
+  .composer-wrap{width:min(760px,calc(100% - 40px));bottom:20px}
+  .composer{padding:12px 12px 10px;border:1px solid var(--line);border-radius:var(--radius-panel);background:var(--surface-3);box-shadow:0 8px 28px rgba(0,0,0,.14);backdrop-filter:none}
+  .composer:focus-within{border-color:var(--line-strong);box-shadow:0 8px 32px rgba(0,0,0,.18),0 0 0 1px var(--line)}
+  .composer textarea{min-height:58px;max-height:176px;padding:2px 4px 11px;font-size:14px;line-height:1.55}
+  .composer-bottom{gap:4px;padding-top:3px}
+  .round-btn,.send{width:28px;height:28px;border-radius:7px;box-shadow:none}
+  .round-btn{border:0;background:transparent;color:var(--muted)}
+  .round-btn:hover{background:var(--hover);color:var(--text)}
+  .send{background:var(--accent);color:var(--on-accent)}
+  .send:hover{transform:none;filter:brightness(.94)}
+  .mode-trigger{height:28px!important;min-height:28px!important;padding:4px 7px!important;border-radius:7px!important;font-size:12px!important;font-weight:500!important}
+  .suggestions{justify-content:flex-start;margin:13px 0 0;gap:6px}
+  .suggestions button{padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--muted);font-size:11px}
+  .composer-wrap .hint{margin-top:10px!important;font-size:11px!important;opacity:.72}
+
+  /* Popovers and compact control regions use the same 28px rhythm. */
+  .mode-panel,.attach-panel,.chat-actions-panel,.incognito-exit-confirm{
+    padding:7px!important;
+    border:1px solid var(--line)!important;
+    border-radius:var(--radius-panel)!important;
+    background:var(--surface-3)!important;
+    box-shadow:var(--shadow-lg)!important;
+  }
+  .mode-panel,.attach-panel{width:296px}
+  #mode-manual:checked~.mode-panel{width:312px}
+  .mode-picker.is-open .mode-panel,.attach-wrap.is-open .attach-panel{clip-path:inset(0 round var(--radius-panel))}
+  .mode-choice{min-height:44px;grid-template-columns:28px minmax(0,1fr) 16px;gap:8px;padding:6px 8px;border-radius:8px}
+  .mode-choice:hover,.vendor-row:hover,.model-row:hover,.mode-back:hover,.legacy-link:hover,.attach-tile:hover,.attach-row:hover,.attach-connector-row:hover,.browse-connectors:hover,.chat-menu-item:hover{background:var(--picker-hover)}
+  .mode-symbol,.vendor-symbol,.model-symbol,.row-symbol{width:28px;height:28px;border-radius:7px;color:var(--muted)}
+  .mode-symbol svg,.vendor-symbol svg,.model-symbol svg,.row-symbol svg{width:16px;height:16px;filter:none}
+  .mode-copy strong,.vendor-name,.model-copy strong,.row-copy strong{font-size:13px;font-weight:550;letter-spacing:-.01em}
+  .mode-copy span,.model-copy .model-meta span,.row-copy span{margin-top:2px;font-size:11px;line-height:1.3;color:var(--muted)}
+  .model-copy .model-tier{padding:2px 6px;border-radius:5px;background:var(--picker-active);font-size:10px;font-weight:550}
+  .mode-back,.attach-connectors-back{min-height:32px;padding:7px 8px;border-radius:7px;font-size:12px;font-weight:500}
+  .vendor-row,.model-row,.attach-row,.attach-connector-row,.browse-connectors{min-height:40px;padding:6px 8px;border-radius:7px}
+  .attach-tiles{grid-template-columns:1fr;gap:1px}
+  .attach-tile{min-height:38px;flex-direction:row;justify-content:flex-start;gap:9px;padding:7px 8px;border-radius:7px}
+  .attach-tile svg{width:16px;height:16px;color:var(--muted)}
+  .attach-tile span{font-size:13px;font-weight:500}
+  .attach-divider{margin:5px 4px;background:var(--line)}
+  .row-chevron,.mode-chevron,.tone-chevron{width:14px;height:14px;color:var(--muted)}
+  .reasoning-effort{border-color:var(--line)}
+  .effort-track{height:2px;background:var(--line-strong)}
+  .effort-fill{background:var(--accent)}
+  .effort-value{border-radius:6px;background:var(--picker-active)}
+
+  /* Attached files and mentions stay legible without turning into cards. */
+  .attachments-inner{gap:6px;padding-inline:4px}
+  .attachments.is-open .attachments-inner{padding:2px 4px 9px}
+  .chip{padding:6px 7px 6px 9px;border-color:var(--line);border-radius:8px;background:var(--surface-4)}
+  .chip span{font-size:12px}
+  .connector-mention{border-radius:4px;background:var(--picker-active);box-shadow:0 0 0 2px var(--picker-active)}
+
+  /* Conversation typography follows the same Inter scale as the interface. */
+  .chat-log{padding:20px max(24px,calc((100% - 760px)/2)) 150px;scroll-behavior:smooth;mask-image:linear-gradient(to bottom,transparent,#000 14px,#000 calc(100% - 28px),transparent)}
+  .chat-message{padding:11px 0}
+  .chat-copy{max-width:min(82%,700px)}
+  .chat-message.user .chat-copy{padding:10px 13px;border:1px solid var(--line);border-radius:12px 12px 4px 12px;background:var(--surface-3);box-shadow:none}
+  .chat-message.assistant .chat-copy{width:min(100%,740px);padding:8px 0}
+  .chat-text{font-size:16px;line-height:1.65;letter-spacing:-.006em}
+  .chat-text h1,.chat-text h2,.chat-text h3,.chat-text h4,.chat-text h5,.chat-text h6{font-weight:620;letter-spacing:-.03em}
+  .chat-text code{border:1px solid var(--line);border-radius:5px;background:var(--surface-3)}
+  .chat-text pre{padding:14px 16px;border-color:var(--line);border-radius:10px;background:var(--surface-2)}
+  .chat-table-wrap{border-color:var(--line);border-radius:10px}
+  .chat-text table{font-size:13px}
+  .chat-text th{background:var(--surface-3);font-weight:600}.chat-text td{background:var(--surface-2)}
+  .thinking-label{font-size:14px;font-weight:500;color:var(--muted)}
+  .thought-time{font-size:12px;font-weight:500}
+  .message-actions{gap:1px;margin-top:8px}
+  .message-action,.version-nav{height:28px;border-radius:7px}
+  .message-action{width:28px}.message-action svg{width:15px;height:15px}
+  .version-nav{padding:0 6px;font-size:11px}
+
+  /* Projects and plugins are working surfaces, not marketing pages. */
+  .projects-page{inset:56px 0 0;padding:28px clamp(22px,5vw,64px)}
+  .projects-heading{font-size:24px;font-weight:600;letter-spacing:-.035em}
+  .projects-heading>svg{width:18px}
+  .project-create-btn,.project-dialog-actions button,.connector-connect{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-weight:550}
+  .projects-empty{min-height:calc(100dvh - 180px)}
+  .projects-empty-icon{width:44px;height:44px;padding:11px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2)}
+  .projects-empty h2{font-size:26px;font-weight:600;letter-spacing:-.04em}
+  .projects-empty p{font-size:13px}
+  .projects-grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
+  .project-card{min-height:56px;padding:13px;border-color:var(--line);border-radius:9px;background:var(--surface-2);font-size:13px}
+  .project-card:hover{border-color:var(--line-strong);background:var(--surface-3)}
+  .project-context{max-width:680px}.project-chat-list{gap:4px}
+  .project-chat-item{min-height:36px;padding:8px 10px;border-color:var(--line);border-radius:8px;background:var(--surface-2);font-size:13px}
+  .connectors-page{background:var(--surface-1)}
+  .connectors-shell{width:min(980px,100%);padding:22px clamp(22px,5vw,56px) 56px}
+  .connectors-back{min-height:32px;padding:6px 8px;border-radius:7px;font-size:12px}
+  .connectors-hero{margin:44px 0 28px}
+  .connectors-kicker{width:36px;height:36px;margin-bottom:14px;border-color:var(--line);border-radius:9px;background:var(--surface-2)}
+  .connectors-hero h1,.connector-detail-title{font-size:32px;font-weight:620;letter-spacing:-.045em}
+  .connectors-hero p,.connector-detail-description{font-size:13px}
+  .connectors-grid{gap:8px}
+  .connector-card{min-height:76px;grid-template-columns:40px minmax(0,1fr) 18px;gap:12px;padding:12px;border-color:var(--line);border-radius:10px;background:var(--surface-2)}
+  .connector-card:hover{border-color:var(--line-strong);background:var(--surface-3);transform:none}
+  .connector-logo{width:40px;height:40px;border-color:var(--line);border-radius:9px;background:var(--surface-3)}
+  .connector-logo svg{width:23px;height:23px}.connector-copy strong{font-size:13px;font-weight:570}.connector-copy span{font-size:11px}
+  .connector-detail{padding-top:40px}.connector-detail-head{grid-template-columns:56px minmax(0,1fr) auto;gap:16px;padding-bottom:22px;border-color:var(--line)}
+  .connector-detail-head .connector-logo{width:56px;height:56px;border-radius:12px}
+
+  /* Dialogs lift one surface level at a time. */
+  .settings-backdrop,.project-create-overlay{background:rgba(0,0,0,.48);backdrop-filter:blur(2px)}
+  .settings{width:min(680px,calc(100vw - 28px));height:min(700px,calc(100dvh - 40px));border:1px solid var(--line);border-radius:14px;background:var(--surface-3);box-shadow:var(--shadow-lg);backdrop-filter:none}
+  .settings-head{padding:20px 18px 0 22px}.settings-head h2{font-size:18px;font-weight:620;letter-spacing:-.03em}
+  .settings-tabs{gap:0;padding:10px 16px 0}
+  .settings-tab{min-height:36px;padding:8px 9px 11px;font-size:13px;font-weight:500}
+  .settings-tab.is-active{font-weight:600}.settings-divider{margin:0 16px;background:var(--line)}
+  .settings-pane{padding:18px 20px 28px;mask-image:linear-gradient(to bottom,transparent,#000 10px,#000 calc(100% - 14px),transparent)}
+  .set-sec+.set-sec{margin-top:22px}.set-sec-title{padding:0 8px 5px;font-size:12px;font-weight:600}
+  .set-row{min-height:44px;padding:8px;border-radius:8px}.set-row:hover{background:var(--hover)}
+  .set-row .label{font-size:13px;font-weight:500}.set-row .meta,.set-note{font-size:12px}
+  .link-btn{min-height:28px;padding:5px 8px;border-radius:7px;font-size:12px;font-weight:520}
+  .link-btn.danger,.chat-menu-item.danger{color:var(--danger)}
+  .name-input,.api-key-input,.mini-select{min-height:36px;border:1px solid var(--line);border-radius:8px;background:var(--surface-4);font-size:13px}
+  .instructions{min-height:120px;padding:12px 13px;border-color:var(--line);border-radius:9px;background:var(--surface-4);font-size:13px}
+  .seg{padding:2px;border-radius:8px;background:var(--surface-4)}.seg button{min-height:28px;padding:5px 10px;border-radius:6px;font-size:12px}.seg-thumb{border-radius:6px;background:var(--surface-2);box-shadow:0 1px 4px rgba(0,0,0,.18)}
+  .tone-option{min-height:44px;padding:6px 8px;border-radius:8px}.tone-symbol{width:28px;height:28px;border-radius:7px}.tone-copy strong{font-size:13px}.tone-copy span{font-size:11px}
+  .plan-name{padding:0 8px;font-size:24px;font-weight:620}.usage{padding-inline:8px;gap:16px}.usage-track{height:8px;background:var(--surface-4)}
+  .project-create-dialog{padding:20px;border-color:var(--line);border-radius:14px;background:var(--surface-3)}
+  .project-create-title{font-size:18px;font-weight:620;letter-spacing:-.03em}
+  .project-create-dialog input,.project-create-dialog textarea{border-color:var(--line);border-radius:8px;background:var(--surface-4);font-size:13px}
+  .chat-rename input{border-color:var(--line);border-radius:8px;background:var(--surface-4)}
+  .chat-confirm-actions button,.incognito-exit-actions button{min-height:32px;padding:6px 10px;border-color:var(--line);border-radius:7px;background:var(--surface-4);font-size:12px}
+  .toast{padding:9px 13px;border:1px solid var(--line);border-radius:8px;background:var(--surface-4);color:var(--text);font-size:12px;box-shadow:var(--shadow-lg)}
+
+  @media(max-width:840px){
+    .content{inset:56px 0 0}.content:not(.has-chat){padding-bottom:48px}
+    .home-greeting,h1,.main.project-mode .home-greeting{font-size:30px}
+    .composer-wrap{bottom:10px;width:calc(100% - 20px)}
+    .settings{width:100vw;height:100dvh;border:0;border-radius:0}
+    .settings-pane{padding-inline:14px}
+    .chat-log{padding:10px 14px 130px}.chat-copy{max-width:90%}
+  }
+  @media(max-width:620px){
+    .connectors-shell{padding:16px 16px 40px}.connectors-hero{margin:34px 0 22px}.connectors-grid{grid-template-columns:1fr}
+    .connector-detail-head{grid-template-columns:48px 1fr}.connector-detail-head .connector-logo{width:48px;height:48px}.connector-connect{grid-column:1/-1}
+    .projects-page{padding:20px 16px}.projects-heading{font-size:21px}.projects-grid{grid-template-columns:1fr}
+    .settings-tabs{overflow-x:auto}.set-row{align-items:flex-start;flex-wrap:wrap}.set-row .val{width:100%;margin-left:0}.name-input,.api-key-input{width:100%;text-align:left}
+  }
+  @media(min-width:900px){#sidebarState:checked~.main{margin-left:260px;width:calc(100% - 260px)}}
+  @media(max-width:899px){.sidebar{width:min(280px,calc(100vw - 20px));box-shadow:var(--shadow-lg)}.topbar{padding:0 12px}.content:not(.has-chat){padding-inline:18px}.hero-stage{width:100%}.content:not(.has-chat) .composer-wrap{width:100%}}
+</style>
 </head>
 <body>
+<!-- UI glyphs use the verified Lucide 1.43.0 paths and names. Product and
+     connector marks remain their original brand artwork. -->
 <svg width="0" height="0" aria-hidden="true" style="position:absolute;overflow:hidden">
   <defs>
     <linearGradient id="gmail-side" x1="165" x2="165" y1="44" y2="166" gradientUnits="userSpaceOnUse"><stop stop-color="#60d673"/><stop offset=".17" stop-color="#42c868"/><stop offset=".39" stop-color="#0ebc5f"/><stop offset=".62" stop-color="#00a9bb"/><stop offset=".86" stop-color="#3c90ff"/><stop offset="1" stop-color="#3186ff"/></linearGradient>
@@ -515,36 +782,36 @@
   <aside class="sidebar" id="sidebar" aria-label="Main navigation">
     <div class="brand-row">
       <div class="brand-mark" aria-label="NeoChat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7.5 12 4l5 3.5v9L12 20l-5-3.5z"/><path d="m7 7.5 5 3 5-3.1M12 10.5V20"/></svg></div>
-      <label class="icon-btn close-sidebar" for="sidebarState" aria-label="Close sidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></label>
+      <label class="icon-btn close-sidebar" for="sidebarState" aria-label="Close sidebar"><svg class="lucide lucide-panel-left-close" data-lucide-icon="panel-left-close" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></label>
     </div>
-    <button class="new-chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L8 18l-4 1 1-4Z"/></svg>New chat</button>
+    <button class="new-chat"><svg class="lucide lucide-square-pen" data-lucide-icon="square-pen" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>New chat</button>
     <nav class="nav">
-      <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 2v14a2 2 0 0 0 2 2h14"/><path d="M18 6H6M18 10H6M18 14H6"/></svg>Library</button>
-      <button class="nav-item" id="projectsNav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7h5l2 2h11v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 7V5a2 2 0 0 1 2-2h3l2 2h9a2 2 0 0 1 2 2v2"/></svg>Projects<span class="trailing" aria-label="Add project"><svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></span></button>
-      <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l-3 2"/></svg>Scheduled</button>
-      <button class="nav-item" id="connectorsNav"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M15 8V2"/><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z"/><path d="M9 8V2"/></svg>Plugins</button>
-      <button class="nav-item"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="5" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="12" cy="12" r="1" fill="currentColor" stroke="none"/><circle cx="19" cy="12" r="1" fill="currentColor" stroke="none"/></svg>More</button>
+      <button class="nav-item"><svg class="lucide lucide-book-open" data-lucide-icon="book-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v16"/><path d="M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>Library</button>
+      <button class="nav-item" id="projectsNav"><svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M8 10v4"/><path d="M12 10v2"/><path d="M16 10v6"/></svg>Projects<span class="trailing" aria-label="Add project"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></span></button>
+      <button class="nav-item"><svg class="lucide lucide-calendar-clock" data-lucide-icon="calendar-clock" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 14v2.2l1.6 1"/><path d="M16 2v3"/><path d="M21 7.338V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2.338"/><path d="M3 9h5.859"/><path d="M8 2v3"/><circle cx="16" cy="16" r="6"/></svg>Scheduled</button>
+      <button class="nav-item" id="connectorsNav"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect x="14" y="2" width="8" height="8" rx="1"/></svg>Plugins</button>
+      <button class="nav-item"><svg class="lucide lucide-ellipsis" data-lucide-icon="ellipsis" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>More</button>
     </nav>
     <section class="chat-history" aria-label="Saved chats">
       <div class="chat-history-title">Chats</div>
       <div class="conversation-list" id="conversationList"><div class="conversation-empty">Add your NeoChat access key to load saved chats.</div></div>
     </section>
-    <div class="profile"><div class="avatar">SK</div><div class="profile-copy"><strong>skipjust</strong><span>Plus</span></div><button class="icon-btn store-icon" id="openSettings" aria-label="Open settings" aria-haspopup="dialog"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></button></div>
+    <div class="profile"><div class="avatar">SK</div><div class="profile-copy"><strong>skipjust</strong><span>Plus</span></div><button class="icon-btn store-icon" id="openSettings" aria-label="Open settings" aria-haspopup="dialog"><svg class="lucide lucide-settings-2" data-lucide-icon="settings-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></button></div>
   </aside>
   <main class="main">
     <header class="topbar">
-      <label class="icon-btn sidebar-toggle" for="sidebarState" aria-label="Open sidebar"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9 4.5v15"/></svg></label><button class="icon-btn project-back" type="button" aria-label="Back to project"><svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></button>
+      <label class="icon-btn sidebar-toggle" for="sidebarState" aria-label="Open sidebar"><svg class="lucide lucide-panel-left-open" data-lucide-icon="panel-left-open" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg></label><button class="icon-btn project-back" type="button" aria-label="Back to project"><svg class="lucide lucide-arrow-left" data-lucide-icon="arrow-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button>
       <div class="top-actions">
-        <label class="icon-btn incognito-btn" for="incognitoState" aria-label="Toggle incognito mode"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></label>
-        <button class="icon-btn top-new-chat" type="button" aria-label="Start a new chat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+        <label class="icon-btn incognito-btn" for="incognitoState" aria-label="Toggle incognito mode"><svg class="lucide lucide-glasses" data-lucide-icon="glasses" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></label>
+        <button class="icon-btn top-new-chat" type="button" aria-label="Start a new chat"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
         <div class="chat-actions-wrap">
-          <button class="icon-btn chat-actions-trigger" type="button" aria-label="Chat actions" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          <button class="icon-btn chat-actions-trigger" type="button" aria-label="Chat actions" aria-haspopup="menu" aria-expanded="false"><svg class="lucide lucide-ellipsis" data-lucide-icon="ellipsis" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
           <div class="chat-actions-panel" role="menu">
             <div class="chat-actions-list">
-              <button class="chat-menu-item pin-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg><span>Pin</span></button>
-              <button class="chat-menu-item add-project-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg><span>Add to project</span></button>
-              <button class="chat-menu-item rename-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17 22h-1a4 4 0 0 1-4-4V6a4 4 0 0 1 4-4h1"/><path d="M7 22h1a4 4 0 0 0 4-4"/><path d="M7 2h1a4 4 0 0 1 4 4"/></svg><span>Rename</span></button>
-              <button class="chat-menu-item danger delete-chat" type="button" role="menuitem"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Delete</span></button>
+              <button class="chat-menu-item pin-chat" type="button" role="menuitem"><svg class="lucide lucide-pin" data-lucide-icon="pin" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg><span>Pin</span></button>
+              <button class="chat-menu-item add-project-chat" type="button" role="menuitem"><svg class="lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span>Add to project</span></button>
+              <button class="chat-menu-item rename-chat" type="button" role="menuitem"><svg class="lucide lucide-pencil-line" data-lucide-icon="pencil-line" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 21h8"/><path d="m15 5 4 4"/><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg><span>Rename</span></button>
+              <button class="chat-menu-item danger delete-chat" type="button" role="menuitem"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Delete</span></button>
             </div>
             <form class="chat-rename"><input maxlength="80" aria-label="Chat name"/><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="submit">Save</button></div></form>
             <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="button" class="confirm-delete-chat">Delete</button></div></div>
@@ -552,27 +819,27 @@
           </div>
         </div>
         <div class="incognito-exit-wrap">
-          <button class="icon-btn incognito-exit-btn" type="button" aria-label="Leave incognito chat" aria-haspopup="dialog" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          <button class="icon-btn incognito-exit-btn" type="button" aria-label="Leave incognito chat" aria-haspopup="dialog" aria-expanded="false"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
           <div class="incognito-exit-confirm" role="alertdialog" aria-label="Confirm leaving incognito chat"><p>This chat will not be saved, confirm the exit from it</p><div class="incognito-exit-actions"><button class="cancel-incognito-exit" type="button">Cancel</button><button class="confirm-incognito-exit" type="button">Exit</button></div></div>
         </div>
       </div>
     </header>
-    <section class="projects-page"><div class="projects-heading"><svg viewBox="0 0 24 24"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span>Projects</span><button class="project-create-btn" type="button"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-empty"><svg class="projects-empty-icon" viewBox="0 0 24 24"><path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/><path d="M20 2v4"/><path d="M22 4h-4"/><circle cx="4" cy="20" r="2"/></svg><h2>Welcome to Projects</h2><p>Organize your workflow, set custom instructions in one place</p><button class="project-create-btn"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-grid"></div></section>
+    <section class="projects-page"><div class="projects-heading"><svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M8 10v4"/><path d="M12 10v2"/><path d="M16 10v6"/></svg><span>Projects</span><button class="project-create-btn" type="button"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-empty"><svg class="projects-empty-icon lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><h2>Welcome to Projects</h2><p>Organize your workflow, set custom instructions in one place</p><button class="project-create-btn"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-grid"></div></section>
     <section class="connectors-page" aria-label="Plugins">
       <div class="connectors-shell">
-        <button class="connectors-back" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 8 2 12l4 4"/><path d="M2 12h20"/></svg>Back</button>
+        <button class="connectors-back" type="button"><svg class="lucide lucide-arrow-left" data-lucide-icon="arrow-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Back</button>
         <div class="connectors-index">
-          <header class="connectors-hero"><span class="connectors-kicker"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M15 8V2"/><path d="M17 8a1 1 0 0 1 1 1v4a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V9a1 1 0 0 1 1-1z"/><path d="M9 8V2"/></svg></span><h1>Plugins</h1><p>Connect your favorite services to NeoChat</p></header>
+          <header class="connectors-hero"><span class="connectors-kicker"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect x="14" y="2" width="8" height="8" rx="1"/></svg></span><h1>Plugins</h1><p>Connect your favorite services to NeoChat</p></header>
           <div class="connectors-grid">
-            <button class="connector-card" type="button" data-connector="gmail"><span class="connector-logo"><svg viewBox="0 0 192 192" aria-hidden="true"><use href="#connector-gmail"/></svg></span><span class="connector-copy"><strong>Gmail</strong><span>Search, read, and draft email</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-            <button class="connector-card" type="button" data-connector="github"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-github"/></svg></span><span class="connector-copy"><strong>GitHub</strong><span>Work with repositories, issues, and pull requests</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-            <button class="connector-card" type="button" data-connector="notion"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-notion"/></svg></span><span class="connector-copy"><strong>Notion</strong><span>Bring workspace knowledge into your chats</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-            <button class="connector-card" type="button" data-connector="slack"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-slack"/></svg></span><span class="connector-copy"><strong>Slack</strong><span>Find messages and follow team conversations</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-            <button class="connector-card" type="button" data-connector="canva"><span class="connector-logo connector-canva"><svg viewBox="0 0 50 50" aria-hidden="true"><use href="#connector-canva"/></svg></span><span class="connector-copy"><strong>Canva</strong><span>Use designs and creative assets in NeoChat</span></span><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="gmail"><span class="connector-logo"><svg viewBox="0 0 192 192" aria-hidden="true"><use href="#connector-gmail"/></svg></span><span class="connector-copy"><strong>Gmail</strong><span>Search, read, and draft email</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="github"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-github"/></svg></span><span class="connector-copy"><strong>GitHub</strong><span>Work with repositories, issues, and pull requests</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="notion"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-notion"/></svg></span><span class="connector-copy"><strong>Notion</strong><span>Bring workspace knowledge into your chats</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="slack"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-slack"/></svg></span><span class="connector-copy"><strong>Slack</strong><span>Find messages and follow team conversations</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="canva"><span class="connector-logo connector-canva"><svg viewBox="0 0 50 50" aria-hidden="true"><use href="#connector-canva"/></svg></span><span class="connector-copy"><strong>Canva</strong><span>Use designs and creative assets in NeoChat</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
           </div>
         </div>
         <article class="connector-detail">
-          <div class="connector-detail-head"><span class="connector-logo" id="connectorDetailLogo"></span><h1 class="connector-detail-title"></h1><button class="connector-connect" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Connect</button></div>
+          <div class="connector-detail-head"><span class="connector-logo" id="connectorDetailLogo"></span><h1 class="connector-detail-title"></h1><button class="connector-connect" type="button"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Connect</button></div>
           <p class="connector-detail-description"></p>
         </article>
       </div>
@@ -588,36 +855,36 @@
           <div class="attachments" id="attachments"><div class="attachments-inner" id="attachmentsInner"></div></div>
           <div class="prompt-entry" id="promptEntry"><div class="connector-highlights" id="connectorHighlights" aria-hidden="true"></div><textarea id="message" rows="1" placeholder="Ask anything…"></textarea></div><div class="composer-bottom">
           <div class="attach-wrap" id="attachWrap">
-            <button class="round-btn" id="attachBtn" aria-label="Add to message" aria-haspopup="menu" aria-expanded="false"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg></button>
+            <button class="round-btn" id="attachBtn" aria-label="Add to message" aria-haspopup="menu" aria-expanded="false"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
             <div class="attach-panel" id="attachPanel" role="menu" aria-label="Add to message">
               <div class="attach-tiles">
                 <button class="attach-tile" data-accept="image/*" data-capture="environment" role="menuitem">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 8h3l1.6-2.4A1 1 0 0 1 9.4 5h5.2a1 1 0 0 1 .8.6L17 8h3a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z"/><circle cx="12" cy="13.5" r="3.4"/></svg>
+                  <svg class="lucide lucide-camera" data-lucide-icon="camera" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg>
                   <span>Camera</span>
                 </button>
                 <button class="attach-tile" data-accept="image/*" role="menuitem">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="14" rx="3"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="m5 17 4.5-4.5 3 3L16 12l3 3.5"/></svg>
+                  <svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
                   <span>Photos</span>
                 </button>
                 <button class="attach-tile" data-accept="*" role="menuitem">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 3v5a1 1 0 0 0 1 1h5"/><path d="M6 3h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M12 12.5v6M9.5 15l2.5-2.5L14.5 15"/></svg>
+                  <svg class="lucide lucide-file-up" data-lucide-icon="file-up" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/></svg>
                   <span>Files</span>
                 </button>
               </div>
               <div class="attach-divider"></div>
               <div class="attach-list">
                 <button class="attach-row" id="openConnectorPicker" role="menuitem">
-                  <span class="row-symbol"><svg viewBox="0 0 24 24"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg></span>
+                  <span class="row-symbol"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect x="14" y="2" width="8" height="8" rx="1"/></svg></span>
                   <span class="row-copy"><strong>Plugins</strong><span>Mention a service in your message</span></span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
                 <button class="attach-row" data-toast="Skills aren't part of this preview yet." role="menuitem">
-                  <span class="row-symbol"><svg viewBox="0 0 24 24"><path d="M6 4h11a2 2 0 0 1 2 2v13a1 1 0 0 1-1.4.9L15 19l-2.6.9L10 19l-2.6.9L6 19Z"/><path d="M9 8.5h6M9 12h6"/></svg></span>
+                  <span class="row-symbol"><svg class="lucide lucide-notebook-tabs" data-lucide-icon="notebook-tabs" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M15 2v20"/><path d="M15 7h5"/><path d="M15 12h5"/><path d="M15 17h5"/></svg></span>
                   <span class="row-copy"><strong>Skills</strong><span>Reuse specialized skills to handle specific tasks reliably</span></span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
                 <button class="attach-row" id="webSearchRow" role="menuitem" aria-label="Web search">
-                  <span class="row-symbol"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.3 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.3-3.6-8.5S9.6 5.8 12 3.5Z"/></svg></span>
+                  <span class="row-symbol"><svg class="lucide lucide-globe" data-lucide-icon="globe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg></span>
                   <span class="row-copy row-copy-tight"><strong>Web search</strong></span>
                   <span class="row-state" id="webSearchState">Auto</span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
@@ -630,7 +897,7 @@
                 <button class="attach-connector-row" type="button" data-connector-mention="notion"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-notion"/></svg></span><span>Notion</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
                 <button class="attach-connector-row" type="button" data-connector-mention="slack"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-slack"/></svg></span><span>Slack</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
                 <button class="attach-connector-row" type="button" data-connector-mention="canva"><span class="connector-logo connector-canva"><svg viewBox="0 0 50 50"><use href="#connector-canva"/></svg></span><span>Canva</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-                <button class="browse-connectors" id="browseConnectors" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M13 5h6v6"/><path d="M19 5 5 19"/></svg><span>Browse plugins</span></button>
+                <button class="browse-connectors" id="browseConnectors" type="button"><svg class="lucide lucide-arrow-up-right" data-lucide-icon="arrow-up-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg><span>Browse plugins</span></button>
               </div>
             </div>
             <input type="file" id="fileInput" multiple hidden />
@@ -638,12 +905,12 @@
           <div class="mode-wrap">
             <details class="mode-picker" id="modePicker">
               <summary class="mode-trigger" aria-label="Choose work mode">
-                <span class="trigger-state trigger-auto"><svg viewBox="0 0 24 24"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l6.1 8.6c.8 1.1 2 1.7 3.3 1.7H22"/><path d="m18 14 4 4-4 4"/></svg><span>Auto</span></span>
-                <span class="trigger-state trigger-instant"><svg viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg><span>Instant</span></span>
-                <span class="trigger-state trigger-thinking"><svg viewBox="0 0 24 24"><path d="M12 18V5"/><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/><path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 0 0-5.598 1.5"/><path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/><path d="M18 18a4 4 0 0 0 2-7.464"/><path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/><path d="M6 18a4 4 0 0 1-2-7.464"/><path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/></svg><span>Thinking</span></span>
-                <span class="trigger-state trigger-max"><svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg><span>Max</span></span>
-                <span class="trigger-state trigger-manual"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/></svg><span>Manual</span></span>
-                <svg class="mode-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+                <span class="trigger-state trigger-auto"><svg class="lucide lucide-shuffle" data-lucide-icon="shuffle" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l6.1 8.6c.8 1.1 2 1.7 3.3 1.7H22"/><path d="m18 14 4 4-4 4"/></svg><span>Auto</span></span>
+                <span class="trigger-state trigger-instant"><svg class="lucide lucide-zap" data-lucide-icon="zap" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg><span>Instant</span></span>
+                <span class="trigger-state trigger-thinking"><svg class="lucide lucide-brain" data-lucide-icon="brain" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18V5"/><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/><path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 0 0-5.598 1.5"/><path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/><path d="M18 18a4 4 0 0 0 2-7.464"/><path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/><path d="M6 18a4 4 0 0 1-2-7.464"/><path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/></svg><span>Thinking</span></span>
+                <span class="trigger-state trigger-max"><svg class="lucide lucide-gem" data-lucide-icon="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg><span>Max</span></span>
+                <span class="trigger-state trigger-manual"><svg class="lucide lucide-circle-dot" data-lucide-icon="circle-dot" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/></svg><span>Manual</span></span>
+                <svg class="mode-chevron lucide lucide-chevron-down" data-lucide-icon="chevron-down" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
               </summary>
 
               <input class="mode-radio" type="radio" name="work-mode" id="mode-auto" value="Auto" checked />
@@ -906,8 +1173,8 @@
               </div>
             </details>
           </div>
-          <button class="round-btn" aria-label="Microphone"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="4" width="6" height="11" rx="3"/><path d="M6.5 11.5A5.5 5.5 0 0 0 12 17a5.5 5.5 0 0 0 5.5-5.5M12 17v3"/></svg></button>
-          <button class="send" aria-label="Send"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18V6M7.5 10.5 12 6l4.5 4.5"/></svg></button>
+          <button class="round-btn" aria-label="Microphone"><svg class="lucide lucide-mic" data-lucide-icon="mic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
+          <button class="send" aria-label="Send"><svg class="lucide lucide-arrow-up" data-lucide-icon="arrow-up" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg></button>
         </div></div><div class="hint">NeoChat is AI and can make mistakes. So double check important information.</div><div class="suggestions" aria-label="Prompt suggestions"></div>
       </div>
     </section>
@@ -920,7 +1187,7 @@
   <div class="settings" id="settings" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="settings-head">
       <h2 id="settingsTitle">Settings</h2>
-      <button class="icon-btn" id="settingsClose" aria-label="Close settings"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m7 7 10 10M17 7 7 17"/></svg></button>
+      <button class="icon-btn" id="settingsClose" aria-label="Close settings"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
     </div>
     <div class="settings-tabs" role="tablist" id="settingsTabs">
       <button class="settings-tab is-active" role="tab" aria-selected="true" data-tab="general">General</button>
@@ -1016,7 +1283,7 @@
 
       <section class="settings-pane" data-pane="account" role="tabpanel" aria-label="Account">
         <div class="set-sec">
-          <div class="set-sec-title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m12 12 8-8"/><path d="m16 8 2 2"/><path d="m18 6 2 2"/></svg>API access</div>
+          <div class="set-sec-title"><svg class="lucide lucide-key-round" data-lucide-icon="key-round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m12 12 8-8"/><path d="m16 8 2 2"/><path d="m18 6 2 2"/></svg>API access</div>
           <div class="set-row">
             <span class="label soft">NeoChat API key</span>
             <span class="val"><input class="api-key-input" id="apiKey" type="password" autocomplete="off" placeholder="Paste API key" aria-label="NeoChat API key" /></span>
@@ -1042,7 +1309,7 @@
           </div>
         </div>
         <div class="set-sec">
-          <div class="set-sec-title"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>Danger zone</div>
+          <div class="set-sec-title"><svg class="lucide lucide-triangle-alert" data-lucide-icon="triangle-alert" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>Danger zone</div>
           <div class="set-row">
             <span class="label soft">Deleting removes every chat and file. This can't be undone.</span>
             <span class="val"><button class="link-btn danger" id="deleteAccount">Delete my account</button></span>
@@ -1059,7 +1326,7 @@
           </div>
         </div>
         <div class="set-sec">
-          <div class="set-sec-title"><svg viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>Payment method</div>
+          <div class="set-sec-title"><svg class="lucide lucide-credit-card" data-lucide-icon="credit-card" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>Payment method</div>
           <div class="set-row">
             <span class="label">Visa 2114</span>
             <span class="val"><button class="link-btn" data-toast="Card updates happen in the billing portal.">Change</button></span>
@@ -1069,7 +1336,7 @@
 
       <section class="settings-pane" data-pane="usage" role="tabpanel" aria-label="Usage">
         <div class="set-sec">
-          <div class="set-sec-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 3v16a2 2 0 0 0 2 2h16"/><path d="M7 16h8"/><path d="M7 11h12"/><path d="M7 6h3"/></svg>Remaining usage limits</div>
+          <div class="set-sec-title"><svg class="lucide lucide-chart-no-axes-column" data-lucide-icon="chart-no-axes-column" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21v-6"/><path d="M12 21V3"/><path d="M19 21V9"/></svg>Remaining usage limits</div>
           <div class="usage">
             <div class="usage-item"><span class="usage-figure"><strong>96%</strong><span>Instant</span></span><span class="usage-track"><span class="usage-fill" data-fill="96"></span></span></div>
             <div class="usage-item"><span class="usage-figure"><strong>40%</strong><span>Thinking</span></span><span class="usage-track"><span class="usage-fill" data-fill="40"></span></span></div>
@@ -1082,10 +1349,10 @@
       <section class="settings-pane" data-pane="privacy" role="tabpanel" aria-label="Privacy">
         <p class="set-note">NeoChat is committed to transparency when handling your data. For more information, see the <a href="#" data-toast="Policies open in the full app.">Privacy Policy</a> and <a href="#" data-toast="Policies open in the full app.">Data Processing Policy</a>.</p>
         <div class="set-sec">
-          <div class="set-sec-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H19a1 1 0 0 1 1 1v18a1 1 0 0 1-1 1H6.5a1 1 0 0 1 0-5H20"/></svg>Your data</div>
-          <div class="set-row"><span class="label label-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 13v8l-4-4"/><path d="m12 21 4-4"/><path d="M4.393 15.269A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.436 8.284"/></svg>Export all data</span><span class="val"><button class="link-btn" data-toast="Export queued — we'd email you the archive.">Download</button></span></div>
-          <div class="set-row"><span class="label label-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2v13"/><path d="m16 6-4-4-4 4"/><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/></svg>Shared chats</span><span class="val"><button class="link-btn" data-toast="No shared chats yet.">Manage</button></span></div>
-          <div class="set-row"><span class="label label-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z"/><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1"/></svg>Uploaded files</span><span class="val"><button class="link-btn" data-toast="No uploaded files yet.">Manage</button></span></div>
+          <div class="set-sec-title"><svg class="lucide lucide-database" data-lucide-icon="database" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>Your data</div>
+          <div class="set-row"><span class="label label-icon"><svg class="lucide lucide-download" data-lucide-icon="download" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>Export all data</span><span class="val"><button class="link-btn" data-toast="Export queued — we'd email you the archive.">Download</button></span></div>
+          <div class="set-row"><span class="label label-icon"><svg class="lucide lucide-share-2" data-lucide-icon="share-2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>Shared chats</span><span class="val"><button class="link-btn" data-toast="No shared chats yet.">Manage</button></span></div>
+          <div class="set-row"><span class="label label-icon"><svg class="lucide lucide-files" data-lucide-icon="files" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z"/><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1"/></svg>Uploaded files</span><span class="val"><button class="link-btn" data-toast="No uploaded files yet.">Manage</button></span></div>
         </div>
       </section>
 
@@ -1590,6 +1857,7 @@
         icon.setAttribute('viewBox','0 0 24 24');
         icon.setAttribute('aria-hidden','true');
         icon.setAttribute('class','lucide '+suggestion.iconClass);
+        icon.dataset.lucideIcon=suggestion.iconClass.replace('lucide-','');
         icon.innerHTML=suggestion.paths;
         const label=document.createElement('span');
         label.textContent=suggestion.label;
@@ -1952,13 +2220,13 @@
       copy.prepend(timing);
     }
 
-    function messageActionButton(label,paths){
+    function messageActionButton(label,iconName,paths){
       const button=document.createElement('button');
       button.type='button';
       button.className='message-action';
       button.setAttribute('aria-label',label);
       button.title=label;
-      button.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true">'+paths+'</svg>';
+      button.innerHTML='<svg class="lucide lucide-'+iconName+'" data-lucide-icon="'+iconName+'" viewBox="0 0 24 24" aria-hidden="true">'+paths+'</svg>';
       return button;
     }
 
@@ -2003,7 +2271,7 @@
       actions.setAttribute('role','toolbar');
       actions.setAttribute('aria-label','Response actions');
 
-      const copy=messageActionButton('Copy response','<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>');
+      const copy=messageActionButton('Copy response','copy','<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>');
       copy.addEventListener('click',async function(){
         try{
           await copyMessageText(message.dataset.messageText||message.querySelector('.chat-text').innerText);
@@ -2013,13 +2281,13 @@
         }
       });
 
-      const retry=messageActionButton('Use prompt again','<path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"></path><path d="M21 3v5h-5"></path>');
+      const retry=messageActionButton('Use prompt again','rotate-ccw','<path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path>');
       retry.setAttribute('aria-label','Regenerate response');
       retry.title='Regenerate response';
       retry.addEventListener('click',function(){regenerateMessage(message)});
 
-      const like=messageActionButton('Good response','<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path><path d="M7 10v12"></path>');
-      const dislike=messageActionButton('Bad response','<path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path><path d="M17 14V2"></path>');
+      const like=messageActionButton('Good response','thumbs-up','<path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88Z"></path><path d="M7 10v12"></path>');
+      const dislike=messageActionButton('Bad response','thumbs-down','<path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88Z"></path><path d="M17 14V2"></path>');
       [like,dislike].forEach(function(button){
         button.setAttribute('aria-pressed','false');
         button.addEventListener('click',function(){
@@ -2035,10 +2303,10 @@
       navigation.className='response-versions';
       navigation.hidden=true;
       const previous=document.createElement('button');
-      previous.type='button';previous.className='version-nav version-prev';previous.textContent='< Prev';
+      previous.type='button';previous.className='version-nav version-prev';previous.innerHTML='<svg class="lucide lucide-chevron-left" data-lucide-icon="chevron-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg><span>Prev</span>';
       previous.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex-1)});
       const next=document.createElement('button');
-      next.type='button';next.className='version-nav version-next';next.textContent='Next >';
+      next.type='button';next.className='version-nav version-next';next.innerHTML='<span>Next</span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>';
       next.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex+1)});
       navigation.append(previous,next);
 
@@ -2110,7 +2378,7 @@
       chatActionsTrigger.setAttribute('aria-expanded','false');
     }
 
-    function projectIcon(){return '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m6 14 1.5-2.9A2 2 0 0 1 9.24 10H20a2 2 0 0 1 1.94 2.5l-1.54 6a2 2 0 0 1-1.95 1.5H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h3.9a2 2 0 0 1 1.69.9l.81 1.2a2 2 0 0 0 1.67.9H18a2 2 0 0 1 2 2v2"/></svg>'}
+    function projectIcon(){return '<svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M8 10v4"/><path d="M12 10v2"/><path d="M16 10v6"/></svg>'}
 
     async function fetchProjects(){
       const token=apiKeyInput.value.trim();
@@ -2905,13 +3173,13 @@
       const ext=(name.split('.').pop()||'').toLowerCase();
       const isImg=['png','jpg','jpeg','gif','webp','heic','svg'].indexOf(ext)>-1;
       return isImg
-        ? '<svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="14" rx="3"/><circle cx="9" cy="10" r="1.5" fill="currentColor" stroke="none"/><path d="m5 17 4.5-4.5 3 3L16 12l3 3.5"/></svg>'
-        : '<svg viewBox="0 0 24 24"><path d="M14 3v5a1 1 0 0 0 1 1h5"/><path d="M6 3h8l6 6v10a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/></svg>';
+        ? '<svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'
+        : '<svg class="lucide lucide-file-text" data-lucide-icon="file-text" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
     }
     function addChip(name){
       const chip=document.createElement('div');
       chip.className='chip';
-      chip.innerHTML=iconFor(name)+'<span></span><button type="button" aria-label="Remove '+ 'attachment' +'"><svg viewBox="0 0 24 24"><path d="m6 6 8 8M14 6l-8 8"/></svg></button>';
+      chip.innerHTML=iconFor(name)+'<span></span><button type="button" aria-label="Remove attachment"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>';
       chip.querySelector('span').textContent=name;
       chip.querySelector('button').addEventListener('click',function(){
         chip.style.transition='opacity .16s ease,transform .16s ease';
