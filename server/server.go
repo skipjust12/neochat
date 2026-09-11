@@ -6,7 +6,7 @@ package server
 
 import (
 	"context"
-	_ "embed"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -36,6 +36,9 @@ import (
 
 //go:embed frontend.html
 var frontendHTML []byte
+
+//go:embed assets
+var frontendAssets embed.FS
 
 // maxCircuitFailoverAttempts bounds how many times handle will re-route
 // around a model whose circuit just opened before giving up. Each retry
@@ -314,6 +317,7 @@ type chatResponse struct {
 func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", recovered(s.frontend))
+	mux.Handle("GET /assets/", http.FileServer(http.FS(frontendAssets)))
 	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
