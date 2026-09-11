@@ -4,760 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>NeoChat</title>
-<style>
-  html{--bg:#fafaf8;--grad1:rgba(214,226,217,.5);--grad2:rgba(231,228,216,.5);--text:#171817;--muted:#8f918d;--line:rgba(23,24,23,.08);--panel:rgba(253,253,252,.97);--card:rgba(253,253,251,.72);--soft:#f1f1ef;--soft-hover:#eaeae7;--btn:rgba(255,255,255,.7);--btn-hover:rgba(255,255,255,.98);--composer:rgba(255,255,255,.9);--hover:rgba(23,24,23,.05);--raise:rgba(255,255,255,.78);--inset-hi:rgba(255,255,255,.72);--border-light:rgba(255,255,255,.85);--accent:#1d211f;--on-accent:#fff;--shadow:0 24px 60px rgba(25,27,24,.07);--shadow-lg:0 26px 72px rgba(25,27,24,.16);--radius-xl:34px;--ease-out:cubic-bezier(.16,1,.3,1);--ease-in:cubic-bezier(.4,.05,.7,.2);--ease-smooth:cubic-bezier(.22,.61,.36,1);--ease-gentle:cubic-bezier(.25,.46,.45,.94)}
-  html[data-theme="dark"]{--bg:#0f1110;--grad1:rgba(86,106,94,.22);--grad2:rgba(116,112,92,.16);--text:#edefeb;--muted:#8a8e89;--line:rgba(255,255,255,.09);--panel:rgba(25,27,26,.97);--card:rgba(24,26,25,.72);--soft:#212422;--soft-hover:#282c29;--btn:rgba(255,255,255,.06);--btn-hover:rgba(255,255,255,.12);--composer:rgba(27,29,28,.9);--hover:rgba(255,255,255,.06);--raise:rgba(255,255,255,.07);--inset-hi:rgba(255,255,255,.06);--border-light:rgba(255,255,255,.08);--accent:#edefeb;--on-accent:#161817;--shadow:0 24px 60px rgba(0,0,0,.4);--shadow-lg:0 26px 72px rgba(0,0,0,.55)}
-  html[data-theme="dark"] .mode-symbol svg{filter:none}
-  html[data-theme="dark"] .avatar{background:#5d6b69}
-  *{box-sizing:border-box}html,body{height:100%}
-  body{margin:0;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:var(--text);background:radial-gradient(circle at 82% 12%,var(--grad1),transparent 27%),radial-gradient(circle at 14% 88%,var(--grad2),transparent 32%),var(--bg);overflow:hidden;transition:background-color .65s var(--ease-gentle),color .5s var(--ease-gentle)}
-  button,input,textarea{font:inherit}button{color:inherit}button:focus-visible,textarea:focus-visible{outline:2px solid var(--text);outline-offset:3px}
-  svg{width:21px;height:21px;stroke:currentColor;stroke-width:1.8;fill:none;stroke-linecap:round;stroke-linejoin:round}
-  .app{height:100dvh;padding:0}
-  .state-toggle{position:fixed;inline-size:1px;block-size:1px;opacity:0;pointer-events:none}
-  .sidebar{position:fixed;z-index:1001;inset:14px auto 14px 14px;width:310px;display:flex;flex-direction:column;overflow:hidden;padding:22px 16px 15px;border:1px solid var(--border-light);border-radius:var(--radius-xl);background:var(--panel);backdrop-filter:blur(28px);box-shadow:var(--shadow-lg);visibility:hidden;opacity:0;transform:translate3d(calc(-100% - 28px),0,0) scale(.985);will-change:transform,opacity;transition:transform .52s var(--ease-out),opacity .36s var(--ease-gentle),visibility .52s}
-  .sidebar.is-open,#sidebarState:checked ~ .sidebar{visibility:visible;opacity:1;transform:translate3d(0,0,0) scale(1)}
-  .sidebar-backdrop{position:fixed;z-index:1000;inset:0;background:rgba(28,30,27,.13);backdrop-filter:blur(3px);opacity:0;visibility:hidden;cursor:pointer;transition:opacity .25s ease,visibility .25s}.sidebar-backdrop.is-open,#sidebarState:checked ~ .sidebar-backdrop{opacity:1;visibility:visible}
-  .brand-row{display:flex;align-items:center;justify-content:space-between;padding:0 8px 26px 10px}.brand-mark{display:grid;place-items:center;width:42px;height:42px}.brand-mark svg{width:34px;height:34px;stroke-width:1.9}
-  .icon-btn{width:42px;height:42px;border:0;border-radius:15px;display:grid;place-items:center;background:transparent;cursor:pointer;transition:background-color .28s var(--ease-gentle),border-color .28s var(--ease-gentle),box-shadow .36s var(--ease-gentle),transform .28s var(--ease-out),color .28s var(--ease-gentle)}.icon-btn:hover{background:var(--hover)}.icon-btn:active{transform:scale(.96)}.close-sidebar{color:var(--muted)}
-  .new-chat{width:100%;border:0;border-radius:22px;background:var(--soft);padding:17px 18px;display:flex;align-items:center;gap:15px;font-size:18px;font-weight:620;cursor:pointer;transition:background .18s ease,transform .18s ease}.new-chat svg{width:24px;height:24px}.new-chat:hover{background:var(--soft-hover)}.new-chat:active{transform:scale(.985)}
-  .nav{margin-top:18px;display:grid;gap:4px}.nav-item{width:100%;border:0;background:transparent;display:flex;align-items:center;gap:15px;padding:13px 18px;border-radius:18px;color:var(--text);cursor:pointer;text-align:left;font-size:17px;font-weight:520;transition:background .18s ease}.nav-item svg{width:23px;height:23px}.nav-item:hover{background:var(--hover)}.nav-item .trailing{margin-left:auto;color:var(--muted);display:grid;place-items:center}.nav-item .trailing svg{width:19px;height:19px}
-  .chat-history{min-height:0;margin-top:18px;display:flex;flex:1 1 0;flex-direction:column;overflow:hidden;border-top:1px solid var(--line);padding-top:15px}.chat-history-title{flex:none;padding:0 12px 8px;color:var(--muted);font-size:12px;font-weight:680;letter-spacing:.08em;text-transform:uppercase}.conversation-list{min-height:0;display:flex;flex:1 1 auto;flex-direction:column;gap:3px;overflow-y:auto;overscroll-behavior:contain;scrollbar-gutter:stable;scrollbar-width:thin}.conversation-item{flex:none;width:100%;border:0;background:transparent;border-radius:14px;padding:10px 12px;text-align:left;cursor:pointer;color:var(--muted);font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;transition:background .18s ease,color .18s ease}.conversation-item.has-title{display:flex;align-items:center;gap:7px}.conversation-title{min-width:0;overflow:hidden;text-overflow:ellipsis}.conversation-pin{width:13px;height:13px;flex:none;color:var(--muted)}.conversation-item:hover{background:var(--hover);color:var(--text)}.conversation-item.is-active{background:var(--soft);color:var(--text);font-weight:620}.conversation-empty{flex:none;padding:10px 12px;color:var(--muted);font-size:12.5px;line-height:1.45}
-  .profile{flex:none;margin-top:auto;display:flex;align-items:center;gap:12px;padding:13px 9px 7px;border-radius:20px;transition:background .18s ease}.profile:hover{background:var(--hover)}.avatar{width:42px;height:42px;border-radius:50%;background:#909d9c;color:#fff;display:grid;place-items:center;font-size:13px;font-weight:720}.profile-copy{min-width:0;flex:1}.profile-copy strong,.profile-copy span{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.profile-copy strong{font-size:15px;font-weight:650}.profile-copy span{font-size:13px;color:var(--muted);margin-top:2px}.store-icon{color:var(--muted)}
-  .main{position:relative;isolation:isolate;width:100%;height:100%;min-width:0;border:0;border-radius:0;background:var(--card);backdrop-filter:blur(22px);overflow:hidden;box-shadow:none;transition:background-color .65s var(--ease-gentle)}
-  .main::before,.main::after{content:"";position:absolute;z-index:0;left:-12%;right:-12%;bottom:-14%;height:76%;pointer-events:none;opacity:0;transform:translate3d(0,15%,0) scale(.94);transform-origin:50% 100%;will-change:opacity,transform;transition:opacity .9s var(--ease-gentle),transform 1.15s var(--ease-out)}
-  .main::before{background:radial-gradient(ellipse 72% 88% at 50% 100%,rgba(4,6,5,.98) 0%,rgba(4,6,5,.88) 29%,rgba(4,6,5,.58) 47%,rgba(4,6,5,.24) 63%,rgba(4,6,5,.07) 74%,transparent 84%)}
-  .main::after{background:radial-gradient(ellipse 72% 88% at 50% 100%,rgba(240,242,238,.95) 0%,rgba(238,240,236,.82) 29%,rgba(235,238,233,.55) 47%,rgba(232,235,230,.24) 63%,rgba(232,235,230,.07) 74%,transparent 84%)}
-  html:not([data-theme="dark"]) #incognitoState:checked ~ .main::before,html[data-theme="dark"] #incognitoState:checked ~ .main::after{opacity:1;transform:translate3d(0,0,0) scale(1)}
-  .topbar{height:74px;display:flex;align-items:center;justify-content:space-between;padding:0 24px;position:relative;z-index:20}.top-actions{display:flex;gap:6px;margin-left:auto;position:relative}.sidebar-toggle,.incognito-btn,.top-new-chat,.chat-actions-trigger,.incognito-exit-btn{width:44px;height:44px;border:1px solid var(--line);border-radius:16px;background:var(--btn);box-shadow:0 8px 20px rgba(23,24,23,.035)}.sidebar-toggle:hover,.incognito-btn:hover,.top-new-chat:hover,.chat-actions-trigger:hover,.incognito-exit-btn:hover{background:var(--btn-hover)}#incognitoState:checked ~ .main .incognito-btn{background:var(--accent);color:var(--on-accent);border-color:var(--accent);box-shadow:0 12px 28px rgba(23,24,23,.2);transform:scale(1.035)}.top-new-chat,.chat-actions-wrap,.incognito-exit-wrap{display:none}.main.has-active-chat .incognito-btn{display:none}.main.has-active-chat:not(.is-incognito-chat) .top-new-chat{display:grid}.main.has-active-chat:not(.is-incognito-chat) .chat-actions-wrap{display:block}.main.has-active-chat.is-incognito-chat .incognito-exit-wrap{display:block}.incognito-exit-wrap,.chat-actions-wrap{position:relative}.incognito-exit-confirm,.chat-actions-panel{position:absolute;right:0;top:52px;width:min(330px,calc(100vw - 32px));padding:15px;border:1px solid var(--line);border-radius:18px;background:var(--panel);box-shadow:0 18px 50px rgba(23,24,23,.16);opacity:0;visibility:hidden;transform:translate3d(18px,-18px,0) scale(.82);transform-origin:top right;transition:opacity .2s var(--ease-gentle),transform .34s var(--ease-out),visibility 0s linear .34s}.incognito-exit-confirm{width:min(380px,calc(100vw - 32px))}.incognito-exit-confirm.is-open,.chat-actions-panel.is-open{opacity:1;visibility:visible;transform:translate3d(0,0,0) scale(1);transition-delay:0s}.incognito-exit-confirm p,.chat-confirm-copy{margin:0 0 13px;font-size:13px;line-height:1.45;color:var(--text)}.incognito-exit-actions,.chat-confirm-actions{display:flex;justify-content:flex-end;gap:7px}.incognito-exit-actions button,.chat-confirm-actions button{border:1px solid var(--line);border-radius:11px;padding:7px 11px;background:var(--btn);color:var(--text);cursor:pointer}.incognito-exit-actions .confirm-incognito-exit,.chat-confirm-actions .confirm-delete-chat{background:var(--accent);color:var(--on-accent);border-color:var(--accent)}.chat-actions-list{display:grid;gap:4px}.chat-menu-item{width:100%;display:flex;align-items:center;gap:10px;border:0;border-radius:12px;background:transparent;color:var(--text);padding:10px;cursor:pointer;text-align:left;font-size:14px}.chat-menu-item:hover{background:var(--hover)}.chat-menu-item svg{width:17px;height:17px;color:var(--muted);flex:none}.chat-menu-item:disabled{opacity:.42;cursor:default}.chat-menu-item.danger{color:#c84d46}.chat-rename,.chat-delete-confirm{display:none}.chat-actions-panel.is-renaming .chat-actions-list,.chat-actions-panel.is-deleting .chat-actions-list{display:none}.chat-actions-panel.is-renaming .chat-rename,.chat-actions-panel.is-deleting .chat-delete-confirm{display:block}.chat-rename input{width:100%;border:1px solid var(--line);border-radius:12px;background:var(--soft);color:var(--text);padding:10px 11px;outline:none;margin-bottom:10px}.chat-rename input:focus{box-shadow:0 0 0 2px var(--line)}
-  .content{position:absolute;z-index:2;inset:74px 0 0;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:30px 28px 128px}.hero-stage{position:relative;width:min(760px,100%);min-height:230px;transform:translateY(-7vh)}.hero{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;opacity:0;transform:translate3d(0,16px,0) scale(.982);pointer-events:none;will-change:opacity,transform;transition:opacity .56s var(--ease-gentle),transform .72s var(--ease-out)}.hero.is-visible{opacity:1;transform:translate3d(0,0,0) scale(1);pointer-events:auto}#incognitoState:checked ~ .main .default-hero{opacity:0;transform:translate3d(0,-14px,0) scale(.982);pointer-events:none}#incognitoState:checked ~ .main .incognito-hero{opacity:1;transform:translate3d(0,0,0) scale(1);pointer-events:auto}
-  h1{font-family:Charter,"Bitstream Charter","Sitka Text","Iowan Old Style",Georgia,serif;font-size:clamp(38px,5.3vw,72px);line-height:1.03;letter-spacing:-.02em;margin:0;font-weight:600}.home-greeting{opacity:0;transform:translate3d(0,10px,0);transition:opacity .48s var(--ease-gentle),transform .68s var(--ease-out)}.home-greeting.is-ready{opacity:1;transform:translate3d(0,0,0)}.hero p{color:var(--muted);margin:18px auto 0;max-width:560px;line-height:1.55;font-size:15px}.incognito-hero h1{font-size:clamp(38px,4.8vw,64px)}.incognito-hero p{max-width:620px;color:var(--muted)}.incognito-badge{width:48px;height:48px;border-radius:17px;display:grid;place-items:center;background:var(--accent);color:var(--on-accent);margin-bottom:20px;box-shadow:0 12px 28px rgba(23,24,23,.14)}.incognito-badge svg{width:23px;height:23px}
-  .suggestions{display:flex;flex-wrap:wrap;justify-content:center;gap:9px;margin-top:26px}.suggestions button{border:1px solid var(--line);background:var(--btn);border-radius:999px;padding:10px 14px;color:var(--muted);cursor:pointer;display:flex;align-items:center;gap:7px;transition:background .18s ease,transform .18s ease,color .18s ease}.suggestions button svg{width:16px;height:16px;flex:none}.suggestions button:hover{background:var(--btn-hover);color:var(--text);transform:translateY(-1px)}
-  .composer-wrap{position:absolute;left:50%;bottom:22px;transform:translate3d(-50%,0,0);width:min(720px,calc(100% - 44px));z-index:10}.composer{position:relative;border:1px solid var(--line);background:var(--composer);backdrop-filter:blur(24px);border-radius:27px;box-shadow:0 20px 50px rgba(23,24,23,.10);padding:10px;transition:background-color .55s var(--ease-gentle),border-color .55s var(--ease-gentle),box-shadow .7s var(--ease-gentle),transform .42s var(--ease-out)}#incognitoState:checked ~ .main .composer{box-shadow:0 22px 58px rgba(0,0,0,.2);transform:translateY(-2px)}.composer textarea{width:100%;border:0;outline:none;resize:none;min-height:46px;max-height:150px;padding:7px 9px 8px;background:transparent;color:var(--text);font-size:15px;transition:color .45s var(--ease-gentle)}.composer textarea::placeholder{color:var(--muted);transition:color .45s var(--ease-gentle)}.composer-bottom{display:flex;align-items:center;gap:6px;position:relative}.round-btn,.send{width:40px;height:40px;border-radius:14px;display:grid;place-items:center;cursor:pointer;transition:transform .28s var(--ease-out),background-color .28s var(--ease-gentle),color .28s var(--ease-gentle),box-shadow .36s var(--ease-gentle)}.round-btn{border:1px solid var(--line);background:var(--btn)}.round-btn:hover{background:var(--btn-hover)}.send{border:0;background:var(--accent);color:var(--on-accent);box-shadow:0 8px 18px rgba(23,24,23,.18)}.send:hover{transform:translateY(-1px)}
-  .attachments{display:grid;grid-template-rows:0fr;transition:grid-template-rows .32s var(--ease-out)}
-  .attachments.is-open{grid-template-rows:1fr}
-  .attachments-inner{overflow:hidden;display:flex;flex-wrap:wrap;gap:7px;padding:0 10px}
-  .attachments.is-open .attachments-inner{padding:4px 10px 10px}
-  .chip{display:flex;align-items:center;gap:8px;max-width:220px;border:1px solid var(--line);background:var(--soft);border-radius:14px;padding:7px 8px 7px 10px;opacity:0;transform:translateY(6px) scale(.96);animation:chip-in .3s var(--ease-out) forwards}
-  @keyframes chip-in{to{opacity:1;transform:none}}
-  .chip svg{width:16px;height:16px;color:var(--muted);flex:none}
-  .chip span{font-size:12.5px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .chip button{border:0;background:transparent;color:var(--muted);width:18px;height:18px;border-radius:50%;display:grid;place-items:center;cursor:pointer;flex:none;transition:background .16s ease,color .16s ease}
-  .chip button:hover{background:var(--btn-hover);color:var(--text)}
-  .chip button svg{width:11px;height:11px}
-  .attach-wrap{position:relative}
-  .attach-panel{position:absolute;left:0;bottom:48px;width:308px;padding:10px;border:1px solid var(--line);border-radius:26px;background:var(--soft);box-shadow:var(--shadow-lg),inset 0 1px 0 var(--inset-hi);transform-origin:20px 100%;z-index:40;will-change:transform,clip-path,opacity;
-    opacity:0;transform:translateY(6px) scale(.94);clip-path:inset(46% 55% 0 0 round 16px);pointer-events:none;
-    transition:opacity .12s ease,transform .24s var(--ease-in),clip-path .24s var(--ease-in)}
-  .attach-wrap.is-open .attach-panel{opacity:1;transform:none;clip-path:inset(0 round 26px);pointer-events:auto;
-    transition:opacity .09s ease,transform .3s var(--ease-out),clip-path .3s var(--ease-out)}
-  .attach-wrap.is-closing .attach-panel{transition:opacity .13s ease .03s,transform .17s var(--ease-in),clip-path .17s var(--ease-in)}
-  .attach-tiles{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
-  .attach-tile{border:0;background:transparent;border-radius:18px;padding:14px 6px 12px;display:flex;flex-direction:column;align-items:center;gap:9px;cursor:pointer;color:var(--text);
-    opacity:0;transform:translateY(7px);transition:opacity .14s ease,transform .22s var(--ease-out),background .16s ease}
-  .attach-tile svg{width:22px;height:22px;color:#6f726e}
-  html[data-theme="dark"] .attach-tile svg{color:var(--muted)}
-  .attach-tile span{font-size:12.5px;font-weight:560}
-  .attach-tile:hover{background:var(--raise)}
-  .attach-tile:active{transform:scale(.97)}
-  .attach-divider{height:1px;background:var(--line);margin:9px 5px 5px}
-  .attach-list{display:grid;gap:1px}
-  .attach-row{border:0;background:transparent;width:100%;display:grid;grid-template-columns:36px 1fr auto;align-items:center;gap:11px;padding:9px 8px;border-radius:16px;cursor:pointer;text-align:left;
-    opacity:0;transform:translateY(7px);transition:opacity .14s ease,transform .22s var(--ease-out),background .16s ease}
-  .attach-row:hover{background:var(--raise)}
-  .attach-row:active{transform:scale(.99)}
-  .row-symbol{width:36px;height:36px;border-radius:12px;display:grid;place-items:center;color:#6f726e}
-  html[data-theme="dark"] .row-symbol{color:var(--muted)}
-  .row-symbol svg{width:21px;height:21px;stroke-width:1.7}
-  .row-copy{min-width:0}
-  .row-copy strong{display:block;font-size:14.5px;font-weight:640;letter-spacing:-.01em;color:var(--text)}
-  .row-copy span{display:block;font-size:11.5px;line-height:1.35;color:var(--muted);margin-top:2px}
-  .row-copy-tight strong{font-weight:600}
-  .row-state{font-size:13px;color:var(--muted);font-weight:560;white-space:nowrap;animation:trigger-in .2s var(--ease-out)}
-  .row-chevron{width:16px;height:16px;color:#a6a8a3;flex:none}
-  html[data-theme="dark"] .row-chevron{color:var(--muted)}
-  #webSearchRow{grid-template-columns:36px 1fr auto 16px}
-  .attach-wrap.is-open .attach-tile,.attach-wrap.is-open .attach-row{opacity:1;transform:none;
-    transition:opacity .18s ease var(--d,0ms),transform .32s var(--ease-out) var(--d,0ms),background .16s ease 0s}
-  .attach-wrap.is-open .attach-tile:nth-child(1){--d:18ms}
-  .attach-wrap.is-open .attach-tile:nth-child(2){--d:32ms}
-  .attach-wrap.is-open .attach-tile:nth-child(3){--d:46ms}
-  .attach-wrap.is-open .attach-row:nth-child(1){--d:64ms}
-  .attach-wrap.is-open .attach-row:nth-child(2){--d:80ms}
-  .attach-wrap.is-open .attach-row:nth-child(3){--d:96ms}
-  .attach-wrap.is-closing .attach-tile,.attach-wrap.is-closing .attach-row{opacity:0;transform:translateY(2px);transition:opacity .1s ease,transform .12s ease}
-  .mode-wrap{position:relative;margin-right:auto;min-width:0}
-  .mode-picker{position:relative}
-  .mode-picker summary{list-style:none}
-  .mode-picker summary::-webkit-details-marker{display:none}
-  .mode-trigger{height:40px;border:0;border-radius:14px;background:transparent;color:var(--muted);padding:0 9px;display:flex;align-items:center;gap:7px;font-weight:650;cursor:pointer;user-select:none;transition:background .18s ease,transform .18s ease}
-  .mode-trigger:hover,.mode-picker.is-open .mode-trigger{background:var(--soft);color:var(--text)}
-  .mode-trigger:active{transform:scale(.97)}
-  .trigger-state{display:none;align-items:center;gap:8px;white-space:nowrap;animation:trigger-in .24s var(--ease-out)}
-  @keyframes trigger-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
-  .trigger-auto{display:flex}
-  .trigger-state svg{width:18px;height:18px;color:var(--muted)}
-  .mode-picker:has(#mode-instant:checked) .trigger-auto,.mode-picker:has(#mode-thinking:checked) .trigger-auto,.mode-picker:has(#mode-max:checked) .trigger-auto,.mode-picker:has(#mode-manual:checked) .trigger-auto{display:none}
-  .mode-picker:has(#mode-instant:checked) .trigger-instant,.mode-picker:has(#mode-thinking:checked) .trigger-thinking,.mode-picker:has(#mode-max:checked) .trigger-max,.mode-picker:has(#mode-manual:checked) .trigger-manual{display:flex}
-  .mode-chevron{width:15px;height:15px;transition:transform .26s var(--ease-out)}
-  .mode-picker.is-open .mode-chevron{transform:rotate(180deg)}
-  .mode-radio{position:absolute;width:1px;height:1px;opacity:0;pointer-events:none}
-  .mode-panel{position:absolute;left:0;bottom:48px;width:280px;padding:9px;border:1px solid var(--line);border-radius:26px;background:var(--soft);box-shadow:var(--shadow-lg),inset 0 1px 0 var(--inset-hi);transform-origin:18px 100%;z-index:40;overflow:hidden;will-change:transform,clip-path,opacity,height,width;
-    opacity:0;transform:translateY(6px) scale(.92);clip-path:inset(56% 44% 0 0 round 16px);pointer-events:none;
-    transition:opacity .16s ease,transform .28s var(--ease-in),clip-path .28s var(--ease-in),height .38s var(--ease-out),width .42s var(--ease-out)}
-  .mode-picker.is-open .mode-panel{opacity:1;transform:none;clip-path:inset(0 round 26px);pointer-events:auto;
-    transition:opacity .14s ease,transform .36s var(--ease-out),clip-path .36s var(--ease-out),height .38s var(--ease-out),width .42s var(--ease-out)}
-  .mode-picker.is-closing .mode-panel{transition:opacity .16s ease .03s,transform .22s var(--ease-in),clip-path .22s var(--ease-in),width .32s var(--ease-out)}
-  #mode-manual:checked ~ .mode-panel{width:310px}
-  .mode-choice{min-height:58px;padding:7px 9px;display:grid;grid-template-columns:38px 1fr 18px;align-items:center;gap:10px;border-radius:17px;cursor:pointer;
-    opacity:0;transform:translateY(8px);
-    transition:opacity .14s ease,transform .22s var(--ease-out),background .16s ease}
-  .mode-picker.is-open .mode-choice{opacity:1;transform:none;
-    transition:opacity .18s ease var(--d,0ms),transform .34s var(--ease-out) var(--d,0ms),background .16s ease 0s}
-  .mode-picker.is-open .mode-choice:nth-child(1){--d:26ms}
-  .mode-picker.is-open .mode-choice:nth-child(2){--d:44ms}
-  .mode-picker.is-open .mode-choice:nth-child(3){--d:62ms}
-  .mode-picker.is-open .mode-choice:nth-child(4){--d:80ms}
-  .mode-picker.is-open .mode-choice:nth-child(5){--d:98ms}
-  .mode-picker.is-closing .mode-choice{opacity:0;transform:translateY(2px);transition:opacity .1s ease,transform .12s ease}
-  .mode-picker.is-closing .mode-choice.is-chosen{opacity:1;transform:none;transition:opacity .14s ease .04s,transform .14s ease}
-  .mode-choice:hover{background:var(--raise)}
-  .mode-choice:active{transform:scale(.985)}
-  .mode-scroller{position:relative}
-  .mode-screen{transition:opacity .22s ease,transform .3s var(--ease-out)}
-  .mode-screen:not(.is-active){position:absolute;inset:0 0 auto 0;visibility:hidden;opacity:0;transform:translateY(5px);pointer-events:none}
-  .mode-screen.is-leaving{visibility:visible;opacity:0;transform:translateY(-5px);transition:opacity .16s ease,transform .24s var(--ease-in)}
-  .mode-back{width:100%;border:0;background:transparent;display:flex;align-items:center;gap:6px;padding:9px 10px 7px;margin-bottom:2px;color:var(--muted);font-size:13px;font-weight:600;cursor:pointer;border-radius:14px;transition:background .16s ease,color .16s ease}
-  .mode-back:hover{background:var(--raise);color:var(--text)}
-  .mode-back svg{width:15px;height:15px;stroke-width:2.1}
-  .vendor-row,.model-row{border:0;background:transparent;width:100%;display:grid;grid-template-columns:38px 1fr;align-items:center;gap:10px;padding:9px 9px;border-radius:16px;cursor:pointer;text-align:left;transition:background .16s ease}
-  .vendor-row:hover,.model-row:hover{background:var(--raise)}
-  .vendor-row:active,.model-row:active{transform:scale(.99)}
-  .vendor-row.is-disabled{cursor:default}
-  .vendor-row.is-disabled:hover{background:transparent}
-  .vendor-row.is-disabled .vendor-name{color:var(--muted)}
-  .vendor-symbol,.model-symbol{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;color:var(--text)}
-  .vendor-symbol svg,.model-symbol svg{width:21px;height:21px}
-  .vendor-name{font-size:15px;font-weight:610;letter-spacing:-.01em;color:var(--text)}
-  .model-copy strong{display:block;font-size:14.5px;font-weight:650;letter-spacing:-.01em;color:var(--text)}
-  .model-copy .model-meta{display:flex;align-items:center;gap:6px;margin-top:2px}
-  .model-copy .model-meta span{font-size:11px;color:var(--muted);line-height:1.3}
-  .model-copy .model-tier{font-size:10.5px;font-weight:640;color:var(--text);background:var(--raise);border-radius:999px;padding:2px 7px;white-space:nowrap}
-  .legacy-link{width:100%;border:0;background:transparent;text-align:center;padding:10px 8px 6px;color:var(--muted);font-size:12.5px;font-weight:560;cursor:pointer;border-radius:14px;transition:background .16s ease,color .16s ease}
-  .legacy-link:hover{background:var(--raise);color:var(--text)}
-  .mode-symbol{width:38px;height:38px;display:grid;place-items:center;color:var(--muted)}
-  .mode-symbol svg{width:29px;height:29px;stroke-width:1.65;filter:drop-shadow(0 1px 0 rgba(255,255,255,.9))}
-  .mode-copy strong,.mode-copy span{display:block}
-  .mode-copy strong{font-size:16px;line-height:1.08;font-weight:670;letter-spacing:-.015em;color:var(--text)}
-  .mode-copy span{font-size:12px;line-height:1.25;color:var(--muted);margin-top:3px}
-  .mode-check{width:17px;height:17px;color:var(--text);opacity:0;transform:scale(.65);transition:opacity .15s ease,transform .18s cubic-bezier(.22,1,.36,1)}
-  .mode-choices{display:grid}
-  .reasoning-effort{max-height:0;margin:0 5px;padding:0 11px;border-top:1px solid transparent;overflow:hidden;visibility:hidden;pointer-events:none;opacity:0;transform:translateY(5px);transition:max-height .42s var(--ease-out),margin .42s var(--ease-out),padding .42s var(--ease-out),border-color .2s ease,opacity .14s ease,transform .22s var(--ease-out),visibility 0s linear .42s}
-  #mode-manual:checked ~ .mode-panel .mode-screen.is-active .reasoning-effort{max-height:108px;margin:8px 5px 4px;padding:15px 11px 7px;border-color:var(--line);visibility:visible;pointer-events:auto;transition:max-height .46s var(--ease-out),margin .46s var(--ease-out),padding .46s var(--ease-out),border-color .25s ease,opacity .16s ease,transform .24s var(--ease-out),visibility 0s}
-  .mode-picker.is-open #mode-manual:checked ~ .mode-panel .mode-screen.is-active .reasoning-effort{opacity:1;transform:none;transition:max-height .46s var(--ease-out),margin .46s var(--ease-out),padding .46s var(--ease-out),border-color .25s ease,opacity .24s ease 110ms,transform .38s var(--ease-out) 110ms,visibility 0s}
-  .mode-picker.is-closing .reasoning-effort{opacity:0;transform:translateY(2px);transition:opacity .1s ease,transform .12s ease}
-  .effort-head{display:flex;align-items:center;justify-content:space-between;gap:12px}
-  .effort-title{font-size:12px;line-height:1;font-weight:680;letter-spacing:-.005em;color:var(--text)}
-  .effort-value{min-width:56px;padding:5px 9px;border-radius:999px;background:var(--raise);color:var(--text);font-size:10.5px;font-weight:680;line-height:1;text-align:center;transition:background-color .22s ease,color .22s ease,transform .24s var(--ease-out)}
-  .effort-slider{--effort-progress:25%;position:relative;height:25px;margin:9px 1px 0}
-  .effort-track{position:absolute;left:8px;right:8px;top:11px;height:3px;border-radius:999px;background:var(--line);overflow:hidden;pointer-events:none}
-  .effort-fill{display:block;width:var(--effort-progress);height:100%;border-radius:inherit;background:var(--accent);will-change:width;transition:background-color .3s ease}
-  .effort-ticks{position:absolute;z-index:1;left:7px;right:7px;top:8px;display:flex;justify-content:space-between;pointer-events:none}
-  .effort-ticks i{width:3px;height:9px;border-radius:999px;background:var(--muted);opacity:.42;transition:opacity .2s ease,background-color .3s ease}
-  .effort-range{position:absolute;z-index:2;inset:0;width:100%;height:25px;margin:0;appearance:none;-webkit-appearance:none;background:transparent;cursor:pointer}
-  .effort-range::-webkit-slider-runnable-track{height:3px;background:transparent}
-  .effort-range::-webkit-slider-thumb{width:17px;height:17px;margin-top:-7px;border:3px solid var(--soft);border-radius:50%;appearance:none;-webkit-appearance:none;background:var(--accent);box-shadow:0 3px 10px rgba(23,24,23,.2);transition:transform .2s var(--ease-out),background-color .3s ease,box-shadow .2s ease}
-  .effort-range::-moz-range-track{height:3px;background:transparent}
-  .effort-range::-moz-range-progress{height:3px;background:transparent}
-  .effort-range::-moz-range-thumb{width:11px;height:11px;border:3px solid var(--soft);border-radius:50%;background:var(--accent);box-shadow:0 3px 10px rgba(23,24,23,.2);transition:transform .2s var(--ease-out),background-color .3s ease,box-shadow .2s ease}
-  .effort-range:hover::-webkit-slider-thumb,.effort-range:focus-visible::-webkit-slider-thumb{transform:scale(1.12);box-shadow:0 3px 12px rgba(23,24,23,.24),0 0 0 3px var(--raise)}
-  .effort-range:hover::-moz-range-thumb,.effort-range:focus-visible::-moz-range-thumb{transform:scale(1.12);box-shadow:0 3px 12px rgba(23,24,23,.24),0 0 0 3px var(--raise)}
-  .effort-slider.is-dragging .effort-range::-webkit-slider-thumb{transform:scale(1.18);box-shadow:0 4px 14px rgba(23,24,23,.28),0 0 0 4px var(--raise)}
-  .effort-slider.is-dragging .effort-range::-moz-range-thumb{transform:scale(1.18);box-shadow:0 4px 14px rgba(23,24,23,.28),0 0 0 4px var(--raise)}
-  .effort-range:focus-visible{outline:none}
-  .effort-labels{display:grid;grid-template-columns:repeat(5,1fr);gap:0;margin:0 -5px}
-  .effort-option{min-width:0;border:0;border-radius:9px;background:transparent;color:var(--muted);padding:4px 0 3px;font-size:10px;font-weight:570;cursor:pointer;transition:color .2s ease,background-color .2s ease,transform .2s var(--ease-out)}
-  .effort-option:hover{background:var(--raise);color:var(--text)}
-  .effort-option:active{transform:scale(.94)}
-  .effort-option.is-active{color:var(--text);font-weight:720}
-  #mode-auto:checked ~ .mode-panel label[for="mode-auto"],#mode-instant:checked ~ .mode-panel label[for="mode-instant"],#mode-thinking:checked ~ .mode-panel label[for="mode-thinking"],#mode-max:checked ~ .mode-panel label[for="mode-max"],#mode-manual:checked ~ .mode-panel label[for="mode-manual"]{background:var(--raise)}
-  #mode-auto:checked ~ .mode-panel label[for="mode-auto"] .mode-check,#mode-instant:checked ~ .mode-panel label[for="mode-instant"] .mode-check,#mode-thinking:checked ~ .mode-panel label[for="mode-thinking"] .mode-check,#mode-max:checked ~ .mode-panel label[for="mode-max"] .mode-check,#mode-manual:checked ~ .mode-panel label[for="mode-manual"] .mode-check{opacity:1;transform:scale(1)}
-  .hint{text-align:center;color:var(--muted);font-size:11px;margin-top:8px;transition:color .65s var(--ease-gentle),text-shadow .65s var(--ease-gentle)}
-  html:not([data-theme="dark"]) #incognitoState:checked ~ .main .hint{color:rgba(255,255,255,.9);text-shadow:0 1px 10px rgba(0,0,0,.35)}
-  html[data-theme="dark"] #incognitoState:checked ~ .main .hint{color:rgba(15,17,16,.82);text-shadow:0 1px 10px rgba(255,255,255,.25)}
-  /* ——— settings ——— */
-  .settings-backdrop{position:fixed;inset:0;z-index:1200;background:rgba(24,26,23,.22);backdrop-filter:blur(4px);opacity:0;visibility:hidden;pointer-events:none;transition:opacity .26s ease,visibility .26s}
-  .settings-backdrop.is-open{opacity:1;visibility:visible;pointer-events:auto}
-  .settings{position:fixed;z-index:1201;left:50%;top:50%;width:min(640px,calc(100vw - 28px));height:min(680px,calc(100dvh - 56px));display:flex;flex-direction:column;border:1px solid var(--border-light);border-radius:32px;background:var(--panel);backdrop-filter:blur(28px);box-shadow:var(--shadow-lg);overflow:hidden;
-    opacity:0;visibility:hidden;pointer-events:none;transform:translate(-50%,-48%) scale(.965);transition:opacity .18s ease,transform .3s var(--ease-in),visibility .3s}
-  .settings.is-open{opacity:1;visibility:visible;pointer-events:auto;transform:translate(-50%,-50%) scale(1);transition:opacity .16s ease,transform .38s var(--ease-out),visibility 0s}
-  .settings-head{display:flex;align-items:center;justify-content:space-between;padding:26px 24px 0 30px}
-  .settings-head h2{margin:0;font-size:19px;font-weight:680;letter-spacing:-.03em}
-  .settings-tabs{position:relative;display:flex;gap:2px;padding:14px 22px 0;overflow-x:auto;scrollbar-width:none}.settings-tabs::-webkit-scrollbar{display:none}
-  .settings-tab{border:0;background:transparent;padding:8px 10px 14px;font-size:13.5px;font-weight:560;color:var(--muted);cursor:pointer;white-space:nowrap;transition:color .22s ease,opacity .22s ease}
-  .settings-tab:hover{color:var(--text);opacity:.8}
-  .settings-tab.is-active{color:var(--text);font-weight:680}
-  .settings-divider{height:1px;background:var(--line);margin:0 22px}
-  .settings-body{position:relative;flex:1;min-height:0}
-  .settings-pane{position:absolute;inset:0;overflow-y:auto;padding:22px 26px 30px;opacity:0;visibility:hidden;transform:translateY(7px);pointer-events:none;transition:opacity .18s ease,transform .3s var(--ease-out),visibility .3s}
-  .settings-pane.is-active{opacity:1;visibility:visible;transform:none;transition:opacity .2s ease,transform .34s var(--ease-out),visibility 0s}
-  .settings.is-open .settings-pane.is-active{pointer-events:auto}
-  .settings-pane.is-leaving{visibility:visible;transform:translateY(-5px);transition:opacity .13s ease,transform .16s var(--ease-in),visibility .16s}
-  .set-sec+.set-sec{margin-top:26px}
-  .set-sec-title{font-size:12px;font-weight:680;letter-spacing:-.005em;color:var(--text);padding:0 12px 6px;display:flex;align-items:center;gap:7px}
-  .set-sec-title svg{width:14px;height:14px;color:var(--muted);flex:none}
-  .label-icon{display:flex;align-items:center;gap:9px}
-  .label-icon svg{width:16px;height:16px;color:var(--muted);flex:none}
-  .set-row{display:flex;align-items:center;gap:14px;min-height:50px;padding:10px 12px;border-radius:16px;transition:background .18s ease}
-  .set-row:hover{background:var(--hover)}
-  .set-row .label{font-size:13.5px;color:var(--text);font-weight:560}
-  .set-row .label.soft{color:var(--muted);font-weight:500}
-  .set-row .val{margin-left:auto;display:flex;align-items:center;gap:12px;min-width:0}
-  .set-row .meta{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .link-btn{border:0;background:transparent;color:var(--muted);font-size:12.5px;font-weight:560;padding:7px 11px;border-radius:12px;cursor:pointer;transition:background .18s ease,color .18s ease}
-  .link-btn:hover{background:var(--soft);color:var(--text)}
-  .link-btn.danger:hover{color:#c3453b}
-  .name-input{border:0;background:transparent;color:var(--text);font-size:13.5px;font-weight:660;text-align:right;padding:7px 10px;border-radius:12px;width:170px;outline:none;transition:background .18s ease}
-  .name-input:hover,.name-input:focus{background:var(--soft)}
-  .tone-wrap{position:relative}
-  .tone-trigger-row{width:100%;border:0;background:transparent;cursor:pointer;text-align:left;font:inherit;color:inherit}
-  .tone-trigger-row .val{display:flex;align-items:center;gap:8px}
-  #toneTriggerLabel{font-size:13.5px;color:var(--muted);font-weight:560}
-  .tone-chevron{width:15px;height:15px;color:var(--muted);flex:none;transition:transform .26s var(--ease-out)}
-  .tone-wrap.is-open .tone-chevron{transform:rotate(180deg)}
-  .tone-dropdown{display:grid;grid-template-rows:0fr;transition:grid-template-rows .32s var(--ease-out)}
-  .tone-wrap.is-open .tone-dropdown{grid-template-rows:1fr}
-  .tone-dropdown-inner{overflow:hidden;padding:2px 4px 6px}
-  .tone-option{width:100%;border:0;background:transparent;display:grid;grid-template-columns:36px 1fr 18px;align-items:center;gap:10px;padding:8px 10px;border-radius:16px;cursor:pointer;text-align:left;transition:background .16s ease}
-  .tone-option:hover{background:var(--raise)}
-  .tone-option.is-selected{background:var(--raise)}
-  .tone-symbol{width:34px;height:34px;border-radius:11px;display:grid;place-items:center;color:var(--muted);flex:none}
-  .tone-symbol svg{width:20px;height:20px;stroke-width:1.8}
-  .tone-copy{min-width:0}
-  .tone-copy strong{display:block;font-size:14px;font-weight:640;letter-spacing:-.01em;color:var(--text)}
-  .tone-copy span{display:block;font-size:11.5px;line-height:1.3;color:var(--muted);margin-top:2px}
-  .tone-check{width:16px;height:16px;color:var(--text);flex:none;opacity:0;transform:scale(.65);transition:opacity .15s ease,transform .18s cubic-bezier(.22,1,.36,1)}
-  .tone-option.is-selected .tone-check{opacity:1;transform:scale(1)}
-  .set-note{font-size:12px;color:var(--muted);line-height:1.5;padding:0 12px 10px;max-width:460px}
-  .set-note a{color:var(--text);text-decoration:none;border-bottom:1px solid var(--line)}
-  .instructions{width:100%;min-height:116px;border:1px solid var(--line);border-radius:20px;background:var(--soft);color:var(--text);font-size:12.5px;line-height:1.5;padding:16px 18px;resize:none;outline:none;transition:border-color .2s ease,background .2s ease}
-  .instructions::placeholder{color:var(--muted)}
-  .instructions:focus{border-color:rgba(23,24,23,.2);background:var(--raise)}
-  .seg{display:inline-flex;gap:2px;padding:3px;border-radius:14px;background:var(--soft);position:relative}
-  .seg button{border:0;background:transparent;color:var(--muted);font-size:12.5px;font-weight:580;padding:8px 14px;border-radius:11px;cursor:pointer;position:relative;z-index:1;transition:color .22s ease}
-  .seg button.is-active{color:var(--text)}
-  .seg-thumb{position:absolute;top:3px;bottom:3px;left:0;border-radius:11px;background:var(--raise);box-shadow:0 2px 6px rgba(23,24,23,.08);transition:transform .34s var(--ease-out),width .34s var(--ease-out)}
-  .mini-select{border:0;background:var(--soft);color:var(--text);font-size:12.5px;font-weight:560;padding:8px 12px;border-radius:12px;cursor:pointer;outline:none}
-  .plan-name{font-size:26px;font-weight:700;letter-spacing:-.04em;padding:0 12px}
-  .plan-name span{font-size:13px;font-weight:520;color:var(--muted);margin-left:10px;letter-spacing:-.01em}
-  .usage{padding:6px 12px 0;display:grid;gap:20px}
-  .usage-item{display:grid;grid-template-columns:56px 1fr;align-items:center;gap:14px}
-  .usage-figure strong{display:block;font-size:17px;font-weight:660;letter-spacing:-.03em}
-  .usage-figure span{display:block;font-size:12px;color:var(--muted);margin-top:1px}
-  .usage-track{height:16px;border-radius:999px;background:var(--soft);overflow:hidden}
-  .usage-fill{height:100%;width:0;border-radius:999px;background:var(--accent);transition:width .8s var(--ease-out)}
-  .session{transition:opacity .22s ease,transform .26s var(--ease-in),max-height .3s var(--ease-in),margin .3s ease}
-  .session.is-gone{opacity:0;transform:translateX(-10px);max-height:0;overflow:hidden;pointer-events:none;margin:0}
-  .toast{position:fixed;z-index:1300;left:50%;bottom:34px;transform:translate(-50%,14px);background:var(--accent);color:var(--on-accent);font-size:13.5px;font-weight:560;padding:12px 18px;border-radius:16px;box-shadow:0 16px 40px rgba(23,24,23,.28);opacity:0;pointer-events:none;transition:opacity .2s ease,transform .32s var(--ease-out)}
-  .toast.is-shown{opacity:1;transform:translate(-50%,0)}
-  @media (max-width:840px){body{overflow:auto}.app{padding:0;height:100dvh}.sidebar{inset:10px auto 10px 10px;width:min(330px,calc(100vw - 30px));border-radius:30px}.main{height:100dvh;border-radius:0;border:0}.topbar{padding:0 14px;height:68px}.content{inset:68px 0 0;padding:24px 18px 118px}.hero-stage{transform:translateY(-5vh)}h1{font-size:46px}.hero p{font-size:14px}.composer-wrap{bottom:14px;width:calc(100% - 24px)}.composer{border-radius:26px}.settings{width:100vw;height:100dvh;border-radius:0;border:0;top:0;left:0;transform:translate(0,10px) scale(1)}.settings.is-open{transform:none}.settings-head{padding:22px 16px 0 20px}.settings-tabs{padding:12px 14px 0}.settings-divider{margin:0 14px}.settings-pane{padding:18px 16px 40px}}
-  @media (max-width:520px){.suggestions{display:none}h1,.incognito-hero h1{font-size:40px}.hero p{max-width:340px}.mode-panel{width:min(280px,calc(100vw - 70px))}#mode-manual:checked ~ .mode-panel{width:min(310px,calc(100vw - 70px))}.mode-copy strong{font-size:15px}.mode-copy span{font-size:11px}.attach-panel{width:min(308px,calc(100vw - 62px))}}
-  @media (prefers-reduced-motion:reduce){*,*::before,*::after{scroll-behavior:auto!important;transition-duration:.01ms!important;transition-delay:0ms!important;animation-duration:.01ms!important}.mode-panel,.attach-panel{clip-path:none!important}}
-  .projects-page{position:absolute;z-index:8;inset:74px 0 0;padding:28px clamp(24px,6vw,76px);display:none;overflow:auto}.main.projects-index .projects-page{display:block}.main.projects-index .content,.main.projects-index .top-actions{display:none}.projects-heading{display:flex;align-items:center;gap:10px;font:600 28px Charter,Georgia,serif}.projects-heading>svg{width:22px}.projects-heading .project-create-btn{margin-left:auto;font:500 14px Inter,sans-serif}.projects-empty{min-height:calc(100dvh - 210px);display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center}.projects-empty-icon{width:52px;height:52px;padding:13px;border:1px solid var(--line);border-radius:18px;background:var(--btn);margin-bottom:18px}.projects-empty h2{margin:0;font:600 32px Charter,Georgia,serif}.projects-empty p{margin:10px 0 22px;color:var(--muted);font-size:14px}.project-create-btn{display:flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:13px;padding:10px 15px;background:var(--accent);color:var(--on-accent);cursor:pointer}.project-create-btn svg{width:16px}.projects-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px;margin-top:28px}.project-card{display:flex;align-items:center;gap:11px;padding:17px;border:1px solid var(--line);border-radius:18px;background:var(--card);color:var(--text);cursor:pointer;text-align:left}.project-card:hover{background:var(--btn-hover)}.project-card svg{width:20px}.project-card span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.project-create-overlay{position:fixed;z-index:1300;inset:0;background:rgba(10,12,11,.28);backdrop-filter:blur(5px);display:grid;place-items:center;opacity:0;visibility:hidden;transition:opacity .25s ease,visibility .25s}.project-create-overlay.is-open{opacity:1;visibility:visible}.project-create-dialog{width:min(430px,calc(100vw - 32px));border:1px solid var(--line);border-radius:24px;background:var(--panel);padding:22px;box-shadow:var(--shadow-lg);transform:translateY(15px) scale(.97);transition:transform .35s var(--ease-out)}.project-create-overlay.is-open .project-create-dialog{transform:none}.project-create-title{display:flex;align-items:center;gap:10px;font:600 22px Charter,Georgia,serif;margin-bottom:18px}.project-create-title svg{width:20px}.project-create-dialog label{display:block;font-size:12px;color:var(--muted);margin:12px 0 6px}.project-create-dialog input,.project-create-dialog textarea{width:100%;border:1px solid var(--line);border-radius:14px;background:var(--soft);color:var(--text);padding:11px;outline:none}.project-create-dialog textarea{min-height:96px;resize:vertical}.project-dialog-actions{display:flex;justify-content:flex-end;gap:8px;margin-top:17px}.project-dialog-actions button{border:1px solid var(--line);border-radius:13px;padding:9px 13px;background:var(--btn);color:var(--text);cursor:pointer}.project-dialog-actions .project-submit{display:flex;align-items:center;gap:6px;background:var(--accent);color:var(--on-accent)}.project-dialog-actions svg{width:15px}.project-back{display:none}.main.project-mode .sidebar-toggle,.main.project-mode .incognito-btn{display:none}.main.project-mode .project-back{display:grid}.main.project-mode .suggestions{display:none}.main.project-mode .hero-stage{width:min(980px,100%)}.main.project-mode .home-greeting{font-size:clamp(38px,4vw,56px)}.project-context{display:none;margin-top:18px;width:min(620px,100%)}.main.project-mode:not(.has-active-chat) .project-context{display:block}.project-context p{margin:0 0 16px;color:var(--muted);font-size:14px}.project-chat-list{display:grid;gap:7px;max-height:190px;overflow:auto}.project-chat-item{border:1px solid var(--line);border-radius:14px;background:var(--btn);color:var(--text);padding:10px 13px;text-align:left;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.project-chat-empty{font-size:13px;color:var(--muted)}.project-picker{display:none;padding-top:4px}.chat-actions-panel.is-projecting .chat-actions-list{display:none}.chat-actions-panel.is-projecting .project-picker{display:block}.project-picker-title{font-size:12px;color:var(--muted);margin:0 4px 8px}.project-picker-list{display:grid;gap:4px;max-height:220px;overflow:auto}
-
-  /* ——— live chat integration ——— */
-  .chat-log{display:none;position:absolute;inset:0;overflow-y:auto;padding:22px max(24px,calc((100% - 820px)/2)) 150px;scroll-behavior:smooth}
-  .content.has-chat .hero-stage{display:none}
-  .content.has-chat .chat-log{display:block}
-  .chat-message{display:flex;width:100%;padding:13px 0;animation:chat-message-in .34s var(--ease-out)}
-  .chat-message.user{justify-content:flex-end}
-  .chat-message.assistant{justify-content:flex-start}
-  .chat-message.assistant.is-latest-response{min-height:clamp(360px,calc(100dvh - 290px),720px)}
-  @keyframes chat-message-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-  .chat-copy{min-width:0;max-width:min(78%,680px)}
-  .chat-message.user .chat-copy{padding:13px 17px;border:1px solid var(--line);border-radius:22px 22px 7px 22px;background:var(--btn);box-shadow:inset 0 1px 0 var(--inset-hi)}
-  .chat-message.assistant .chat-copy{width:min(100%,720px);padding:8px 2px}
-  .chat-text{font-family:Charter,"Bitstream Charter","Sitka Text","Iowan Old Style",Georgia,serif;font-size:16.5px;overflow-wrap:anywhere;line-height:1.65}
-  .chat-text>:first-child{margin-top:0}.chat-text>:last-child{margin-bottom:0}
-  .chat-text p{margin:.7em 0}.chat-text h1,.chat-text h2,.chat-text h3,.chat-text h4,.chat-text h5,.chat-text h6{margin:1.05em 0 .45em;font-family:inherit;line-height:1.22;letter-spacing:-.015em}.chat-text h1{font-size:1.65em}.chat-text h2{font-size:1.4em}.chat-text h3{font-size:1.2em}.chat-text ul,.chat-text ol{margin:.7em 0;padding-left:1.45em}.chat-text li{margin:.28em 0}.chat-text blockquote{margin:.9em 0;padding:.15em 0 .15em 1em;border-left:2px solid var(--line);color:var(--muted)}.chat-text code{font-family:"SFMono-Regular",Consolas,"Liberation Mono",monospace;font-size:.86em;background:var(--soft);border-radius:6px;padding:.12em .36em}.chat-text pre{margin:.9em 0;padding:14px 16px;overflow:auto;border:1px solid var(--line);border-radius:15px;background:var(--soft)}.chat-text pre code{padding:0;background:transparent}.chat-text a{color:inherit;text-decoration-thickness:1px;text-underline-offset:3px}.chat-text hr{border:0;border-top:1px solid var(--line);margin:1.1em 0}
-  .chat-table-wrap{max-width:100%;margin:.9em 0;overflow-x:auto;border:1px solid var(--line);border-radius:14px}.chat-text table{width:100%;border-collapse:collapse;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:13.5px;line-height:1.45}.chat-text th,.chat-text td{min-width:110px;padding:10px 12px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);text-align:left;vertical-align:top}.chat-text th:last-child,.chat-text td:last-child{border-right:0}.chat-text tr:last-child td{border-bottom:0}.chat-text th{background:var(--soft);font-weight:650}.chat-text td{background:var(--card)}.chat-text .align-center{text-align:center}.chat-text .align-right{text-align:right}
-  .thinking-state{display:flex;align-items:center;min-height:48px;padding:8px 2px}
-  .thinking-label{position:relative;font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:18px;font-weight:520;letter-spacing:.005em;white-space:nowrap;opacity:1;color:#a1a1aa}
-  .thinking-label::after{content:attr(data-text);position:absolute;inset:0;opacity:1;color:transparent;background-image:linear-gradient(90deg,transparent 0%,transparent 40%,#18181b 50%,transparent 60%,transparent 100%);background-size:220% 100%;background-repeat:no-repeat;-webkit-background-clip:text;background-clip:text;animation:thinkingSweep 1.8s linear infinite;pointer-events:none}
-  html[data-theme="dark"] .thinking-label{color:#71717a}
-  html[data-theme="dark"] .thinking-label::after{background-image:linear-gradient(90deg,transparent 0%,transparent 40%,#fafafa 50%,transparent 60%,transparent 100%)}
-  @keyframes thinkingSweep{0%{background-position:140% 0;opacity:1}100%{background-position:-40% 0;opacity:1}}
-  .thought-time{margin-bottom:7px;color:var(--muted);font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:12.5px;font-weight:560;letter-spacing:.005em}
-  .message-actions{display:flex;align-items:center;gap:2px;margin-top:12px;opacity:0;visibility:hidden;transform:translateY(3px);transition:opacity .2s ease,transform .28s var(--ease-out),visibility .2s}
-  .chat-message.is-complete .message-actions{opacity:1;visibility:visible;transform:none}
-  .message-action{width:30px;height:30px;padding:0;border:0;border-radius:10px;background:transparent;color:var(--muted);display:grid;place-items:center;cursor:pointer;transition:background .16s ease,color .16s ease,transform .16s ease}
-  .message-action:hover{background:var(--hover);color:var(--text)}.message-action:active{transform:scale(.92)}.message-action[aria-pressed="true"]{background:var(--soft);color:var(--text)}
-  .message-action svg{width:16px;height:16px;stroke-width:1.8}
-  .response-versions{display:flex;align-items:center;gap:4px;margin-left:5px;padding-left:7px;border-left:1px solid var(--line)}
-  .version-nav{height:30px;padding:0 7px;border:0;border-radius:9px;background:transparent;color:var(--muted);font-size:12px;cursor:pointer;transition:background .16s ease,color .16s ease}
-  .version-nav:hover{background:var(--hover);color:var(--text)}.version-nav[hidden]{display:none}
-  .chat-message.is-error .chat-text{color:#c3453b}
-  .send:disabled{opacity:.45;cursor:wait;transform:none}
-  .composer textarea:disabled{opacity:.65}
-  .api-key-input{width:min(260px,48vw);border:0;background:var(--soft);color:var(--text);font-size:12.5px;padding:9px 12px;border-radius:12px;outline:none}
-  .api-key-input:focus{box-shadow:0 0 0 2px var(--line)}
-  @media (max-width:840px){.chat-log{padding:10px 18px 135px}.chat-copy{max-width:88%}.chat-message.assistant .chat-copy{max-width:100%}.chat-message.assistant.is-latest-response{min-height:max(320px,calc(100dvh - 260px))}}
-</style>
-<style>
-  /* Quiet workspace visual theme. */
-  html,html[data-theme="dark"]{--bg:#20201f;--text:#e8e6e1;--muted:#92928b;--line:#ffffff0e;--panel:#282827;--card:#20201f;--soft:#2d2d2b;--soft-hover:#353532;--btn:#ffffff04;--btn-hover:#ffffff0a;--composer:#292928;--hover:#ffffff07;--raise:#333331;--accent:#deded2;--on-accent:#24251f;--border-light:#ffffff10;--shadow-lg:0 18px 60px #0005;--inset-hi:#ffffff04;--picker-bg:#292928;--picker-line:rgba(255,255,255,.075);--picker-hover:rgba(255,255,255,.055);--picker-active:rgba(255,255,255,.085)}
-  html[data-theme="light"]{--bg:#f7f6f2;--text:#292a26;--muted:#87877c;--line:#292a2612;--panel:#fffefa;--card:#f7f6f2;--soft:#eae9e2;--soft-hover:#e3e2d9;--btn:#ffffff44;--btn-hover:#292a2608;--composer:#fffefa;--hover:#292a2606;--raise:#efeee7;--accent:#444b3c;--on-accent:#fff;--border-light:#292a2614;--shadow-lg:0 18px 60px #24251f14;--picker-bg:#fffefa;--picker-line:rgba(35,37,32,.11);--picker-hover:rgba(35,37,32,.045);--picker-active:rgba(35,37,32,.075)}
-  body{background:var(--bg);font-size:14px;-webkit-font-smoothing:antialiased}
-  svg{stroke-width:1.65;width:18px;height:18px}
-  button{font-weight:450}
-  .main{background:var(--bg);backdrop-filter:none;transition:margin .3s ease,width .3s ease;isolation:isolate;overflow:hidden}
-  .sidebar{inset:0 auto 0 0;width:248px;border:0;border-right:1px solid var(--line);border-radius:0;padding:24px 13px 12px;background:#191918;box-shadow:none;backdrop-filter:none}
-  .sidebar .brand-row{padding:0 8px 28px 11px}
-  .brand-mark{width:auto;height:25px;display:flex;gap:9px;font-size:19px;letter-spacing:-.8px;font-weight:650}
-  .brand-mark svg{display:block;width:20px;height:20px}
-  .brand-mark:after{content:'NeoChat'}
-  .icon-btn{width:30px;height:30px;border-radius:8px}
-  .icon-btn svg{width:17px;height:17px}
-  .new-chat{height:36px;padding:0 11px;gap:10px;font-size:13px;font-weight:500;border-radius:8px;background:#ffffff09;border:1px solid #ffffff05}
-  .new-chat svg,.nav-item svg{width:17px;height:17px}
-  .nav{margin-top:8px;gap:2px}
-  .nav-item{padding:9px 11px;gap:11px;font-size:13px;border-radius:7px;color:#b5b5ae}
-  .nav-item:hover{color:var(--text)}
-  .nav-item .trailing svg{width:13px;height:13px}
-  .chat-history{margin-top:31px;border:0;padding:0}
-  .chat-history-title{font-size:11px;font-weight:450;letter-spacing:0;text-transform:none;padding:0 11px 12px}
-  .conversation-list{gap:1px;scrollbar-width:thin;scrollbar-color:#ffffff12 transparent}
-  .conversation-item{font-size:12px;padding:10px 11px;border-radius:7px;color:#acada5}
-  .conversation-item.is-active{font-weight:450}
-  .profile{border-top:1px solid var(--line);border-radius:0;gap:9px;padding:17px 7px 1px}
-  .avatar{height:28px;width:28px;font-size:10px;font-weight:500;background:#484c43!important}
-  .profile-copy strong{font-size:12px;font-weight:500}
-  .profile-copy span{font-size:10px}
-  .topbar{height:64px;padding:0 28px}
-  .sidebar-toggle,.incognito-btn,.top-new-chat,.chat-actions-trigger,.incognito-exit-btn{width:30px;height:30px;border:0;border-radius:8px;background:transparent;box-shadow:none}
-  .top-actions{gap:5px}
-  .content{inset:64px 0 0;padding:0}
-  .content:not(.has-chat){display:grid;grid-template-columns:minmax(0,1fr);align-content:center;justify-items:center;gap:29px;padding-bottom:75px}
-  .hero-stage{position:relative;min-height:0;height:65px;width:min(700px,calc(100% - 48px));transform:none}
-  .hero{justify-content:center}
-  .home-greeting,h1,.main.project-mode .home-greeting{font-family:Georgia,'Times New Roman',serif;font-size:clamp(30px,3vw,42px);font-weight:400;line-height:1.2;letter-spacing:-1.3px}
-  .hero p{font-size:13px}
-  .content:not(.has-chat) .composer-wrap{position:relative;left:auto;bottom:auto;transform:none;width:min(700px,calc(100% - 48px))}
-  .composer{border:1px solid #ffffff12;border-radius:15px;padding:14px 13px 11px;box-shadow:0 5px 20px #0000000c;backdrop-filter:none}
-  .composer:focus-within{border-color:#ffffff24;box-shadow:0 5px 28px #00000012}
-  .composer textarea{font-size:14px;min-height:63px;padding:2px 4px 12px;line-height:1.55}
-  .composer textarea::placeholder{color:#92928b}
-  .composer-bottom{gap:6px;padding-top:5px}
-  .round-btn,.send{height:29px;width:29px;border-radius:8px;box-shadow:none}
-  .round-btn{border:0;background:transparent;color:var(--muted)}
-  .round-btn svg,.send svg{height:17px;width:17px}
-  .mode-trigger{font-size:12px!important;min-height:29px!important;height:29px!important;padding:4px 7px!important;gap:6px!important}
-  .mode-trigger svg{width:15px;height:15px}
-  .suggestions{margin:15px 0 0;gap:7px;justify-content:flex-start;flex-wrap:wrap}
-  .suggestions button{border:1px solid var(--line);border-radius:7px;background:transparent;padding:6px 9px;font-size:11px;gap:6px;color:var(--muted)}
-  .suggestions button svg{width:13px;height:13px}
-  .suggestions button:hover{transform:none}
-  .composer-wrap .hint{display:block!important;margin-top:11px;color:var(--muted)!important;font-size:12px!important;line-height:1.35;opacity:.78;text-shadow:none!important}
-  .mode-panel,.attach-panel,.chat-actions-panel{border-radius:13px!important;box-shadow:var(--shadow-lg);background:var(--panel)}
-  .mode-item,.chat-menu-item,.attach-row{border-radius:8px}
-  .settings{border-radius:17px;box-shadow:var(--shadow-lg)}
-  .settings-head h2{font-size:20px}
-  .project-create-dialog{border-radius:16px}
-  .project-create-title{font-size:21px;font-weight:400}
-  .project-create-dialog input,.project-create-dialog textarea{border-radius:8px}
-  .project-create-btn,.project-dialog-actions button{border-radius:8px;font-size:12px;padding:8px 12px}
-  .projects-heading{font-weight:400;font-size:26px}
-  .projects-empty h2{font-weight:400;font-size:30px}
-  .project-card{border-radius:10px;padding:16px}
-  .project-chat-item{border-radius:8px}
-  .main.project-mode:not(.has-active-chat) .hero-stage{height:auto;min-height:180px}
-  .project-context{max-width:650px}
-  .project-description{font-size:12px!important}
-  .chat-log{padding-left:max(24px,calc((100% - 720px)/2));padding-right:max(24px,calc((100% - 720px)/2))}
-  .content.has-chat .composer-wrap{bottom:28px}
-  .content.has-chat .suggestions{display:none}
-  .chat-message{font-size:14px}
-  .toast{font-size:12px;border-radius:9px;padding:10px 15px}
-  html[data-theme="light"] .sidebar{background:#eeede7}
-  html[data-theme="light"] .nav-item,html[data-theme="light"] .conversation-item{color:#65675d}
-  html[data-theme="light"] .composer{border-color:#292a2618}
-  html[data-theme="light"] .new-chat{background:#ffffff70}
-
-  .incognito-badge{display:none!important}
-  .incognito-hero h1{margin-bottom:0}
-  .incognito-hero p{margin-top:13px}
-  .main::before,.main::after{content:"";display:block;position:absolute;z-index:0;pointer-events:none;left:-7%;right:-7%;bottom:-30px;height:min(58vh,540px);opacity:0;transform:translate3d(0,20px,0) scaleX(.97);filter:blur(11px);transition:opacity .8s ease,transform 1.05s cubic-bezier(.22,1,.36,1)}
-  .main::before{box-shadow:inset 42px 0 72px -54px rgba(20,21,19,.34),inset -42px 0 72px -54px rgba(20,21,19,.34);background:radial-gradient(ellipse 23% 94% at 0 100%,rgba(20,21,19,.34),rgba(20,21,19,.12) 43%,transparent 73%),radial-gradient(ellipse 23% 94% at 100% 100%,rgba(20,21,19,.34),rgba(20,21,19,.12) 43%,transparent 73%),linear-gradient(to top,rgba(20,21,19,.22),rgba(20,21,19,.09) 22%,transparent 60%)}
-  .main::after{box-shadow:inset 42px 0 72px -54px rgba(246,246,238,.26),inset -42px 0 72px -54px rgba(246,246,238,.26);background:radial-gradient(ellipse 23% 94% at 0 100%,rgba(246,246,238,.27),rgba(246,246,238,.085) 43%,transparent 73%),radial-gradient(ellipse 23% 94% at 100% 100%,rgba(246,246,238,.27),rgba(246,246,238,.085) 43%,transparent 73%),linear-gradient(to top,rgba(246,246,238,.16),rgba(246,246,238,.055) 22%,transparent 60%)}
-  html:not([data-theme="dark"]) #incognitoState:checked~.main::before,html[data-theme="dark"] #incognitoState:checked~.main::after{opacity:1;transform:translate3d(0,0,0) scaleX(1)}
-
-  .mode-panel,.attach-panel{width:286px;padding:7px;border:1px solid var(--picker-line)!important;border-radius:12px!important;background:var(--picker-bg)!important;box-shadow:0 18px 48px rgba(0,0,0,.26),inset 0 1px 0 rgba(255,255,255,.025)!important}
-  #mode-manual:checked~.mode-panel{width:300px}
-  .mode-picker.is-open .mode-panel,.attach-wrap.is-open .attach-panel{clip-path:inset(0 round 12px)}
-  .mode-choice{min-height:47px;grid-template-columns:27px minmax(0,1fr) 15px;gap:8px;padding:5px 8px;border-radius:7px}
-  .mode-choice:hover,.vendor-row:hover,.model-row:hover,.mode-back:hover,.legacy-link:hover,.attach-tile:hover,.attach-row:hover{background:var(--picker-hover)}
-  #mode-auto:checked~.mode-panel label[for="mode-auto"],#mode-instant:checked~.mode-panel label[for="mode-instant"],#mode-thinking:checked~.mode-panel label[for="mode-thinking"],#mode-max:checked~.mode-panel label[for="mode-max"],#mode-manual:checked~.mode-panel label[for="mode-manual"]{background:var(--picker-active)}
-  .mode-symbol,.vendor-symbol,.model-symbol,.row-symbol{width:27px;height:27px;border-radius:7px}
-  .mode-symbol svg{width:18px;height:18px;filter:none}
-  .vendor-symbol svg,.model-symbol svg,.row-symbol svg{width:17px;height:17px}
-  .mode-copy strong{font-size:13px;line-height:1.12;font-weight:540;letter-spacing:-.005em}
-  .mode-copy span{font-size:10.5px;line-height:1.22;margin-top:2px}
-  .mode-check{width:14px;height:14px}
-  .mode-back{min-height:34px;margin:0 0 3px;padding:7px 8px;border-radius:7px;font-size:12px;font-weight:520}
-  .vendor-row,.model-row{min-height:41px;grid-template-columns:27px minmax(0,1fr);gap:8px;padding:6px 8px;border-radius:7px}
-  .vendor-name{font-size:13px;font-weight:520;letter-spacing:0}
-  .model-copy strong{font-size:12.5px;font-weight:540;letter-spacing:0}
-  .model-copy .model-meta{gap:5px;margin-top:1px}
-  .model-copy .model-meta span{font-size:10px}
-  .model-copy .model-tier{font-size:9.5px;font-weight:560;padding:1px 6px;background:var(--picker-hover)}
-  .legacy-link{padding:8px 7px 5px;border-radius:7px;font-size:11px;font-weight:520}
-  .reasoning-effort{border-color:var(--picker-line)}
-  #mode-manual:checked~.mode-panel .mode-screen.is-active .reasoning-effort{margin:6px 4px 3px;padding:12px 8px 5px}
-  .effort-title{font-size:11px;font-weight:560}
-  .effort-value{font-size:9.5px;font-weight:560;border-radius:7px}
-  .attach-panel{width:286px}
-  .attach-tiles{grid-template-columns:1fr;gap:1px}
-  .attach-tile{min-height:39px;flex-direction:row;justify-content:flex-start;gap:9px;padding:7px 8px;border-radius:7px}
-  .attach-tile svg{width:17px;height:17px}
-  .attach-tile span{font-size:12.5px;font-weight:520}
-  .attach-divider{margin:5px 4px 4px;background:var(--picker-line)}
-  .attach-row{min-height:43px;grid-template-columns:27px minmax(0,1fr) auto;gap:8px;padding:6px 8px;border-radius:7px}
-  #webSearchRow{grid-template-columns:27px minmax(0,1fr) auto 14px}
-  .row-copy strong{font-size:12.5px;font-weight:540;letter-spacing:0}
-  .row-copy span{font-size:10px;line-height:1.25;margin-top:1px}
-  .row-state{font-size:10.5px;font-weight:520}
-  .row-chevron{width:14px;height:14px}
-
-  .connectors-page{position:absolute;z-index:30;inset:0;display:none;overflow:auto;background:var(--bg)}
-  .main.connectors-open .connectors-page{display:block;animation:connectors-page-in .38s var(--ease-out) both}
-  .main.connectors-open>.topbar,.main.connectors-open>.projects-page,.main.connectors-open>.content{display:none}
-  @keyframes connectors-page-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
-  .connectors-shell{width:min(1020px,100%);min-height:100%;margin:0 auto;padding:24px clamp(22px,5vw,58px) 64px}
-  .connectors-back{display:inline-flex;align-items:center;gap:9px;border:0;border-radius:8px;background:transparent;color:var(--muted);padding:7px 9px;margin-left:-9px;font-size:12.5px;cursor:pointer;transition:color .18s ease,background .18s ease}
-  .connectors-back:hover{color:var(--text);background:var(--hover)}
-  .connectors-back svg{width:17px;height:17px}
-  .connectors-hero{margin:58px 0 38px}
-  .connectors-kicker{width:42px;height:42px;display:grid;place-items:center;border:1px solid var(--line);border-radius:11px;background:var(--btn);color:var(--text);margin-bottom:17px}
-  .connectors-kicker svg{width:20px;height:20px}
-  .connectors-hero h1{margin:0;font:400 clamp(34px,4vw,48px)/1.08 Georgia,'Times New Roman',serif;letter-spacing:-1.2px}
-  .connectors-hero p{margin:9px 0 0;color:var(--muted);font-size:13px}
-  .connectors-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}
-  .connector-card{width:100%;min-height:90px;display:grid;grid-template-columns:46px minmax(0,1fr) 20px;align-items:center;gap:14px;border:1px solid var(--line);border-radius:12px;background:var(--btn);padding:15px;color:var(--text);text-align:left;cursor:pointer;transition:background .2s ease,border-color .2s ease,transform .24s var(--ease-out)}
-  .connector-card:hover{background:var(--btn-hover);border-color:var(--picker-line);transform:translateY(-1px)}
-  .connector-card>svg:last-child{width:15px;height:15px;color:var(--muted);justify-self:end}
-  .connector-logo{width:46px;height:46px;display:grid;place-items:center;border:1px solid var(--line);border-radius:11px;background:var(--panel);overflow:hidden;flex:none}
-  .connector-logo svg{width:27px;height:27px}
-  .connector-logo.connector-canva svg{width:31px;height:31px}
-  .connector-copy{min-width:0}
-  .connector-copy strong{display:block;font-size:14px;font-weight:570;letter-spacing:-.01em}
-  .connector-copy span{display:block;margin-top:4px;color:var(--muted);font-size:11.5px;line-height:1.35}
-  .connector-detail{display:none;padding-top:50px}
-  .connectors-page.is-detail .connectors-index{display:none}
-  .connectors-page.is-detail .connector-detail{display:block;animation:connector-detail-in .36s var(--ease-out) both}
-  @keyframes connector-detail-in{from{opacity:0;transform:translateX(9px)}to{opacity:1;transform:none}}
-  .connector-detail-head{display:grid;grid-template-columns:66px minmax(0,1fr) auto;align-items:center;gap:18px;padding-bottom:29px;border-bottom:1px solid var(--line)}
-  .connector-detail-head .connector-logo{width:66px;height:66px;border-radius:15px}
-  .connector-detail-head .connector-logo svg{width:38px;height:38px}
-  .connector-detail-title{font:400 clamp(30px,4vw,42px)/1.08 Georgia,'Times New Roman',serif;letter-spacing:-1px}
-  .connector-connect{display:inline-flex;align-items:center;gap:7px;border:1px solid var(--line);border-radius:8px;background:var(--accent);color:var(--on-accent);padding:9px 13px;font-size:12px;font-weight:560;cursor:pointer}
-  .connector-connect svg{width:15px;height:15px}
-  .connector-detail-description{max-width:680px;margin:28px 0 0;color:var(--muted);font-size:14px;line-height:1.65}
-
-  .attach-connectors-screen{display:none}
-  .attach-panel.is-connectors>.attach-tiles,.attach-panel.is-connectors>.attach-divider,.attach-panel.is-connectors>.attach-list{display:none}
-  .attach-panel.is-connectors>.attach-connectors-screen{display:block;animation:attach-connectors-in .25s var(--ease-out) both}
-  @keyframes attach-connectors-in{from{opacity:0;transform:translateX(7px)}to{opacity:1;transform:none}}
-  .attach-connectors-back{width:100%;display:flex;align-items:center;gap:7px;border:0;border-radius:7px;background:transparent;color:var(--muted);padding:7px 8px 8px;font-size:11.5px;cursor:pointer}
-  .attach-connectors-back:hover{background:var(--picker-hover);color:var(--text)}
-  .attach-connectors-back svg{width:14px;height:14px}
-  .attach-connector-row,.browse-connectors{width:100%;display:grid;grid-template-columns:27px minmax(0,1fr) 14px;align-items:center;gap:9px;border:0;border-radius:7px;background:transparent;color:var(--text);padding:7px 8px;text-align:left;cursor:pointer;transition:background .16s ease}
-  .attach-connector-row:hover,.browse-connectors:hover{background:var(--picker-hover)}
-  .attach-connector-row .connector-logo{width:27px;height:27px;border:0;border-radius:6px;background:transparent}
-  .attach-connector-row .connector-logo svg{width:19px;height:19px}
-  .attach-connector-row span:nth-child(2),.browse-connectors span{font-size:12.5px;font-weight:520}
-  .attach-connector-row>svg,.browse-connectors>svg:last-child{width:13px;height:13px;color:var(--muted)}
-  .browse-connectors{grid-template-columns:27px minmax(0,1fr);margin-top:5px;padding-top:9px;border-top:1px solid var(--picker-line);border-radius:0 0 7px 7px}
-  .browse-connectors>svg{width:17px;height:17px;color:var(--muted)}
-  .prompt-entry{position:relative}
-  .connector-highlights{position:absolute;z-index:0;inset:0;min-height:63px;max-height:150px;padding:2px 4px 12px;overflow:auto;scrollbar-width:none;pointer-events:none;white-space:pre-wrap;overflow-wrap:break-word;color:var(--text);font-size:14px;line-height:1.55}
-  .connector-highlights::-webkit-scrollbar{display:none}
-  .prompt-entry textarea{scrollbar-width:none}
-  .prompt-entry textarea::-webkit-scrollbar{display:none}
-  .prompt-entry.has-value textarea{position:relative;z-index:1;color:transparent;-webkit-text-fill-color:transparent;caret-color:var(--text)}
-  .connector-mention{position:relative;border-radius:4px;background:var(--picker-active);box-shadow:0 0 0 2px var(--picker-active)}
-  .connector-mention-at{position:relative;color:transparent}
-  .connector-mention-at svg{position:absolute;left:50%;top:50%;width:.9em;height:.9em;color:var(--text);transform:translate(-50%,-50%)}
-
-  @media(min-width:900px){#sidebarState:checked~.main{margin-left:248px;width:calc(100% - 248px)}#sidebarState:checked~.sidebar-backdrop{display:none}}
-  @media(max-width:899px){.sidebar{width:248px}.content:not(.has-chat){padding-bottom:45px}.topbar{padding:0 17px}.home-greeting,h1{font-size:33px}.content:not(.has-chat) .composer-wrap{width:calc(100% - 36px)}.hero-stage{width:calc(100% - 36px)}.suggestions{display:flex;gap:6px}.suggestions button{font-size:10px;padding:6px 7px}}
-  @media(max-width:520px){.mode-panel,#mode-manual:checked~.mode-panel{width:min(286px,calc(100vw - 70px))}.attach-panel{width:min(286px,calc(100vw - 62px))}.mode-copy strong{font-size:13px}.mode-copy span{font-size:10.5px}}
-  @media(max-width:680px){.connectors-shell{padding:18px 18px 44px}.connectors-hero{margin:42px 0 28px}.connectors-grid{grid-template-columns:1fr}.connector-detail{padding-top:34px}.connector-detail-head{grid-template-columns:54px 1fr;gap:13px}.connector-detail-head .connector-logo{width:54px;height:54px}.connector-connect{grid-column:1/-1;justify-self:start}.connector-detail-description{font-size:13px}}
-</style>
-<style id="fluid-functionalism-theme">
-  /* Fluid Functionalism-inspired design system: Inter, stepped surfaces,
-     36/28px control rhythm, restrained shape, and responsive motion. */
-  :root,
-  html,
-  html[data-theme="dark"]{
-    color-scheme:dark;
-    --bg:#171717;
-    --text:#f5f5f5;
-    --muted:#9a9a9a;
-    --muted-strong:#b8b8b8;
-    --line:rgba(255,255,255,.075);
-    --line-strong:rgba(255,255,255,.12);
-    --panel:#1d1d1d;
-    --card:#171717;
-    --soft:#252525;
-    --soft-hover:#2b2b2b;
-    --btn:#202020;
-    --btn-hover:#2a2a2a;
-    --composer:#252525;
-    --hover:rgba(255,255,255,.055);
-    --raise:#2d2d2d;
-    --accent:#f2f2f2;
-    --on-accent:#171717;
-    --border-light:rgba(255,255,255,.08);
-    --shadow-lg:0 18px 46px rgba(0,0,0,.32),0 2px 8px rgba(0,0,0,.2);
-    --inset-hi:rgba(255,255,255,.035);
-    --picker-bg:#252525;
-    --picker-line:rgba(255,255,255,.08);
-    --picker-hover:rgba(255,255,255,.06);
-    --picker-active:rgba(255,255,255,.10);
-    --focus:#78a8ff;
-    --danger:#ff7069;
-    --surface-1:#171717;
-    --surface-2:#1d1d1d;
-    --surface-3:#252525;
-    --surface-4:#2d2d2d;
-    --radius-control:8px;
-    --radius-panel:12px;
-    --spring-fast:80ms;
-    --spring-moderate:160ms;
-    --spring-slow:240ms;
-    --ease-fluid:cubic-bezier(.22,1,.36,1);
-  }
-  html[data-theme="light"]{
-    color-scheme:light;
-    --bg:#f7f7f5;
-    --text:#1d1d1b;
-    --muted:#777772;
-    --muted-strong:#575752;
-    --line:rgba(29,29,27,.09);
-    --line-strong:rgba(29,29,27,.14);
-    --panel:#ffffff;
-    --card:#f7f7f5;
-    --soft:#efefec;
-    --soft-hover:#e8e8e4;
-    --btn:#ffffff;
-    --btn-hover:#f2f2ef;
-    --composer:#ffffff;
-    --hover:rgba(29,29,27,.055);
-    --raise:#ffffff;
-    --accent:#20201e;
-    --on-accent:#ffffff;
-    --border-light:rgba(29,29,27,.10);
-    --shadow-lg:0 18px 46px rgba(29,29,27,.11),0 2px 8px rgba(29,29,27,.06);
-    --inset-hi:rgba(255,255,255,.8);
-    --picker-bg:#ffffff;
-    --picker-line:rgba(29,29,27,.10);
-    --picker-hover:rgba(29,29,27,.05);
-    --picker-active:rgba(29,29,27,.08);
-    --focus:#2563eb;
-    --danger:#c83e38;
-    --surface-1:#f7f7f5;
-    --surface-2:#ffffff;
-    --surface-3:#ffffff;
-    --surface-4:#ffffff;
-  }
-  *{scrollbar-width:thin;scrollbar-color:rgba(150,150,150,.28) transparent}
-  *::-webkit-scrollbar{width:8px;height:8px}
-  *::-webkit-scrollbar-track{background:transparent}
-  *::-webkit-scrollbar-thumb{min-height:36px;border:3px solid transparent;border-radius:999px;background:rgba(150,150,150,.28);background-clip:padding-box;transition:background-color var(--spring-fast) ease}
-  *::-webkit-scrollbar-thumb:hover{border-width:2px;background:rgba(150,150,150,.5);background-clip:padding-box}
-  body{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;font-size:14px;line-height:1.45;background:var(--surface-1);letter-spacing:-.008em}
-  h1,h2,h3,h4,h5,h6,.home-greeting,.projects-heading,.projects-empty h2,.project-create-title,.connectors-hero h1,.connector-detail-title,.chat-text{font-family:Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-  button,input,textarea,select{font-family:inherit}
-  button:focus-visible,input:focus-visible,textarea:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--focus);outline-offset:2px}
-  svg{width:16px;height:16px;stroke-width:1.75}
-
-  .sidebar{width:260px;inset:0 auto 0 0;padding:16px 12px 12px;border:0;border-right:1px solid var(--line);border-radius:0;background:var(--surface-2);box-shadow:none}
-  .sidebar .brand-row{height:36px;padding:0 6px 0 10px;margin-bottom:14px}
-  .brand-mark{height:28px;font-size:16px;font-weight:600;letter-spacing:-.035em}
-  .brand-mark svg{width:18px;height:18px}
-  .icon-btn{width:28px;height:28px;border-radius:7px}
-  .new-chat{height:36px;padding:0 10px;gap:8px;border:1px solid var(--line);border-radius:var(--radius-control);background:var(--surface-3);font-size:13px;font-weight:550}
-  .new-chat:hover{background:var(--surface-4);border-color:var(--line-strong)}
-  .new-chat svg,.nav-item svg{width:16px;height:16px}
-  .nav{margin-top:8px;gap:1px}
-  .nav-item{min-height:36px;padding:8px 10px;gap:9px;border-radius:var(--radius-control);color:var(--muted-strong);font-size:13px;font-weight:450}
-  .nav-item:hover{background:var(--hover);color:var(--text)}
-  .chat-history{margin-top:26px;border:0;padding:0}
-  .chat-history-title{padding:0 10px 8px;color:var(--muted);font-size:11px;font-weight:500;letter-spacing:0;text-transform:none}
-  .conversation-list{gap:1px;padding-right:2px;mask-image:linear-gradient(to bottom,transparent,#000 10px,#000 calc(100% - 10px),transparent)}
-  .conversation-item{min-height:32px;padding:7px 10px;border-radius:7px;color:var(--muted-strong);font-size:12px}
-  .conversation-item:hover{background:var(--hover)}
-  .conversation-item.is-active{background:var(--picker-active);font-weight:550}
-  .profile{min-height:48px;margin-top:auto;padding:10px 6px 0;border-top:1px solid var(--line);border-radius:0;gap:9px}
-  .avatar{width:28px;height:28px;background:var(--surface-4)!important;font-size:10px;font-weight:600}
-  .profile-copy strong{font-size:12px;font-weight:550}.profile-copy span{font-size:10px}
-
-  .main{background:var(--surface-1);backdrop-filter:none;transition:margin var(--spring-slow) var(--ease-fluid),width var(--spring-slow) var(--ease-fluid)}
-  .main::before,.main::after{display:none}
-  .topbar{height:56px;padding:0 18px;border-bottom:1px solid transparent}
-  .sidebar-toggle,.incognito-btn,.top-new-chat,.chat-actions-trigger,.incognito-exit-btn{width:28px;height:28px;border:0;border-radius:7px;background:transparent;box-shadow:none;color:var(--muted-strong)}
-  .sidebar-toggle:hover,.incognito-btn:hover,.top-new-chat:hover,.chat-actions-trigger:hover,.incognito-exit-btn:hover{background:var(--hover);color:var(--text)}
-  .content{inset:56px 0 0;padding:0}
-  .content:not(.has-chat){display:grid;align-content:center;justify-items:center;gap:22px;padding:0 24px 72px}
-  .hero-stage{width:min(720px,100%);height:54px;min-height:0;transform:none}
-  .home-greeting,h1,.main.project-mode .home-greeting{font-size:clamp(28px,3vw,38px);font-weight:600;line-height:1.15;letter-spacing:-.045em}
-  .hero p{font-size:13px;line-height:1.5}
-
-  .content:not(.has-chat) .composer-wrap{position:relative;left:auto;bottom:auto;transform:none;width:min(720px,100%)}
-  .composer-wrap{width:min(760px,calc(100% - 40px));bottom:20px}
-  .composer{padding:12px 12px 10px;border:1px solid var(--line);border-radius:var(--radius-panel);background:var(--surface-3);box-shadow:0 8px 28px rgba(0,0,0,.14);backdrop-filter:none}
-  .composer:focus-within{border-color:var(--line-strong);box-shadow:0 8px 32px rgba(0,0,0,.18),0 0 0 1px var(--line)}
-  .composer textarea{min-height:58px;max-height:176px;padding:2px 4px 11px;font-size:14px;line-height:1.55}
-  .composer-bottom{gap:4px;padding-top:3px}
-  .round-btn,.send{width:28px;height:28px;border-radius:7px;box-shadow:none}
-  .round-btn{border:0;background:transparent;color:var(--muted)}
-  .round-btn:hover{background:var(--hover);color:var(--text)}
-  .send{background:var(--accent);color:var(--on-accent)}
-  .send:hover{transform:none;filter:brightness(.94)}
-  .mode-trigger{height:28px!important;min-height:28px!important;padding:4px 7px!important;border-radius:7px!important;font-size:12px!important;font-weight:500!important}
-  .suggestions{justify-content:flex-start;margin:13px 0 0;gap:6px}
-  .suggestions button{padding:6px 9px;border:1px solid var(--line);border-radius:7px;background:transparent;color:var(--muted);font-size:11px}
-  .composer-wrap .hint{margin-top:10px!important;font-size:11px!important;opacity:.72}
-
-  /* Popovers and compact control regions use the same 28px rhythm. */
-  .mode-panel,.attach-panel,.chat-actions-panel,.incognito-exit-confirm{
-    padding:7px!important;
-    border:1px solid var(--line)!important;
-    border-radius:var(--radius-panel)!important;
-    background:var(--surface-3)!important;
-    box-shadow:var(--shadow-lg)!important;
-  }
-  .mode-panel,.attach-panel{width:296px}
-  #mode-manual:checked~.mode-panel{width:312px}
-  .mode-picker.is-open .mode-panel,.attach-wrap.is-open .attach-panel{clip-path:inset(0 round var(--radius-panel))}
-  .mode-choice{min-height:44px;grid-template-columns:28px minmax(0,1fr) 16px;gap:8px;padding:6px 8px;border-radius:8px}
-  .mode-choice:hover,.vendor-row:hover,.model-row:hover,.mode-back:hover,.legacy-link:hover,.attach-tile:hover,.attach-row:hover,.attach-connector-row:hover,.browse-connectors:hover,.chat-menu-item:hover{background:var(--picker-hover)}
-  .mode-symbol,.vendor-symbol,.model-symbol,.row-symbol{width:28px;height:28px;border-radius:7px;color:var(--muted)}
-  .mode-symbol svg,.vendor-symbol svg,.model-symbol svg,.row-symbol svg{width:16px;height:16px;filter:none}
-  .mode-copy strong,.vendor-name,.model-copy strong,.row-copy strong{font-size:13px;font-weight:550;letter-spacing:-.01em}
-  .mode-copy span,.model-copy .model-meta span,.row-copy span{margin-top:2px;font-size:11px;line-height:1.3;color:var(--muted)}
-  .model-copy .model-tier{padding:2px 6px;border-radius:5px;background:var(--picker-active);font-size:10px;font-weight:550}
-  .mode-back,.attach-connectors-back{min-height:32px;padding:7px 8px;border-radius:7px;font-size:12px;font-weight:500}
-  .vendor-row,.model-row,.attach-row,.attach-connector-row,.browse-connectors{min-height:40px;padding:6px 8px;border-radius:7px}
-  .attach-tiles{grid-template-columns:1fr;gap:1px}
-  .attach-tile{min-height:38px;flex-direction:row;justify-content:flex-start;gap:9px;padding:7px 8px;border-radius:7px}
-  .attach-tile svg{width:16px;height:16px;color:var(--muted)}
-  .attach-tile span{font-size:13px;font-weight:500}
-  .attach-divider{margin:5px 4px;background:var(--line)}
-  .row-chevron,.mode-chevron,.tone-chevron{width:14px;height:14px;color:var(--muted)}
-  .reasoning-effort{border-color:var(--line)}
-  .effort-track{height:2px;background:var(--line-strong)}
-  .effort-fill{background:var(--accent)}
-  .effort-value{border-radius:6px;background:var(--picker-active)}
-
-  /* Attached files and mentions stay legible without turning into cards. */
-  .attachments-inner{gap:6px;padding-inline:4px}
-  .attachments.is-open .attachments-inner{padding:2px 4px 9px}
-  .chip{padding:6px 7px 6px 9px;border-color:var(--line);border-radius:8px;background:var(--surface-4)}
-  .chip span{font-size:12px}
-  .connector-mention{border-radius:4px;background:var(--picker-active);box-shadow:0 0 0 2px var(--picker-active)}
-
-  /* Conversation typography follows the same Inter scale as the interface. */
-  .chat-log{padding:20px max(24px,calc((100% - 760px)/2)) 150px;scroll-behavior:smooth;mask-image:linear-gradient(to bottom,transparent,#000 14px,#000 calc(100% - 28px),transparent)}
-  .chat-message{padding:11px 0}
-  .chat-copy{max-width:min(82%,700px)}
-  .chat-message.user .chat-copy{padding:10px 13px;border:1px solid var(--line);border-radius:12px 12px 4px 12px;background:var(--surface-3);box-shadow:none}
-  .chat-message.assistant .chat-copy{width:min(100%,740px);padding:8px 0}
-  .chat-text{font-size:16px;line-height:1.65;letter-spacing:-.006em}
-  .chat-text h1,.chat-text h2,.chat-text h3,.chat-text h4,.chat-text h5,.chat-text h6{font-weight:620;letter-spacing:-.03em}
-  .chat-text code{border:1px solid var(--line);border-radius:5px;background:var(--surface-3)}
-  .chat-text pre{padding:14px 16px;border-color:var(--line);border-radius:10px;background:var(--surface-2)}
-  .chat-table-wrap{border-color:var(--line);border-radius:10px}
-  .chat-text table{font-size:13px}
-  .chat-text th{background:var(--surface-3);font-weight:600}.chat-text td{background:var(--surface-2)}
-  .thinking-label{font-size:14px;font-weight:500;color:var(--muted)}
-  .thought-time{font-size:12px;font-weight:500}
-  .message-actions{gap:1px;margin-top:8px}
-  .message-action,.version-nav{height:28px;border-radius:7px}
-  .message-action{width:28px}.message-action svg{width:15px;height:15px}
-  .version-nav{padding:0 6px;font-size:11px}
-
-  /* Projects and plugins are working surfaces, not marketing pages. */
-  .projects-page{inset:56px 0 0;padding:28px clamp(22px,5vw,64px)}
-  .projects-heading{font-size:24px;font-weight:600;letter-spacing:-.035em}
-  .projects-heading>svg{width:18px}
-  .project-create-btn,.project-dialog-actions button,.connector-connect{min-height:36px;padding:0 12px;border:1px solid var(--line);border-radius:8px;font-size:13px;font-weight:550}
-  .projects-empty{min-height:calc(100dvh - 180px)}
-  .projects-empty-icon{width:44px;height:44px;padding:11px;border:1px solid var(--line);border-radius:11px;background:var(--surface-2)}
-  .projects-empty h2{font-size:26px;font-weight:600;letter-spacing:-.04em}
-  .projects-empty p{font-size:13px}
-  .projects-grid{grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:8px}
-  .project-card{min-height:56px;padding:13px;border-color:var(--line);border-radius:9px;background:var(--surface-2);font-size:13px}
-  .project-card:hover{border-color:var(--line-strong);background:var(--surface-3)}
-  .project-context{max-width:680px}.project-chat-list{gap:4px}
-  .project-chat-item{min-height:36px;padding:8px 10px;border-color:var(--line);border-radius:8px;background:var(--surface-2);font-size:13px}
-  .connectors-page{background:var(--surface-1)}
-  .connectors-shell{width:min(980px,100%);padding:22px clamp(22px,5vw,56px) 56px}
-  .connectors-back{min-height:32px;padding:6px 8px;border-radius:7px;font-size:12px}
-  .connectors-hero{margin:44px 0 28px}
-  .connectors-kicker{width:36px;height:36px;margin-bottom:14px;border-color:var(--line);border-radius:9px;background:var(--surface-2)}
-  .connectors-hero h1,.connector-detail-title{font-size:32px;font-weight:620;letter-spacing:-.045em}
-  .connectors-hero p,.connector-detail-description{font-size:13px}
-  .connectors-grid{gap:8px}
-  .connector-card{min-height:76px;grid-template-columns:40px minmax(0,1fr) 18px;gap:12px;padding:12px;border-color:var(--line);border-radius:10px;background:var(--surface-2)}
-  .connector-card:hover{border-color:var(--line-strong);background:var(--surface-3);transform:none}
-  .connector-logo{width:40px;height:40px;border-color:var(--line);border-radius:9px;background:var(--surface-3)}
-  .connector-logo svg{width:23px;height:23px}.connector-copy strong{font-size:13px;font-weight:570}.connector-copy span{font-size:11px}
-  .connector-detail{padding-top:40px}.connector-detail-head{grid-template-columns:56px minmax(0,1fr) auto;gap:16px;padding-bottom:22px;border-color:var(--line)}
-  .connector-detail-head .connector-logo{width:56px;height:56px;border-radius:12px}
-
-  /* Dialogs lift one surface level at a time. */
-  .settings-backdrop,.project-create-overlay{background:rgba(0,0,0,.48);backdrop-filter:blur(2px)}
-  .settings{width:min(680px,calc(100vw - 28px));height:min(700px,calc(100dvh - 40px));border:1px solid var(--line);border-radius:14px;background:var(--surface-3);box-shadow:var(--shadow-lg);backdrop-filter:none}
-  .settings-head{padding:20px 18px 0 22px}.settings-head h2{font-size:18px;font-weight:620;letter-spacing:-.03em}
-  .settings-tabs{gap:0;padding:10px 16px 0}
-  .settings-tab{min-height:36px;padding:8px 9px 11px;font-size:13px;font-weight:500}
-  .settings-tab.is-active{font-weight:600}.settings-divider{margin:0 16px;background:var(--line)}
-  .settings-pane{padding:18px 20px 28px;mask-image:linear-gradient(to bottom,transparent,#000 10px,#000 calc(100% - 14px),transparent)}
-  .set-sec+.set-sec{margin-top:22px}.set-sec-title{padding:0 8px 5px;font-size:12px;font-weight:600}
-  .set-row{min-height:44px;padding:8px;border-radius:8px}.set-row:hover{background:var(--hover)}
-  .set-row .label{font-size:13px;font-weight:500}.set-row .meta,.set-note{font-size:12px}
-  .link-btn{min-height:28px;padding:5px 8px;border-radius:7px;font-size:12px;font-weight:520}
-  .link-btn.danger,.chat-menu-item.danger{color:var(--danger)}
-  .name-input,.api-key-input,.mini-select{min-height:36px;border:1px solid var(--line);border-radius:8px;background:var(--surface-4);font-size:13px}
-  .instructions{min-height:120px;padding:12px 13px;border-color:var(--line);border-radius:9px;background:var(--surface-4);font-size:13px}
-  .seg{padding:2px;border-radius:8px;background:var(--surface-4)}.seg button{min-height:28px;padding:5px 10px;border-radius:6px;font-size:12px}.seg-thumb{border-radius:6px;background:var(--surface-2);box-shadow:0 1px 4px rgba(0,0,0,.18)}
-  .tone-option{min-height:44px;padding:6px 8px;border-radius:8px}.tone-symbol{width:28px;height:28px;border-radius:7px}.tone-copy strong{font-size:13px}.tone-copy span{font-size:11px}
-  .plan-name{padding:0 8px;font-size:24px;font-weight:620}.usage{padding-inline:8px;gap:16px}.usage-track{height:8px;background:var(--surface-4)}
-  .project-create-dialog{padding:20px;border-color:var(--line);border-radius:14px;background:var(--surface-3)}
-  .project-create-title{font-size:18px;font-weight:620;letter-spacing:-.03em}
-  .project-create-dialog input,.project-create-dialog textarea{border-color:var(--line);border-radius:8px;background:var(--surface-4);font-size:13px}
-  .chat-rename input{border-color:var(--line);border-radius:8px;background:var(--surface-4)}
-  .chat-confirm-actions button,.incognito-exit-actions button{min-height:32px;padding:6px 10px;border-color:var(--line);border-radius:7px;background:var(--surface-4);font-size:12px}
-  .toast{padding:9px 13px;border:1px solid var(--line);border-radius:8px;background:var(--surface-4);color:var(--text);font-size:12px;box-shadow:var(--shadow-lg)}
-
-  @media(max-width:840px){
-    .content{inset:56px 0 0}.content:not(.has-chat){padding-bottom:48px}
-    .home-greeting,h1,.main.project-mode .home-greeting{font-size:30px}
-    .composer-wrap{bottom:10px;width:calc(100% - 20px)}
-    .settings{width:100vw;height:100dvh;border:0;border-radius:0}
-    .settings-pane{padding-inline:14px}
-    .chat-log{padding:10px 14px 130px}.chat-copy{max-width:90%}
-  }
-  @media(max-width:620px){
-    .connectors-shell{padding:16px 16px 40px}.connectors-hero{margin:34px 0 22px}.connectors-grid{grid-template-columns:1fr}
-    .connector-detail-head{grid-template-columns:48px 1fr}.connector-detail-head .connector-logo{width:48px;height:48px}.connector-connect{grid-column:1/-1}
-    .projects-page{padding:20px 16px}.projects-heading{font-size:21px}.projects-grid{grid-template-columns:1fr}
-    .settings-tabs{overflow-x:auto}.set-row{align-items:flex-start;flex-wrap:wrap}.set-row .val{width:100%;margin-left:0}.name-input,.api-key-input{width:100%;text-align:left}
-  }
-  @media(min-width:900px){#sidebarState:checked~.main{margin-left:260px;width:calc(100% - 260px)}}
-  @media(max-width:899px){.sidebar{width:min(280px,calc(100vw - 20px));box-shadow:var(--shadow-lg)}.topbar{padding:0 12px}.content:not(.has-chat){padding-inline:18px}.hero-stage{width:100%}.content:not(.has-chat) .composer-wrap{width:100%}}
-</style>
+<link rel="stylesheet" href="/assets/fluid.css?v=2" />
 </head>
 <body>
 <!-- UI glyphs use the verified Lucide 1.43.0 paths and names. Product and
@@ -781,37 +28,40 @@
   <label class="sidebar-backdrop" for="sidebarState" aria-label="Close sidebar"></label>
   <aside class="sidebar" id="sidebar" aria-label="Main navigation">
     <div class="brand-row">
-      <div class="brand-mark" aria-label="NeoChat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7.5 12 4l5 3.5v9L12 20l-5-3.5z"/><path d="m7 7.5 5 3 5-3.1M12 10.5V20"/></svg></div>
-      <label class="icon-btn close-sidebar" for="sidebarState" aria-label="Close sidebar"><svg class="lucide lucide-panel-left-close" data-lucide-icon="panel-left-close" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></label>
+      <div class="brand-mark" aria-label="NeoChat"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7.5 12 4l5 3.5v9L12 20l-5-3.5z"/><path d="m7 7.5 5 3 5-3.1M12 10.5V20"/></svg><span>NeoChat</span></div>
+      <label class="icon-btn close-sidebar" for="sidebarState" aria-label="Close sidebar"><svg class="lucide lucide-panel-left-close" data-lucide-icon="panel-left-close" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /><path d="m16 15-3-3 3-3" /></svg></label>
     </div>
-    <button class="new-chat"><svg class="lucide lucide-square-pen" data-lucide-icon="square-pen" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z"/></svg>New chat</button>
+    <label class="sidebar-search"><svg class="lucide lucide-search" data-lucide-icon="search" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg><input id="chatSearch" type="search" placeholder="Search chats…" aria-label="Search chats"/><kbd>Ctrl K</kbd></label>
+    <button class="new-chat"><svg class="lucide lucide-square-pen" data-lucide-icon="square-pen" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.375 2.625a1 1 0 0 1 3 3l-9.013 9.014a2 2 0 0 1-.853.505l-2.873.84a.5.5 0 0 1-.62-.62l.84-2.873a2 2 0 0 1 .506-.852z" /></svg>New chat</button>
     <nav class="nav">
-      <button class="nav-item"><svg class="lucide lucide-book-open" data-lucide-icon="book-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v16"/><path d="M20.001 19A2 2 0 0 0 22 17V5a2 2 0 0 0-1.999-2L16 3.002A5 5 0 0 0 12 5a5 5 0 0 0-4-2H4a2 2 0 0 0-2 2v12a2 2 0 0 0 1.999 2H8a5 5 0 0 1 4 2 5 5 0 0 1 4-2z"/></svg>Library</button>
-      <button class="nav-item" id="projectsNav"><svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M8 10v4"/><path d="M12 10v2"/><path d="M16 10v6"/></svg>Projects<span class="trailing" aria-label="Add project"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></span></button>
-      <button class="nav-item"><svg class="lucide lucide-calendar-clock" data-lucide-icon="calendar-clock" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 14v2.2l1.6 1"/><path d="M16 2v3"/><path d="M21 7.338V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h2.338"/><path d="M3 9h5.859"/><path d="M8 2v3"/><circle cx="16" cy="16" r="6"/></svg>Scheduled</button>
-      <button class="nav-item" id="connectorsNav"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect x="14" y="2" width="8" height="8" rx="1"/></svg>Plugins</button>
-      <button class="nav-item"><svg class="lucide lucide-ellipsis" data-lucide-icon="ellipsis" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>More</button>
+      <button class="nav-item"><svg class="lucide lucide-book-open" data-lucide-icon="book-open" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5v16" /><path d="M20.001 19A2 2 0 0022 17V5a2 2 0 00-1.999-2L16 3.002A5 5 0 0012 5a5 5 0 00-4-2H4a2 2 0 00-2 2v12a2 2 0 001.999 2H8a5 5 0 014 2 5 5 0 014-2z" /></svg>Library</button>
+      <button class="nav-item" id="projectsNav"><svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" /><path d="M8 10v4" /><path d="M12 10v2" /><path d="M16 10v6" /></svg>Projects<span class="trailing" aria-label="Add project"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg></span></button>
+      <button class="nav-item"><svg class="lucide lucide-calendar-clock" data-lucide-icon="calendar-clock" viewBox="0 0 24 24" aria-hidden="true"><path d="M16 14v2.2l1.6 1" /><path d="M16 2v3" /><path d="M21 7.338V5a2 2 0 00-2-2H5a2 2 0 00-2 2v14a2 2 0 002 2h2.338" /><path d="M3 9h5.859" /><path d="M8 2v3" /><circle cx="16" cy="16" r="6" /></svg>Scheduled</button>
+      <button class="nav-item" id="connectorsNav"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2" /><rect x="14" y="2" width="8" height="8" rx="1" /></svg>Plugins</button>
+      <button class="nav-item"><svg class="lucide lucide-ellipsis" data-lucide-icon="ellipsis" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></svg>More</button>
     </nav>
     <section class="chat-history" aria-label="Saved chats">
-      <div class="chat-history-title">Chats</div>
+      <div class="chat-history-title"><button class="history-toggle" type="button" aria-expanded="true" aria-controls="conversationList"><svg class="lucide lucide-chevron-down" data-lucide-icon="chevron-down" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>Recent chats</button></div>
       <div class="conversation-list" id="conversationList"><div class="conversation-empty">Add your NeoChat access key to load saved chats.</div></div>
     </section>
-    <div class="profile"><div class="avatar">SK</div><div class="profile-copy"><strong>skipjust</strong><span>Plus</span></div><button class="icon-btn store-icon" id="openSettings" aria-label="Open settings" aria-haspopup="dialog"><svg class="lucide lucide-settings-2" data-lucide-icon="settings-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 17H5"/><path d="M19 7h-9"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg></button></div>
+    <div class="profile"><div class="avatar">SK</div><div class="profile-copy"><strong>skipjust</strong><span>Plus</span></div><button class="icon-btn store-icon" id="openSettings" aria-label="Open settings" aria-haspopup="dialog"><svg class="lucide lucide-settings-2" data-lucide-icon="settings-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 17H5" /><path d="M19 7h-9" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></svg></button></div>
+    <button class="sidebar-rail" type="button" aria-label="Resize or collapse sidebar" title="Drag to resize · click to collapse"></button>
   </aside>
   <main class="main">
     <header class="topbar">
-      <label class="icon-btn sidebar-toggle" for="sidebarState" aria-label="Open sidebar"><svg class="lucide lucide-panel-left-open" data-lucide-icon="panel-left-open" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg></label><button class="icon-btn project-back" type="button" aria-label="Back to project"><svg class="lucide lucide-arrow-left" data-lucide-icon="arrow-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg></button>
+      <label class="icon-btn sidebar-toggle" for="sidebarState" aria-label="Open sidebar"><svg class="lucide lucide-panel-left-open" data-lucide-icon="panel-left-open" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M9 3v18" /><path d="m14 9 3 3-3 3" /></svg></label><button class="icon-btn project-back" type="button" aria-label="Back to project"><svg class="lucide lucide-arrow-left" data-lucide-icon="arrow-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></svg></button>
+      <span class="topbar-title" id="pageTitle">New chat</span>
       <div class="top-actions">
-        <label class="icon-btn incognito-btn" for="incognitoState" aria-label="Toggle incognito mode"><svg class="lucide lucide-glasses" data-lucide-icon="glasses" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></label>
-        <button class="icon-btn top-new-chat" type="button" aria-label="Start a new chat"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+        <label class="icon-btn incognito-btn" for="incognitoState" aria-label="Toggle incognito mode"><svg class="lucide lucide-glasses" data-lucide-icon="glasses" viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4" /><circle cx="18" cy="15" r="4" /><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2" /><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2" /><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2" /></svg></label>
+        <button class="icon-btn top-new-chat" type="button" aria-label="Start a new chat"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg></button>
         <div class="chat-actions-wrap">
-          <button class="icon-btn chat-actions-trigger" type="button" aria-label="Chat actions" aria-haspopup="menu" aria-expanded="false"><svg class="lucide lucide-ellipsis" data-lucide-icon="ellipsis" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></button>
+          <button class="icon-btn chat-actions-trigger" type="button" aria-label="Chat actions" aria-haspopup="menu" aria-expanded="false"><svg class="lucide lucide-ellipsis" data-lucide-icon="ellipsis" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1" /><circle cx="19" cy="12" r="1" /><circle cx="5" cy="12" r="1" /></svg></button>
           <div class="chat-actions-panel" role="menu">
             <div class="chat-actions-list">
-              <button class="chat-menu-item pin-chat" type="button" role="menuitem"><svg class="lucide lucide-pin" data-lucide-icon="pin" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg><span>Pin</span></button>
-              <button class="chat-menu-item add-project-chat" type="button" role="menuitem"><svg class="lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><span>Add to project</span></button>
-              <button class="chat-menu-item rename-chat" type="button" role="menuitem"><svg class="lucide lucide-pencil-line" data-lucide-icon="pencil-line" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 21h8"/><path d="m15 5 4 4"/><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg><span>Rename</span></button>
-              <button class="chat-menu-item danger delete-chat" type="button" role="menuitem"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Delete</span></button>
+              <button class="chat-menu-item pin-chat" type="button" role="menuitem"><svg class="lucide lucide-pin" data-lucide-icon="pin" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 17v5" /><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z" /></svg><span>Pin</span></button>
+              <button class="chat-menu-item add-project-chat" type="button" role="menuitem"><svg class="lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6" /><path d="M9 13h6" /><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg><span>Add to project</span></button>
+              <button class="chat-menu-item rename-chat" type="button" role="menuitem"><svg class="lucide lucide-pencil-line" data-lucide-icon="pencil-line" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 21h8" /><path d="m15 5 4 4" /><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /></svg><span>Rename</span></button>
+              <button class="chat-menu-item danger delete-chat" type="button" role="menuitem"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span>Delete</span></button>
             </div>
             <form class="chat-rename"><input maxlength="80" aria-label="Chat name"/><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="submit">Save</button></div></form>
             <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="button" class="confirm-delete-chat">Delete</button></div></div>
@@ -819,27 +69,36 @@
           </div>
         </div>
         <div class="incognito-exit-wrap">
-          <button class="icon-btn incognito-exit-btn" type="button" aria-label="Leave incognito chat" aria-haspopup="dialog" aria-expanded="false"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6"/><path d="M14 11v6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+          <button class="icon-btn incognito-exit-btn" type="button" aria-label="Leave incognito chat" aria-haspopup="dialog" aria-expanded="false"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></button>
           <div class="incognito-exit-confirm" role="alertdialog" aria-label="Confirm leaving incognito chat"><p>This chat will not be saved, confirm the exit from it</p><div class="incognito-exit-actions"><button class="cancel-incognito-exit" type="button">Cancel</button><button class="confirm-incognito-exit" type="button">Exit</button></div></div>
         </div>
       </div>
     </header>
-    <section class="projects-page"><div class="projects-heading"><svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M8 10v4"/><path d="M12 10v2"/><path d="M16 10v6"/></svg><span>Projects</span><button class="project-create-btn" type="button"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-empty"><svg class="projects-empty-icon lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg><h2>Welcome to Projects</h2><p>Organize your workflow, set custom instructions in one place</p><button class="project-create-btn"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div><div class="projects-grid"></div></section>
+    <section class="projects-page" aria-label="Projects"><div class="page-eyebrow">Workspace / Projects</div><div class="projects-heading"><svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" /><path d="M8 10v4" /><path d="M12 10v2" /><path d="M16 10v6" /></svg><span>Projects</span><button class="project-create-btn" type="button"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>Create</button></div><p class="page-description">Keep related conversations together, with a shared purpose and instructions.</p><div class="page-tools"><label class="filter-field"><svg class="lucide lucide-search" data-lucide-icon="search" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg><input id="projectSearch" type="search" placeholder="Find a project…" aria-label="Find a project"/></label><span class="result-count" id="projectCount">Your projects</span></div><div class="projects-empty"><svg class="projects-empty-icon lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6" /><path d="M9 13h6" /><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg><h2>Start your first project</h2><p>Give your work a home. Add a name and instructions, then start a conversation.</p><button class="project-create-btn"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>Create</button></div><div class="projects-grid"></div></section>
+    <section class="collection-page" aria-label="Library" hidden>
+      <div class="page-eyebrow">Workspace</div>
+      <h1 id="collectionTitle">Library</h1>
+      <p class="page-description" id="collectionDescription">Your saved conversations, in one place.</p>
+      <label class="filter-field" id="collectionFilter"><svg class="lucide lucide-search" data-lucide-icon="search" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg><input type="search" id="collectionSearch" aria-label="Search library" placeholder="Find a conversation…"/></label>
+      <div class="collection-list" id="collectionList"></div>
+    </section>
     <section class="connectors-page" aria-label="Plugins">
       <div class="connectors-shell">
-        <button class="connectors-back" type="button"><svg class="lucide lucide-arrow-left" data-lucide-icon="arrow-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>Back</button>
+        <button class="connectors-back" type="button"><svg class="lucide lucide-arrow-left" data-lucide-icon="arrow-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m12 19-7-7 7-7" /><path d="M19 12H5" /></svg>Back</button>
         <div class="connectors-index">
-          <header class="connectors-hero"><span class="connectors-kicker"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect x="14" y="2" width="8" height="8" rx="1"/></svg></span><h1>Plugins</h1><p>Connect your favorite services to NeoChat</p></header>
+          <header class="connectors-hero"><span class="connectors-kicker"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2" /><rect x="14" y="2" width="8" height="8" rx="1" /></svg></span><h1>Plugins</h1><p>Connect your favorite services to NeoChat</p></header>
+          <div class="page-tools"><label class="filter-field"><svg class="lucide lucide-search" data-lucide-icon="search" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg><input id="pluginSearch" type="search" placeholder="Find a plugin…" aria-label="Find a plugin"/></label><span class="result-count">Available services</span></div>
+          <p id="pluginEmpty" class="page-description" hidden>No plugins match your search.</p>
           <div class="connectors-grid">
-            <button class="connector-card" type="button" data-connector="gmail"><span class="connector-logo"><svg viewBox="0 0 192 192" aria-hidden="true"><use href="#connector-gmail"/></svg></span><span class="connector-copy"><strong>Gmail</strong><span>Search, read, and draft email</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-            <button class="connector-card" type="button" data-connector="github"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-github"/></svg></span><span class="connector-copy"><strong>GitHub</strong><span>Work with repositories, issues, and pull requests</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-            <button class="connector-card" type="button" data-connector="notion"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-notion"/></svg></span><span class="connector-copy"><strong>Notion</strong><span>Bring workspace knowledge into your chats</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-            <button class="connector-card" type="button" data-connector="slack"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-slack"/></svg></span><span class="connector-copy"><strong>Slack</strong><span>Find messages and follow team conversations</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
-            <button class="connector-card" type="button" data-connector="canva"><span class="connector-logo connector-canva"><svg viewBox="0 0 50 50" aria-hidden="true"><use href="#connector-canva"/></svg></span><span class="connector-copy"><strong>Canva</strong><span>Use designs and creative assets in NeoChat</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></button>
+            <button class="connector-card" type="button" data-connector="gmail"><span class="connector-logo"><svg viewBox="0 0 192 192" aria-hidden="true"><use href="#connector-gmail"/></svg></span><span class="connector-copy"><strong>Gmail</strong><span>Search, read, and draft email</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
+            <button class="connector-card" type="button" data-connector="github"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-github"/></svg></span><span class="connector-copy"><strong>GitHub</strong><span>Work with repositories, issues, and pull requests</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
+            <button class="connector-card" type="button" data-connector="notion"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-notion"/></svg></span><span class="connector-copy"><strong>Notion</strong><span>Bring workspace knowledge into your chats</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
+            <button class="connector-card" type="button" data-connector="slack"><span class="connector-logo"><svg viewBox="0 0 24 24" aria-hidden="true"><use href="#connector-slack"/></svg></span><span class="connector-copy"><strong>Slack</strong><span>Find messages and follow team conversations</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
+            <button class="connector-card" type="button" data-connector="canva"><span class="connector-logo connector-canva"><svg viewBox="0 0 50 50" aria-hidden="true"><use href="#connector-canva"/></svg></span><span class="connector-copy"><strong>Canva</strong><span>Use designs and creative assets in NeoChat</span></span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg></button>
           </div>
         </div>
         <article class="connector-detail">
-          <div class="connector-detail-head"><span class="connector-logo" id="connectorDetailLogo"></span><h1 class="connector-detail-title"></h1><button class="connector-connect" type="button"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Connect</button></div>
+          <div class="connector-detail-head"><span class="connector-logo" id="connectorDetailLogo"></span><h1 class="connector-detail-title"></h1><button class="connector-connect" type="button"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>Connect</button></div>
           <p class="connector-detail-description"></p>
         </article>
       </div>
@@ -847,44 +106,44 @@
     <section class="content">
       <div class="chat-log" id="chatLog" aria-live="polite" aria-label="Conversation"></div>
       <div class="hero-stage" aria-live="polite">
-        <div class="hero default-hero is-visible" id="defaultHero"><h1 class="home-greeting" id="homeGreeting">How can I help?</h1><div class="project-context"><p class="project-description"></p><div class="project-chat-list"></div></div></div>
+        <div class="hero default-hero is-visible" id="defaultHero"><h1 class="home-greeting" id="homeGreeting">How can I help?</h1><p class="home-subtitle">A place to think, explore, and get things done.</p><div class="project-context"><p class="project-description"></p><div class="project-chat-list"></div></div></div>
         <div class="hero incognito-hero" id="incognitoHero"><div class="incognito-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></div><h1>Incognito mode.</h1><p>The chat will not be saved. For security reasons, we may retain a copy of it for up to 30 days.</p></div>
       </div>
       <div class="composer-wrap">
         <div class="composer">
           <div class="attachments" id="attachments"><div class="attachments-inner" id="attachmentsInner"></div></div>
-          <div class="prompt-entry" id="promptEntry"><div class="connector-highlights" id="connectorHighlights" aria-hidden="true"></div><textarea id="message" rows="1" placeholder="Ask anything…"></textarea></div><div class="composer-bottom">
+          <div class="prompt-entry" id="promptEntry"><div class="connector-highlights" id="connectorHighlights" aria-hidden="true"></div><textarea id="message" rows="2" aria-label="Message" placeholder="Ask anything…"></textarea></div><div class="composer-bottom">
           <div class="attach-wrap" id="attachWrap">
-            <button class="round-btn" id="attachBtn" aria-label="Add to message" aria-haspopup="menu" aria-expanded="false"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></button>
+            <button class="round-btn" id="attachBtn" aria-label="Add to message" aria-haspopup="menu" aria-expanded="false"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg></button>
             <div class="attach-panel" id="attachPanel" role="menu" aria-label="Add to message">
               <div class="attach-tiles">
                 <button class="attach-tile" data-accept="image/*" data-capture="environment" role="menuitem">
-                  <svg class="lucide lucide-camera" data-lucide-icon="camera" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z"/><circle cx="12" cy="13" r="3"/></svg>
+                  <svg class="lucide lucide-camera" data-lucide-icon="camera" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" /><circle cx="12" cy="13" r="3" /></svg>
                   <span>Camera</span>
                 </button>
                 <button class="attach-tile" data-accept="image/*" role="menuitem">
-                  <svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                  <svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
                   <span>Photos</span>
                 </button>
                 <button class="attach-tile" data-accept="*" role="menuitem">
-                  <svg class="lucide lucide-file-up" data-lucide-icon="file-up" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M12 12v6"/><path d="m15 15-3-3-3 3"/></svg>
+                  <svg class="lucide lucide-file-up" data-lucide-icon="file-up" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M12 12v6" /><path d="m15 15-3-3-3 3" /></svg>
                   <span>Files</span>
                 </button>
               </div>
               <div class="attach-divider"></div>
               <div class="attach-list">
                 <button class="attach-row" id="openConnectorPicker" role="menuitem">
-                  <span class="row-symbol"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2"/><rect x="14" y="2" width="8" height="8" rx="1"/></svg></span>
+                  <span class="row-symbol"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2" /><rect x="14" y="2" width="8" height="8" rx="1" /></svg></span>
                   <span class="row-copy"><strong>Plugins</strong><span>Mention a service in your message</span></span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
                 <button class="attach-row" data-toast="Skills aren't part of this preview yet." role="menuitem">
-                  <span class="row-symbol"><svg class="lucide lucide-notebook-tabs" data-lucide-icon="notebook-tabs" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h4"/><path d="M2 10h4"/><path d="M2 14h4"/><path d="M2 18h4"/><rect width="16" height="20" x="4" y="2" rx="2"/><path d="M15 2v20"/><path d="M15 7h5"/><path d="M15 12h5"/><path d="M15 17h5"/></svg></span>
+                  <span class="row-symbol"><svg class="lucide lucide-notebook-tabs" data-lucide-icon="notebook-tabs" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" /><rect width="16" height="20" x="4" y="2" rx="2" /><path d="M15 2v20" /><path d="M15 7h5" /><path d="M15 12h5" /><path d="M15 17h5" /></svg></span>
                   <span class="row-copy"><strong>Skills</strong><span>Reuse specialized skills to handle specific tasks reliably</span></span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
                 <button class="attach-row" id="webSearchRow" role="menuitem" aria-label="Web search">
-                  <span class="row-symbol"><svg class="lucide lucide-globe" data-lucide-icon="globe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg></span>
+                  <span class="row-symbol"><svg class="lucide lucide-globe" data-lucide-icon="globe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></svg></span>
                   <span class="row-copy row-copy-tight"><strong>Web search</strong></span>
                   <span class="row-state" id="webSearchState">Auto</span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
@@ -897,7 +156,7 @@
                 <button class="attach-connector-row" type="button" data-connector-mention="notion"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-notion"/></svg></span><span>Notion</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
                 <button class="attach-connector-row" type="button" data-connector-mention="slack"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-slack"/></svg></span><span>Slack</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
                 <button class="attach-connector-row" type="button" data-connector-mention="canva"><span class="connector-logo connector-canva"><svg viewBox="0 0 50 50"><use href="#connector-canva"/></svg></span><span>Canva</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-                <button class="browse-connectors" id="browseConnectors" type="button"><svg class="lucide lucide-arrow-up-right" data-lucide-icon="arrow-up-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10"/><path d="M7 17 17 7"/></svg><span>Browse plugins</span></button>
+                <button class="browse-connectors" id="browseConnectors" type="button"><svg class="lucide lucide-arrow-up-right" data-lucide-icon="arrow-up-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10" /><path d="M7 17 17 7" /></svg><span>Browse plugins</span></button>
               </div>
             </div>
             <input type="file" id="fileInput" multiple hidden />
@@ -905,12 +164,12 @@
           <div class="mode-wrap">
             <details class="mode-picker" id="modePicker">
               <summary class="mode-trigger" aria-label="Choose work mode">
-                <span class="trigger-state trigger-auto"><svg class="lucide lucide-shuffle" data-lucide-icon="shuffle" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 18h1.4c1.3 0 2.5-.6 3.3-1.7l6.1-8.6c.8-1.1 2-1.7 3.3-1.7H22"/><path d="m18 2 4 4-4 4"/><path d="M2 6h1.4c1.3 0 2.5.6 3.3 1.7l6.1 8.6c.8 1.1 2 1.7 3.3 1.7H22"/><path d="m18 14 4 4-4 4"/></svg><span>Auto</span></span>
-                <span class="trigger-state trigger-instant"><svg class="lucide lucide-zap" data-lucide-icon="zap" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg><span>Instant</span></span>
-                <span class="trigger-state trigger-thinking"><svg class="lucide lucide-brain" data-lucide-icon="brain" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18V5"/><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/><path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 0 0-5.598 1.5"/><path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/><path d="M18 18a4 4 0 0 0 2-7.464"/><path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/><path d="M6 18a4 4 0 0 1-2-7.464"/><path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/></svg><span>Thinking</span></span>
-                <span class="trigger-state trigger-max"><svg class="lucide lucide-gem" data-lucide-icon="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg><span>Max</span></span>
-                <span class="trigger-state trigger-manual"><svg class="lucide lucide-circle-dot" data-lucide-icon="circle-dot" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/></svg><span>Manual</span></span>
-                <svg class="mode-chevron lucide lucide-chevron-down" data-lucide-icon="chevron-down" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 10 5 5 5-5"/></svg>
+                <span class="trigger-state trigger-auto"><svg class="lucide lucide-shuffle" data-lucide-icon="shuffle" viewBox="0 0 24 24" aria-hidden="true"><path d="m18 14 4 4-4 4" /><path d="m18 2 4 4-4 4" /><path d="M2 18h1.973a4 4 0 0 0 3.3-1.7l5.454-8.6a4 4 0 0 1 3.3-1.7H22" /><path d="M2 6h1.972a4 4 0 0 1 3.6 2.2" /><path d="M22 18h-6.041a4 4 0 0 1-3.3-1.8l-.359-.45" /></svg><span>Auto</span></span>
+                <span class="trigger-state trigger-instant"><svg class="lucide lucide-zap" data-lucide-icon="zap" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" /></svg><span>Instant</span></span>
+                <span class="trigger-state trigger-thinking"><svg class="lucide lucide-brain" data-lucide-icon="brain" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18V5" /><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" /><path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5" /><path d="M17.997 5.125a4 4 0 0 1 2.526 5.77" /><path d="M18 18a4 4 0 0 0 2-7.464" /><path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" /><path d="M6 18a4 4 0 0 1-2-7.464" /><path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" /></svg><span>Thinking</span></span>
+                <span class="trigger-state trigger-max"><svg class="lucide lucide-gem" data-lucide-icon="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3 8 9l4 13 4-13-2.5-6" /><path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" /><path d="M2 9h20" /></svg><span>Max</span></span>
+                <span class="trigger-state trigger-manual"><svg class="lucide lucide-circle-dot" data-lucide-icon="circle-dot" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="12" r="10" /></svg><span>Manual</span></span>
+                <svg class="mode-chevron lucide lucide-chevron-down" data-lucide-icon="chevron-down" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
               </summary>
 
               <input class="mode-radio" type="radio" name="work-mode" id="mode-auto" value="Auto" checked />
@@ -1173,33 +432,35 @@
               </div>
             </details>
           </div>
-          <button class="round-btn" aria-label="Microphone"><svg class="lucide lucide-mic" data-lucide-icon="mic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><rect x="9" y="2" width="6" height="13" rx="3"/></svg></button>
-          <button class="send" aria-label="Send"><svg class="lucide lucide-arrow-up" data-lucide-icon="arrow-up" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7"/><path d="M12 19V5"/></svg></button>
-        </div></div><div class="hint">NeoChat is AI and can make mistakes. So double check important information.</div><div class="suggestions" aria-label="Prompt suggestions"></div>
+          <button class="round-btn" aria-label="Microphone"><svg class="lucide lucide-mic" data-lucide-icon="mic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><rect x="9" y="2" width="6" height="13" rx="3" /></svg></button>
+          <button class="send" aria-label="Send"><svg class="lucide lucide-arrow-up" data-lucide-icon="arrow-up" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg></button>
+        </div><div class="suggestions" aria-label="Prompt suggestions"></div>
+        </div><div class="hint">NeoChat is AI and can make mistakes. So double check important information.</div>
       </div>
     </section>
   </main>
 
-  <div class="project-create-overlay" aria-hidden="true"><form class="project-create-dialog"><div class="project-create-title"><svg viewBox="0 0 24 24"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Creation of the Project</div><label for="projectName">Name your Project</label><input id="projectName" maxlength="80" required/><label for="projectDescription">Describe your Project</label><textarea id="projectDescription" maxlength="2000"></textarea><div class="project-dialog-actions"><button type="button" class="project-cancel">Cancel</button><button class="project-submit" type="submit"><svg viewBox="0 0 24 24"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div></form></div>
+  <div class="project-create-overlay" aria-hidden="true" inert><form class="project-create-dialog" role="dialog" aria-modal="true" aria-labelledby="projectDialogTitle"><div class="project-create-title" id="projectDialogTitle"><svg class="lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6"/><path d="M9 13h6"/><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>Create project</div><p class="project-dialog-copy">Add a focused space for related chats and instructions.</p><label for="projectName">Project name</label><input id="projectName" maxlength="80" required/><label for="projectDescription">Description</label><textarea id="projectDescription" maxlength="2000"></textarea><div class="project-dialog-actions"><button type="button" class="project-cancel">Cancel</button><button class="project-submit" type="submit"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Create</button></div></form></div>
 
   <div class="settings-backdrop" id="settingsBackdrop"></div>
 
   <div class="settings" id="settings" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
     <div class="settings-head">
       <h2 id="settingsTitle">Settings</h2>
-      <button class="icon-btn" id="settingsClose" aria-label="Close settings"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+      <button class="icon-btn" id="settingsClose" aria-label="Close settings"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
     </div>
-    <div class="settings-tabs" role="tablist" id="settingsTabs">
-      <button class="settings-tab is-active" role="tab" aria-selected="true" data-tab="general">General</button>
-      <button class="settings-tab" role="tab" aria-selected="false" data-tab="account">Account</button>
-      <button class="settings-tab" role="tab" aria-selected="false" data-tab="billing">Billing</button>
-      <button class="settings-tab" role="tab" aria-selected="false" data-tab="usage">Usage</button>
-      <button class="settings-tab" role="tab" aria-selected="false" data-tab="privacy">Privacy</button>
+    <div class="settings-tabs" role="tablist" aria-orientation="vertical" id="settingsTabs">
+      <button class="settings-tab is-active" role="tab" aria-selected="true" data-tab="general"><svg class="lucide lucide-settings-2" data-lucide-icon="settings-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 17H5" /><path d="M19 7h-9" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></svg>General</button>
+      <button class="settings-tab" role="tab" aria-selected="false" data-tab="account"><svg class="lucide lucide-user" data-lucide-icon="user" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></svg>Account</button>
+      <button class="settings-tab" role="tab" aria-selected="false" data-tab="billing"><svg class="lucide lucide-credit-card" data-lucide-icon="credit-card" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /><path d="M6 14h2" /></svg>Billing</button>
+      <button class="settings-tab" role="tab" aria-selected="false" data-tab="usage"><svg class="lucide lucide-chart-no-axes-column" data-lucide-icon="chart-no-axes-column" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></svg>Usage</button>
+      <button class="settings-tab" role="tab" aria-selected="false" data-tab="privacy"><svg class="lucide lucide-shield" data-lucide-icon="shield" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /></svg>Privacy</button>
     </div>
     <div class="settings-divider"></div>
     <div class="settings-body">
 
       <section class="settings-pane is-active" data-pane="general" role="tabpanel" aria-label="General">
+        <h3 class="pane-heading">General</h3><p class="pane-description">Make NeoChat feel right for you.</p>
         <div class="set-sec">
           <div class="set-sec-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>Profile</div>
           <div class="set-row">
@@ -1282,8 +543,9 @@
       </section>
 
       <section class="settings-pane" data-pane="account" role="tabpanel" aria-label="Account">
+        <h3 class="pane-heading">Account</h3><p class="pane-description">Your profile and access to NeoChat.</p>
         <div class="set-sec">
-          <div class="set-sec-title"><svg class="lucide lucide-key-round" data-lucide-icon="key-round" viewBox="0 0 24 24" aria-hidden="true"><circle cx="7.5" cy="15.5" r="5.5"/><path d="m12 12 8-8"/><path d="m16 8 2 2"/><path d="m18 6 2 2"/></svg>API access</div>
+          <div class="set-sec-title"><svg class="lucide lucide-key-round" data-lucide-icon="key-round" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" /></svg>API access</div>
           <div class="set-row">
             <span class="label soft">NeoChat API key</span>
             <span class="val"><input class="api-key-input" id="apiKey" type="password" autocomplete="off" placeholder="Paste API key" aria-label="NeoChat API key" /></span>
@@ -1309,7 +571,7 @@
           </div>
         </div>
         <div class="set-sec">
-          <div class="set-sec-title"><svg class="lucide lucide-triangle-alert" data-lucide-icon="triangle-alert" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.46 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>Danger zone</div>
+          <div class="set-sec-title"><svg class="lucide lucide-triangle-alert" data-lucide-icon="triangle-alert" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>Danger zone</div>
           <div class="set-row">
             <span class="label soft">Deleting removes every chat and file. This can't be undone.</span>
             <span class="val"><button class="link-btn danger" id="deleteAccount">Delete my account</button></span>
@@ -1318,6 +580,7 @@
       </section>
 
       <section class="settings-pane" data-pane="billing" role="tabpanel" aria-label="Billing">
+        <h3 class="pane-heading">Billing</h3><p class="pane-description">Your plan and payment details.</p>
         <div class="set-sec">
           <div class="plan-name">NeoChat Max <span>$199/m</span></div>
           <div class="set-row">
@@ -1326,7 +589,7 @@
           </div>
         </div>
         <div class="set-sec">
-          <div class="set-sec-title"><svg class="lucide lucide-credit-card" data-lucide-icon="credit-card" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2"/><line x1="2" x2="22" y1="10" y2="10"/></svg>Payment method</div>
+          <div class="set-sec-title"><svg class="lucide lucide-credit-card" data-lucide-icon="credit-card" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /><path d="M6 14h2" /></svg>Payment method</div>
           <div class="set-row">
             <span class="label">Visa 2114</span>
             <span class="val"><button class="link-btn" data-toast="Card updates happen in the billing portal.">Change</button></span>
@@ -1335,8 +598,9 @@
       </section>
 
       <section class="settings-pane" data-pane="usage" role="tabpanel" aria-label="Usage">
+        <h3 class="pane-heading">Usage</h3><p class="pane-description">Your remaining capacity, at a glance.</p>
         <div class="set-sec">
-          <div class="set-sec-title"><svg class="lucide lucide-chart-no-axes-column" data-lucide-icon="chart-no-axes-column" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21v-6"/><path d="M12 21V3"/><path d="M19 21V9"/></svg>Remaining usage limits</div>
+          <div class="set-sec-title"><svg class="lucide lucide-chart-no-axes-column" data-lucide-icon="chart-no-axes-column" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></svg>Remaining usage limits</div>
           <div class="usage">
             <div class="usage-item"><span class="usage-figure"><strong>96%</strong><span>Instant</span></span><span class="usage-track"><span class="usage-fill" data-fill="96"></span></span></div>
             <div class="usage-item"><span class="usage-figure"><strong>40%</strong><span>Thinking</span></span><span class="usage-track"><span class="usage-fill" data-fill="40"></span></span></div>
@@ -1347,12 +611,13 @@
       </section>
 
       <section class="settings-pane" data-pane="privacy" role="tabpanel" aria-label="Privacy">
+        <h3 class="pane-heading">Privacy</h3><p class="pane-description">Manage your conversations and data.</p>
         <p class="set-note">NeoChat is committed to transparency when handling your data. For more information, see the <a href="#" data-toast="Policies open in the full app.">Privacy Policy</a> and <a href="#" data-toast="Policies open in the full app.">Data Processing Policy</a>.</p>
         <div class="set-sec">
-          <div class="set-sec-title"><svg class="lucide lucide-database" data-lucide-icon="database" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>Your data</div>
-          <div class="set-row"><span class="label label-icon"><svg class="lucide lucide-download" data-lucide-icon="download" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/></svg>Export all data</span><span class="val"><button class="link-btn" data-toast="Export queued — we'd email you the archive.">Download</button></span></div>
-          <div class="set-row"><span class="label label-icon"><svg class="lucide lucide-share-2" data-lucide-icon="share-2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" x2="15.42" y1="13.51" y2="17.49"/><line x1="15.41" x2="8.59" y1="6.51" y2="10.49"/></svg>Shared chats</span><span class="val"><button class="link-btn" data-toast="No shared chats yet.">Manage</button></span></div>
-          <div class="set-row"><span class="label label-icon"><svg class="lucide lucide-files" data-lucide-icon="files" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8"/><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z"/><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1"/></svg>Uploaded files</span><span class="val"><button class="link-btn" data-toast="No uploaded files yet.">Manage</button></span></div>
+          <div class="set-sec-title"><svg class="lucide lucide-database" data-lucide-icon="database" viewBox="0 0 24 24" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3" /><path d="M3 5V19A9 3 0 0 0 21 19V5" /><path d="M3 12A9 3 0 0 0 21 12" /></svg>Your data</div>
+          <div class="set-row"><span class="label label-icon"><svg class="lucide lucide-download" data-lucide-icon="download" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></svg>Export all data</span><span class="val"><button class="link-btn" data-toast="Export queued — we'd email you the archive.">Download</button></span></div>
+          <div class="set-row"><span class="label label-icon"><svg class="lucide lucide-share-2" data-lucide-icon="share-2" viewBox="0 0 24 24" aria-hidden="true"><circle cx="18" cy="5" r="3" /><circle cx="6" cy="12" r="3" /><circle cx="18" cy="19" r="3" /><line x1="8.59" x2="15.42" y1="13.51" y2="17.49" /><line x1="15.41" x2="8.59" y1="6.51" y2="10.49" /></svg>Shared chats</span><span class="val"><button class="link-btn" data-toast="No shared chats yet.">Manage</button></span></div>
+          <div class="set-row"><span class="label label-icon"><svg class="lucide lucide-files" data-lucide-icon="files" viewBox="0 0 24 24" aria-hidden="true"><path d="M15 2h-4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 2-2V8" /><path d="M16.706 2.706A2.4 2.4 0 0 0 15 2v5a1 1 0 0 0 1 1h5a2.4 2.4 0 0 0-.706-1.706z" /><path d="M5 7a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h8a2 2 0 0 0 1.732-1" /></svg>Uploaded files</span><span class="val"><button class="link-btn" data-toast="No uploaded files yet.">Manage</button></span></div>
         </div>
       </section>
 
@@ -1651,7 +916,7 @@
 
     textarea.addEventListener('input',function(){
       textarea.style.height='auto';
-      textarea.style.height=Math.min(textarea.scrollHeight,160)+'px';
+      textarea.style.height=Math.min(Math.max(textarea.scrollHeight,56),176)+'px';
     });
   })();
 </script>
@@ -1700,9 +965,9 @@
     document.getElementById('settingsTabs').addEventListener('keydown',function(e){
       const i=tabs.indexOf(document.activeElement);
       if(i<0)return;
-      if(e.key==='ArrowRight'||e.key==='ArrowLeft'){
+      if(['ArrowRight','ArrowLeft','ArrowDown','ArrowUp'].includes(e.key)){
         e.preventDefault();
-        const n=tabs[(i+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length];
+        const n=tabs[(i+((e.key==='ArrowRight'||e.key==='ArrowDown')?1:tabs.length-1))%tabs.length];
         n.focus();setTab(n.dataset.tab);
       }
     });
@@ -1723,7 +988,7 @@
       document.dispatchEvent(new CustomEvent('panel:opening',{detail:'settings'}));
       backdrop.classList.add('is-open');
       modal.classList.add('is-open');
-      sidebarState.checked=false;
+      if(window.innerWidth<900)sidebarState.checked=false;
       requestAnimationFrame(function(){
         placeThumb();
         closeBtn.focus({preventScroll:true});
@@ -1987,7 +1252,7 @@
     function showConnectorsIndex(){
       connectorsPage.classList.remove('is-detail');
       mainPanel.classList.add('connectors-open');
-      mainSidebarState.checked=false;
+      if(window.innerWidth<900)mainSidebarState.checked=false;
     }
 
     function showConnectorDetail(id){
@@ -2206,7 +1471,9 @@
       label.className='thinking-label';
       label.textContent=labelText||'Thinking';
       label.dataset.text=label.textContent;
-      state.append(label);body.append(state);
+      const dot=document.createElement('span');
+      dot.className='thinking-dot';dot.setAttribute('aria-hidden','true');
+      state.append(dot,label);body.append(state);
     }
 
     function showThoughtTime(message,elapsedMilliseconds){
@@ -2214,9 +1481,14 @@
       const previous=copy.querySelector('.thought-time');
       if(previous)previous.remove();
       const seconds=Math.max(1,Math.round(elapsedMilliseconds/1000));
-      const timing=document.createElement('div');
+      const timing=document.createElement('details');
       timing.className='thought-time';
-      timing.textContent='Thought for '+seconds+' '+(seconds===1?'second':'seconds');
+      const summary=document.createElement('summary');
+      summary.textContent='Thought for '+seconds+' '+(seconds===1?'second':'seconds');
+      const step=document.createElement('div');
+      step.className='thinking-content';
+      step.textContent='Response started after '+seconds+' '+(seconds===1?'second.':'seconds.');
+      timing.append(summary,step);
       copy.prepend(timing);
     }
 
@@ -2303,10 +1575,10 @@
       navigation.className='response-versions';
       navigation.hidden=true;
       const previous=document.createElement('button');
-      previous.type='button';previous.className='version-nav version-prev';previous.innerHTML='<svg class="lucide lucide-chevron-left" data-lucide-icon="chevron-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6"></path></svg><span>Prev</span>';
+      previous.type='button';previous.className='version-nav version-prev';previous.innerHTML='<svg class="lucide lucide-chevron-left" data-lucide-icon="chevron-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg><span>Prev</span>';
       previous.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex-1)});
       const next=document.createElement('button');
-      next.type='button';next.className='version-nav version-next';next.innerHTML='<span>Next</span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6"></path></svg>';
+      next.type='button';next.className='version-nav version-next';next.innerHTML='<span>Next</span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>';
       next.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex+1)});
       navigation.append(previous,next);
 
@@ -2378,7 +1650,7 @@
       chatActionsTrigger.setAttribute('aria-expanded','false');
     }
 
-    function projectIcon(){return '<svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z"/><path d="M8 10v4"/><path d="M12 10v2"/><path d="M16 10v6"/></svg>'}
+    function projectIcon(){return '<svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" /><path d="M8 10v4" /><path d="M12 10v2" /><path d="M16 10v6" /></svg>'}
 
     async function fetchProjects(){
       const token=apiKeyInput.value.trim();
@@ -2389,21 +1661,33 @@
     }
 
     function renderProjects(projects){
-      projectsGrid.replaceChildren();projectsEmpty.style.display=projects.length?'none':'flex';
-      projects.forEach(function(project){const button=document.createElement('button');button.className='project-card';button.type='button';button.innerHTML=projectIcon()+'<span></span>';button.querySelector('span').textContent=project.name;button.addEventListener('click',function(){openProject(project.project_id)});projectsGrid.append(button)});
+      projectsGrid.replaceChildren();
+      projectsEmpty.style.display=projects.length?'none':'flex';
+      projects.forEach(function(project){
+        const button=document.createElement('button');
+        button.className='project-card';button.type='button';
+        button.innerHTML=projectIcon();
+        const title=document.createElement('strong');title.textContent=project.name;
+        const description=document.createElement('p');description.textContent=project.description||'A dedicated space for your conversations.';
+        const footer=document.createElement('small');footer.textContent='Open project →';
+        button.append(title,description,footer);
+        button.addEventListener('click',function(){openProject(project.project_id)});
+        projectsGrid.append(button);
+      });
+      document.getElementById('projectSearch').dispatchEvent(new Event('input'));
     }
 
     async function showProjectsIndex(){
-      activeProject=null;activeProjectChats=[];mainPanel.classList.remove('project-mode','has-active-chat','connectors-open');mainPanel.classList.add('projects-index');sidebarState.checked=false;resetConversation();
+      activeProject=null;activeProjectChats=[];mainPanel.classList.remove('project-mode','has-active-chat','connectors-open');mainPanel.classList.add('projects-index');if(window.innerWidth<900)sidebarState.checked=false;resetConversation();
       try{renderProjects(await fetchProjects())}catch(error){toast(error.message)}
     }
 
     function renderProjectHome(){
       if(!activeProject)return;
       mainPanel.classList.remove('projects-index','connectors-open');mainPanel.classList.add('project-mode');
-      homeGreeting.textContent='What should we do in '+activeProject.name+' ?';homeGreeting.classList.add('is-ready');
+      homeGreeting.textContent=activeProject.name;homeGreeting.classList.add('is-ready');
       document.querySelector('.project-description').textContent=activeProject.description||'Chats and instructions for this project';
-      textarea.placeholder='Do anything';projectChatList.replaceChildren();
+      textarea.placeholder='Ask about this project…';projectChatList.replaceChildren();
       if(!activeProjectChats.length){const empty=document.createElement('div');empty.className='project-chat-empty';empty.textContent='No chats in this project yet.';projectChatList.append(empty);return}
       activeProjectChats.forEach(function(chat){const button=document.createElement('button');button.className='project-chat-item';button.type='button';button.textContent=chat.title||'New chat';button.addEventListener('click',function(){loadConversation(chat.conversation_id,chat.title,Boolean(chat.pinned))});projectChatList.append(button)});
     }
@@ -2507,7 +1791,7 @@
         conversationList.querySelectorAll('.conversation-item').forEach(function(item){
           item.classList.toggle('is-active',item.dataset.conversationId===conversationID);
         });
-        sidebarState.checked=false;
+        if(window.innerWidth<900)sidebarState.checked=false;
         textarea.focus();
       }catch(error){
         toast('Could not load that chat.');
@@ -2565,9 +1849,12 @@
 
     function setSending(value){
       sending=value;
-      sendButton.disabled=value;
+      sendButton.disabled=value||!textarea.value.trim();
       textarea.disabled=value;
     }
+
+    textarea.addEventListener('input',function(){sendButton.disabled=sending||!textarea.value.trim()});
+    sendButton.disabled=!textarea.value.trim();
 
     function promptForAPIKey(){
       document.getElementById('openSettings').click();
@@ -2930,7 +2217,7 @@
       if(sending){toast('Wait for the current response.');return}
       activeProject=null;activeProjectChats=[];mainPanel.classList.remove('project-mode','projects-index','connectors-open');textarea.placeholder='Ask anything…';renderHomeGreeting();
       resetConversation();
-      sidebarState.checked=false;
+      if(window.innerWidth<900)sidebarState.checked=false;
       toast('New chat');
     });
 
@@ -2952,8 +2239,9 @@
       }
     });
     document.addEventListener('connectors:open',showConnectorsIndex);
-    document.querySelectorAll('.project-create-btn').forEach(function(button){button.addEventListener('click',function(){projectOverlay.classList.add('is-open');projectOverlay.setAttribute('aria-hidden','false');setTimeout(function(){document.getElementById('projectName').focus()},100)})});
-    document.querySelector('.project-cancel').addEventListener('click',function(){projectOverlay.classList.remove('is-open');projectOverlay.setAttribute('aria-hidden','true')});
+    let projectDialogTrigger=null;
+    document.querySelectorAll('.project-create-btn').forEach(function(button){button.addEventListener('click',function(){projectDialogTrigger=button;projectOverlay.inert=false;projectOverlay.classList.add('is-open');projectOverlay.setAttribute('aria-hidden','false');setTimeout(function(){document.getElementById('projectName').focus()},100)})});
+    document.querySelector('.project-cancel').addEventListener('click',function(){projectOverlay.classList.remove('is-open');projectOverlay.setAttribute('aria-hidden','true');projectOverlay.inert=true;if(projectDialogTrigger)projectDialogTrigger.focus()});
     projectOverlay.addEventListener('click',function(event){if(event.target===projectOverlay)document.querySelector('.project-cancel').click()});
     projectForm.addEventListener('submit',async function(event){event.preventDefault();const token=apiKeyInput.value.trim();if(!token){promptForAPIKey();return}const name=document.getElementById('projectName').value.trim(),description=document.getElementById('projectDescription').value.trim();if(!name)return;try{const response=await fetch('/projects',{method:'POST',headers:{'Authorization':'Bearer '+token,'Content-Type':'application/json'},body:JSON.stringify({name:name,description:description})});if(!response.ok)throw new Error((await response.text()).trim()||'Could not create project.');projectForm.reset();document.querySelector('.project-cancel').click();renderProjects(await fetchProjects());toast('Project created')}catch(error){toast(error.message)}});
     document.querySelector('.project-back').addEventListener('click',function(){if(chatLog.querySelector('.chat-message')){resetConversation();renderProjectHome()}else{showProjectsIndex()}});
@@ -3047,12 +2335,48 @@
     });
 
     document.querySelectorAll('.nav-item:not(#projectsNav):not(#connectorsNav)').forEach(function(button){
-      button.addEventListener('click',function(){toast(button.textContent.trim()+' is not part of this preview.')});
+      button.addEventListener('click',async function(){
+        const name=button.textContent.trim();
+        if(name==='More'){document.getElementById('openSettings').click();return}
+        const page=document.querySelector('.collection-page');
+        const list=document.getElementById('collectionList');
+        mainPanel.classList.remove('connectors-open','projects-index','project-mode');
+        mainPanel.classList.add('collection-open');page.hidden=false;
+        page.setAttribute('aria-label',name);
+        document.getElementById('collectionTitle').textContent=name;
+        document.getElementById('pageTitle').textContent=name;
+        document.getElementById('collectionDescription').textContent=name==='Library'?'Your saved conversations, in one place.':'A home for recurring work and reminders.';
+        document.getElementById('collectionFilter').hidden=name!=='Library';
+        document.getElementById('collectionSearch').value='';list.replaceChildren();
+        if(window.innerWidth<900)sidebarState.checked=false;
+        const empty=document.createElement('p');empty.className='collection-empty';
+        if(name==='Scheduled'){
+          empty.textContent='Scheduling is not available yet. Your conversations are ready whenever you want to pick them up.';
+          list.append(empty);return;
+        }
+        const token=apiKeyInput.value.trim();
+        if(!token){empty.textContent='Add your access key in Settings → Account to see your saved conversations.';list.append(empty);return}
+        try{
+          const response=await fetch('/conversations',{headers:{'Authorization':'Bearer '+token}});
+          if(!response.ok)throw new Error('Could not load your library.');
+          const data=await response.json();
+          if(!mainPanel.classList.contains('collection-open')||document.getElementById('collectionTitle').textContent!=='Library')return;
+          (data.conversations||[]).forEach(function(chat){
+            const row=document.createElement('button');row.type='button';row.className='collection-row';
+            const title=document.createElement('span');title.textContent=chat.title||'New chat';
+            const state=document.createElement('small');state.textContent=chat.pinned?'Pinned':'Conversation';
+            row.append(title,state);
+            row.addEventListener('click',function(){mainPanel.classList.remove('collection-open');page.hidden=true;loadConversation(chat.conversation_id,chat.title,Boolean(chat.pinned))});
+            list.append(row);
+          });
+          if(!list.children.length){empty.textContent='Your saved conversations will appear here.';list.append(empty)}
+        }catch(error){empty.textContent=error.message;list.append(empty)}
+      });
     });
 
     sendButton.addEventListener('click',sendMessage);
     textarea.addEventListener('keydown',function(event){
-      if(event.key==='Enter'&&!event.shiftKey){
+      if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){
         event.preventDefault();
         sendMessage();
       }
@@ -3173,13 +2497,13 @@
       const ext=(name.split('.').pop()||'').toLowerCase();
       const isImg=['png','jpg','jpeg','gif','webp','heic','svg'].indexOf(ext)>-1;
       return isImg
-        ? '<svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>'
-        : '<svg class="lucide lucide-file-text" data-lucide-icon="file-text" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>';
+        ? '<svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>'
+        : '<svg class="lucide lucide-file-text" data-lucide-icon="file-text" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>';
     }
     function addChip(name){
       const chip=document.createElement('div');
       chip.className='chip';
-      chip.innerHTML=iconFor(name)+'<span></span><button type="button" aria-label="Remove attachment"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>';
+      chip.innerHTML=iconFor(name)+'<span></span><button type="button" aria-label="Remove attachment"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>';
       chip.querySelector('span').textContent=name;
       chip.querySelector('button').addEventListener('click',function(){
         chip.style.transition='opacity .16s ease,transform .16s ease';
@@ -3291,6 +2615,155 @@
     reasoningRange.addEventListener('input',savePreferences);
     webSearchRow.addEventListener('click',savePreferences);
     window.addEventListener('beforeunload',savePreferences);
+  })();
+</script>
+<script>
+  (function(){
+    const root=document.documentElement;
+    const main=document.querySelector('.main');
+    const sidebar=document.getElementById('sidebar');
+    const sidebarState=document.getElementById('sidebarState');
+    const search=document.getElementById('chatSearch');
+    const conversationList=document.getElementById('conversationList');
+    const textarea=document.getElementById('message');
+    const composer=document.querySelector('.composer');
+    const composerWrap=document.querySelector('.composer-wrap');
+    const rail=document.querySelector('.sidebar-rail');
+    const desktop=window.matchMedia('(min-width:900px)');
+    const settings=document.getElementById('settings');
+    function syncSettingsAccess(){settings.inert=!settings.classList.contains('is-open')}
+    new MutationObserver(syncSettingsAccess).observe(settings,{attributes:true,attributeFilter:['class']});syncSettingsAccess();
+    document.querySelectorAll('.new-chat,#projectsNav,#connectorsNav').forEach(function(button){
+      button.addEventListener('click',function(){main.classList.remove('collection-open');document.querySelector('.collection-page').hidden=true},true);
+    });
+    document.getElementById('collectionSearch').addEventListener('input',function(event){
+      const query=event.target.value.trim().toLocaleLowerCase();
+      document.querySelectorAll('.collection-row').forEach(function(row){row.hidden=!row.textContent.toLocaleLowerCase().includes(query)});
+    });
+
+    function readPreference(key){try{return localStorage.getItem(key)}catch(error){return null}}
+    function savePreference(key,value){try{localStorage.setItem(key,value)}catch(error){}}
+    const savedWidth=Number(readPreference('neochat.sidebar.width'));
+    if(savedWidth>=160&&savedWidth<=360)root.style.setProperty('--sidebar-width',savedWidth+'px');
+    sidebarState.checked=desktop.matches&&readPreference('neochat.sidebar.open')!=='false';
+    sidebarState.addEventListener('change',function(){
+      if(desktop.matches)savePreference('neochat.sidebar.open',String(sidebarState.checked));
+    });
+    desktop.addEventListener('change',function(){sidebarState.checked=desktop.matches&&readPreference('neochat.sidebar.open')!=='false'});
+    document.querySelectorAll('label[for="sidebarState"],label[for="incognitoState"]').forEach(function(label){
+      label.tabIndex=0;label.setAttribute('role','button');
+      label.addEventListener('keydown',function(event){if(event.key==='Enter'||event.key===' '){event.preventDefault();label.click()}});
+    });
+
+    let dragStart=null;
+    rail.addEventListener('pointerdown',function(event){
+      if(event.button!==0)return;
+      dragStart={x:event.clientX,width:sidebar.getBoundingClientRect().width,moved:false};
+      rail.setPointerCapture(event.pointerId);
+    });
+    rail.addEventListener('pointermove',function(event){
+      if(!dragStart)return;
+      const distance=event.clientX-dragStart.x;
+      if(Math.abs(distance)>3)dragStart.moved=true;
+      const width=Math.max(160,Math.min(360,dragStart.width+distance));
+      root.style.setProperty('--sidebar-width',width+'px');
+    });
+    rail.addEventListener('pointerup',function(event){
+      if(!dragStart)return;
+      if(!dragStart.moved||dragStart.width+event.clientX-dragStart.x<140)sidebarState.checked=false;
+      savePreference('neochat.sidebar.width',String(sidebar.getBoundingClientRect().width));
+      sidebarState.dispatchEvent(new Event('change'));
+      dragStart=null;
+    });
+    rail.addEventListener('pointercancel',function(){dragStart=null});
+    rail.addEventListener('keydown',function(event){
+      if(event.key==='Enter'||event.key===' '){event.preventDefault();sidebarState.checked=false;sidebarState.dispatchEvent(new Event('change'))}
+      if(event.key==='ArrowLeft'||event.key==='ArrowRight'){
+        event.preventDefault();
+        const width=Math.max(160,Math.min(360,sidebar.getBoundingClientRect().width+(event.key==='ArrowRight'?16:-16)));
+        root.style.setProperty('--sidebar-width',width+'px');savePreference('neochat.sidebar.width',String(width));
+      }
+    });
+
+    function filterChats(){
+      const query=search.value.trim().toLocaleLowerCase();
+      conversationList.querySelectorAll('.conversation-item').forEach(function(item){item.hidden=!item.textContent.toLocaleLowerCase().includes(query)});
+    }
+    search.addEventListener('input',filterChats);
+    new MutationObserver(filterChats).observe(conversationList,{childList:true});
+    document.querySelector('.history-toggle').addEventListener('click',function(event){
+      const button=event.currentTarget;
+      const expanded=button.getAttribute('aria-expanded')!=='true';
+      button.setAttribute('aria-expanded',String(expanded));conversationList.hidden=!expanded;
+    });
+    document.addEventListener('keydown',function(event){
+      const editing=event.target.closest('input,textarea,select,[contenteditable="true"]');
+      if((event.ctrlKey||event.metaKey)&&event.key.toLowerCase()==='k'){
+        event.preventDefault();sidebarState.checked=true;conversationList.hidden=false;
+        document.querySelector('.history-toggle').setAttribute('aria-expanded','true');search.focus();
+      }else if(event.key==='['&&!editing){
+        event.preventDefault();sidebarState.checked=!sidebarState.checked;sidebarState.dispatchEvent(new Event('change'));
+      }else if(event.key==='Escape'&&!desktop.matches&&sidebarState.checked){sidebarState.checked=false}
+    });
+
+    // A traveling hover surface, as in SidebarMenu and Dropdown. The item
+    // remains the hit target; the highlight cannot intercept clicks.
+    function fluidMenu(container,selector){
+      const highlight=document.createElement('span');highlight.className='fluid-highlight';highlight.setAttribute('aria-hidden','true');container.prepend(highlight);
+      function follow(target){
+        const item=target.closest(selector);if(!item||!container.contains(item))return;
+        const bounds=item.getBoundingClientRect(),parent=container.getBoundingClientRect();
+        highlight.style.transform='translateY('+(bounds.top-parent.top+container.scrollTop)+'px)';
+        highlight.style.height=bounds.height+'px';highlight.style.opacity='1';
+      }
+      container.addEventListener('pointermove',function(event){follow(event.target)});
+      container.addEventListener('focusin',function(event){follow(event.target)});
+      container.addEventListener('pointerleave',function(){highlight.style.opacity='0'});
+      container.addEventListener('focusout',function(event){if(!container.contains(event.relatedTarget))highlight.style.opacity='0'});
+    }
+    fluidMenu(document.querySelector('.nav'),'.nav-item');
+    fluidMenu(document.querySelector('.settings-tabs'),'.settings-tab');
+
+    composer.addEventListener('mousedown',function(event){
+      if(event.target.closest('button,a,input,select,textarea,label,summary,[role="button"]'))return;
+      event.preventDefault();textarea.focus();
+    });
+    function resizeComposer(){
+      textarea.style.height='auto';
+      textarea.style.height=Math.min(Math.max(textarea.scrollHeight,56),176)+'px';
+    }
+    textarea.addEventListener('input',resizeComposer);
+    new ResizeObserver(function(){
+      main.style.setProperty('--composer-clearance',(composerWrap.getBoundingClientRect().height+48)+'px');
+    }).observe(composerWrap);
+    const highlights=document.getElementById('connectorHighlights');
+    textarea.addEventListener('scroll',function(){highlights.scrollTop=textarea.scrollTop;highlights.scrollLeft=textarea.scrollLeft});
+    document.fonts.ready.then(resizeComposer);
+
+    function cardFilter(input,selector,count){
+      function filter(){
+        const query=input.value.trim().toLocaleLowerCase();let visible=0;
+        document.querySelectorAll(selector).forEach(function(card){
+          card.hidden=!card.textContent.toLocaleLowerCase().includes(query);if(!card.hidden)visible++;
+        });
+        if(count)count.textContent=visible+' '+(visible===1?'project':'projects');
+        if(selector==='.connector-card')document.getElementById('pluginEmpty').hidden=visible>0;
+      }
+      input.addEventListener('input',filter);filter();
+    }
+    cardFilter(document.getElementById('projectSearch'),'.project-card',document.getElementById('projectCount'));
+    cardFilter(document.getElementById('pluginSearch'),'.connector-card');
+    function updateNavigation(){
+      const projects=main.classList.contains('projects-index')||main.classList.contains('project-mode');
+      const plugins=main.classList.contains('connectors-open');
+      document.getElementById('projectsNav').classList.toggle('is-current',projects&&!plugins);
+      document.getElementById('connectorsNav').classList.toggle('is-current',plugins);
+      const collection=main.classList.contains('collection-open');
+      const collectionTitle=document.getElementById('collectionTitle').textContent;
+      document.querySelectorAll('.nav-item:not(#projectsNav):not(#connectorsNav)').forEach(function(button){button.classList.toggle('is-current',collection&&button.textContent.trim()===collectionTitle)});
+      document.getElementById('pageTitle').textContent=collection?collectionTitle:plugins?'Plugins':projects?'Projects':main.classList.contains('has-active-chat')?'Conversation':'New chat';
+    }
+    new MutationObserver(updateNavigation).observe(main,{attributes:true,attributeFilter:['class']});updateNavigation();
   })();
 </script>
 </body>
