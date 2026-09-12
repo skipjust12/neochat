@@ -30,6 +30,10 @@ SOFTWARE.
 
 The unmodified font is bundled from Fluid Functionalism's public/fonts/InterVariable.ttf. Copyright (c) 2016 The Inter Project Authors. Licensed under SIL OFL 1.1; the full license is in server/assets/Inter-LICENSE.txt.
 
+## Charter
+
+The home heading uses the unmodified Bitstream Charter regular webfont distributed by charter-webfont. Copyright (c) 1989-1992 Bitstream Inc. The full font notice is in server/assets/Charter-LICENSE.txt.
+
 ## Lucide
 
 UI icons use Lucide SVG geometry (ISC): https://github.com/lucide-icons/lucide. Brand logos are separate from UI glyphs.

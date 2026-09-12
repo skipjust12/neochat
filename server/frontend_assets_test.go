@@ -16,6 +16,7 @@ func TestFrontendAssetsAreEmbedded(t *testing.T) {
 	}{
 		{"/assets/fluid.css", "text/css", 1000},
 		{"/assets/InterVariable.ttf", "font/ttf", 100000},
+		{"/assets/Charter-Regular.woff2", "font/woff2", 10000},
 	} {
 		t.Run(asset.path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -36,7 +37,7 @@ func TestFrontendRevalidatesAfterDeployment(t *testing.T) {
 	if response.Header().Get("Cache-Control") != "no-cache" {
 		t.Fatal("HTML must revalidate after a frontend deployment")
 	}
-	if !strings.Contains(response.Body.String(), `/assets/fluid.css?v=2`) {
+	if !strings.Contains(response.Body.String(), `/assets/fluid.css?v=3`) {
 		t.Fatal("frontend does not load the embedded design system")
 	}
 }
