@@ -37,7 +37,7 @@ func TestFrontendRevalidatesAfterDeployment(t *testing.T) {
 	if response.Header().Get("Cache-Control") != "no-cache" {
 		t.Fatal("HTML must revalidate after a frontend deployment")
 	}
-	if !strings.Contains(response.Body.String(), `/assets/fluid.css?v=3`) {
+	if !strings.Contains(response.Body.String(), `/assets/fluid.css?v=4`) {
 		t.Fatal("frontend does not load the embedded design system")
 	}
 }
