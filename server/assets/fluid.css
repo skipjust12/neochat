@@ -6134,25 +6134,48 @@ h1 {
 
 .brand-mark {
   gap: 0;
-  font-size: 16px;
-  font-weight: 680;
-  letter-spacing: -.02em;
+  font-size: 18px;
+  font-weight: 760;
+  font-variation-settings: "opsz" 14,"wght" 760;
+  letter-spacing: -.025em;
 }
 
-.brand-mark span {
+.brand-mark .brand-label {
   position: relative;
-  transition: color .2s ease;
+  display: inline-block;
+}
+
+.brand-shimmer {
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  background-image: linear-gradient(90deg,transparent 0%,transparent 36%,#71717a 43%,#d4d4d8 50%,#71717a 57%,transparent 64%,transparent 100%);
   background-repeat: no-repeat;
   background-size: 220% 100%;
   background-position: 140% 0;
   -webkit-background-clip: text;
   background-clip: text;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity .16s ease;
 }
 
-.brand-mark:hover span {
-  color: transparent;
-  background-image: linear-gradient(90deg,var(--muted) 0%,var(--muted) 38%,var(--text) 50%,var(--muted) 62%,var(--muted) 100%);
-  animation: thinkingSweep 1.8s linear infinite;
+.brand-mark:hover .brand-shimmer {
+  opacity: 1;
+  animation: brandThinkingSweep 1.45s linear infinite;
+}
+
+html[data-theme="dark"] .brand-shimmer {
+  background-image: linear-gradient(90deg,transparent 0%,transparent 36%,#a1a1aa 43%,#52525b 50%,#a1a1aa 57%,transparent 64%,transparent 100%);
+}
+
+@keyframes brandThinkingSweep {
+  from {
+    background-position: 140% 0;
+  }
+  to {
+    background-position: -40% 0;
+  }
 }
 
 .home-greeting {
