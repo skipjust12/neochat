@@ -472,16 +472,63 @@ html[data-theme="dark"] #incognitoState:checked ~ .main::after {
   cursor: pointer;
 }
 
-.incognito-exit-actions .confirm-incognito-exit {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: var(--accent);
+.hold-confirm-btn {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  flex: 1 1 auto;
+  min-width: 150px;
+  touch-action: none;
+  -webkit-user-select: none;
+  user-select: none;
+  transition: transform .15s var(--ease-gentle),border-color .15s var(--ease-gentle);
 }
 
-.chat-confirm-actions .confirm-delete-chat {
-  background: var(--accent);
-  color: var(--on-accent);
-  border-color: var(--accent);
+.hold-confirm-btn:active {
+  transform: scale(.97);
+}
+
+.hold-confirm-btn.is-holding {
+  border-color: #c84d46;
+}
+
+.hold-confirm-label {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  pointer-events: none;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+.hold-confirm-label svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+  color: currentColor;
+}
+
+.hold-confirm-fill {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #c84d46;
+  clip-path: inset(0 calc((1 - var(--hb-p,0)) * 100%) 0 0);
+  pointer-events: none;
+}
+
+.hold-confirm-fill .hold-confirm-label {
+  color: #fff;
+}
+
+.hold-confirm-btn.is-done .hold-confirm-fill {
+  clip-path: inset(0 0 0 0);
 }
 
 .chat-actions-list {
@@ -527,6 +574,10 @@ html[data-theme="dark"] #incognitoState:checked ~ .main::after {
 
 .chat-delete-confirm {
   display: none;
+}
+
+.chat-actions-panel.is-deleting {
+  width: min(380px,calc(100vw - 32px));
 }
 
 .chat-actions-panel.is-renaming .chat-actions-list {
