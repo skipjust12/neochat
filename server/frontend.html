@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>NeoChat</title>
-<link rel="stylesheet" href="/assets/fluid.css?v=4" />
+<link rel="stylesheet" href="/assets/fluid.css?v=5" />
 </head>
 <body>
 <!-- UI glyphs use the verified Lucide 1.43.0 paths and names. Product and
@@ -64,13 +64,13 @@
               <button class="chat-menu-item danger delete-chat" type="button" role="menuitem"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span>Delete</span></button>
             </div>
             <form class="chat-rename"><input maxlength="80" aria-label="Chat name"/><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="submit">Save</button></div></form>
-            <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="button" class="confirm-delete-chat">Delete</button></div></div>
+            <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="button" class="hold-confirm-btn confirm-delete-chat" data-hold-ms="1000" aria-label="Hold to permanently delete this chat"><span class="hold-confirm-label"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span class="hold-confirm-text">Hold to delete</span></span><span class="hold-confirm-fill" aria-hidden="true"><span class="hold-confirm-label"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span class="hold-confirm-text">Hold to delete</span></span></span></button></div></div>
             <div class="project-picker"><div class="project-picker-title">Choose a project</div><div class="project-picker-list"></div></div>
           </div>
         </div>
         <div class="incognito-exit-wrap">
           <button class="icon-btn incognito-exit-btn" type="button" aria-label="Leave incognito chat" aria-haspopup="dialog" aria-expanded="false"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg></button>
-          <div class="incognito-exit-confirm" role="alertdialog" aria-label="Confirm leaving incognito chat"><p>This chat will not be saved, confirm the exit from it</p><div class="incognito-exit-actions"><button class="cancel-incognito-exit" type="button">Cancel</button><button class="confirm-incognito-exit" type="button">Exit</button></div></div>
+          <div class="incognito-exit-confirm" role="alertdialog" aria-label="Confirm leaving incognito chat"><p>This chat will not be saved, confirm the exit from it</p><div class="incognito-exit-actions"><button class="cancel-incognito-exit" type="button">Cancel</button><button class="hold-confirm-btn confirm-incognito-exit" type="button" data-hold-ms="1000" aria-label="Hold to exit this incognito chat"><span class="hold-confirm-label"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span class="hold-confirm-text">Hold to exit</span></span><span class="hold-confirm-fill" aria-hidden="true"><span class="hold-confirm-label"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span class="hold-confirm-text">Hold to exit</span></span></span></button></div></div>
         </div>
       </div>
     </header>
@@ -1683,6 +1683,8 @@
     function closeChatActions(){
       chatActionsPanel.classList.remove('is-open','is-renaming','is-deleting','is-projecting');
       chatActionsTrigger.setAttribute('aria-expanded','false');
+      const confirmBtn=document.querySelector('.confirm-delete-chat');
+      if(confirmBtn&&confirmBtn.holdReset)confirmBtn.holdReset();
     }
 
     function projectIcon(){return '<svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" /><path d="M8 10v4" /><path d="M12 10v2" /><path d="M16 10v6" /></svg>'}
@@ -2339,18 +2341,99 @@
       }catch(error){toast(error.message)}
     });
 
+    function bindHoldConfirm(button,options){
+      if(!button)return;
+      const holdMs=Number(button.dataset.holdMs)||1000;
+      const releaseMs=180;
+      const textEls=button.querySelectorAll('.hold-confirm-text');
+      const idleLabel=textEls.length?textEls[0].textContent:'';
+      const doneLabel=options.doneLabel||'Done';
+      let phase='idle',raf=0,pointerId=null;
+      function setProgress(p){button.style.setProperty('--hb-p',p.toFixed(4))}
+      function setText(value){textEls.forEach(function(el){el.textContent=value})}
+      function animate(to,duration,done){
+        cancelAnimationFrame(raf);
+        const from=parseFloat(button.style.getPropertyValue('--hb-p'))||0;
+        if(duration<=0){setProgress(to);if(done)done();return}
+        const t0=performance.now();
+        function step(now){
+          const t=Math.min(1,(now-t0)/duration);
+          setProgress(from+(to-from)*t);
+          if(t<1){raf=requestAnimationFrame(step)}else if(done)done();
+        }
+        raf=requestAnimationFrame(step);
+      }
+      function reset(){
+        cancelAnimationFrame(raf);
+        phase='idle';pointerId=null;
+        button.classList.remove('is-holding','is-done');
+        setProgress(0);
+        setText(idleLabel);
+      }
+      button.holdReset=reset;
+      function complete(){
+        if(phase!=='holding')return;
+        phase='done';
+        button.classList.remove('is-holding');
+        button.classList.add('is-done');
+        setProgress(1);
+        setText(doneLabel);
+        options.onConfirm();
+      }
+      function begin(){
+        if(phase!=='idle')return;
+        phase='holding';
+        button.classList.add('is-holding');
+        animate(1,holdMs,complete);
+      }
+      function cancel(){
+        if(phase!=='holding')return;
+        phase='idle';
+        button.classList.remove('is-holding');
+        animate(0,releaseMs);
+      }
+      button.addEventListener('pointerdown',function(e){
+        if(e.button!==0||pointerId!==null)return;
+        pointerId=e.pointerId;
+        try{button.setPointerCapture(pointerId)}catch(err){}
+        begin();
+      });
+      function endPointer(e){
+        if(e.pointerId!==pointerId)return;
+        pointerId=null;
+        cancel();
+      }
+      button.addEventListener('pointerup',endPointer);
+      button.addEventListener('pointercancel',endPointer);
+      button.addEventListener('pointerleave',function(e){if(e.pointerType!=='touch')endPointer(e)});
+      button.addEventListener('lostpointercapture',endPointer);
+      button.addEventListener('contextmenu',function(e){e.preventDefault()});
+      button.addEventListener('keydown',function(e){
+        if(e.key==='Escape'){cancel();return}
+        if((e.key===' '||e.key==='Enter')&&!e.repeat){e.preventDefault();begin()}
+      });
+      button.addEventListener('keyup',function(e){
+        if(e.key===' '||e.key==='Enter'){e.preventDefault();cancel()}
+      });
+    }
+
     document.querySelector('.delete-chat').addEventListener('click',function(){chatActionsPanel.classList.add('is-deleting')});
-    document.querySelectorAll('.cancel-chat-action').forEach(function(button){button.addEventListener('click',function(){chatActionsPanel.classList.remove('is-renaming','is-deleting')})});
-    document.querySelector('.confirm-delete-chat').addEventListener('click',async function(){
-      const token=apiKeyInput.value.trim();
-      if(!token||!conversationID){toast('This chat is not saved yet.');return}
-      try{
-        const response=await fetch('/conversations/'+encodeURIComponent(conversationID),{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
-        if(!response.ok)throw new Error((await response.text()).trim()||'Could not delete chat.');
-        resetConversation();
-        if(activeProject){await refreshActiveProject();renderProjectHome()}else await loadConversations(false);
-        toast('Chat deleted');
-      }catch(error){toast(error.message)}
+    document.querySelectorAll('.cancel-chat-action').forEach(function(button){button.addEventListener('click',function(){chatActionsPanel.classList.remove('is-renaming','is-deleting');const confirmBtn=document.querySelector('.confirm-delete-chat');if(confirmBtn&&confirmBtn.holdReset)confirmBtn.holdReset()})});
+    bindHoldConfirm(document.querySelector('.confirm-delete-chat'),{
+      doneLabel:'Deleted',
+      onConfirm:async function(){
+        const button=document.querySelector('.confirm-delete-chat');
+        const token=apiKeyInput.value.trim();
+        if(!token||!conversationID){toast('This chat is not saved yet.');if(button&&button.holdReset)button.holdReset();return}
+        try{
+          const response=await fetch('/conversations/'+encodeURIComponent(conversationID),{method:'DELETE',headers:{'Authorization':'Bearer '+token}});
+          if(!response.ok)throw new Error((await response.text()).trim()||'Could not delete chat.');
+          resetConversation();
+          closeChatActions();
+          if(activeProject){await refreshActiveProject();renderProjectHome()}else await loadConversations(false);
+          toast('Chat deleted');
+        }catch(error){toast(error.message);if(button&&button.holdReset)button.holdReset()}
+      }
     });
 
     incognitoExitButton.addEventListener('click',function(){
@@ -2358,11 +2441,16 @@
       const willOpen=!incognitoExitConfirm.classList.contains('is-open');
       incognitoExitConfirm.classList.toggle('is-open',willOpen);
       incognitoExitButton.setAttribute('aria-expanded',String(willOpen));
+      if(!willOpen){const confirmBtn=document.querySelector('.confirm-incognito-exit');if(confirmBtn&&confirmBtn.holdReset)confirmBtn.holdReset()}
     });
-    document.querySelector('.cancel-incognito-exit').addEventListener('click',closeIncognitoExitConfirm);
-    document.querySelector('.confirm-incognito-exit').addEventListener('click',function(){
-      resetConversation();
-      toast('Incognito chat cleared');
+    document.querySelector('.cancel-incognito-exit').addEventListener('click',function(){closeIncognitoExitConfirm();const confirmBtn=document.querySelector('.confirm-incognito-exit');if(confirmBtn&&confirmBtn.holdReset)confirmBtn.holdReset()});
+    bindHoldConfirm(document.querySelector('.confirm-incognito-exit'),{
+      doneLabel:'Exited',
+      onConfirm:function(){
+        resetConversation();
+        closeIncognitoExitConfirm();
+        toast('Incognito chat cleared');
+      }
     });
     document.addEventListener('click',function(event){
       if(!event.target.closest('.incognito-exit-wrap'))closeIncognitoExitConfirm();
