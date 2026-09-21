@@ -2398,6 +2398,252 @@ html[data-theme="dark"] #incognitoState:checked ~ .main .hint {
   width: 15px;
 }
 
+/* ---------- Free plan banner ---------- */
+
+.free-plan-banner {
+  display: flex;
+  justify-content: center;
+  padding: 10px 22px 0;
+}
+
+.free-plan-banner[hidden] {
+  display: none;
+}
+
+.free-plan-banner-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 16px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+  transition: transform .15s var(--ease-gentle),background .16s ease;
+}
+
+.free-plan-banner-btn:hover {
+  background: var(--hover);
+}
+
+.free-plan-banner-btn:active {
+  transform: scale(.97);
+}
+
+.free-plan-banner-btn svg {
+  width: 16px;
+  height: 16px;
+  color: var(--accent);
+  flex: none;
+}
+
+/* ---------- Locked work modes (Free plan) ---------- */
+
+.mode-lock {
+  display: none;
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+.mode-choice.is-locked .mode-symbol,
+.mode-choice.is-locked .mode-copy {
+  opacity: .55;
+}
+
+.mode-choice.is-locked .mode-check {
+  display: none;
+}
+
+.mode-choice.is-locked .mode-lock {
+  display: block;
+}
+
+/* ---------- Plans overlay ---------- */
+
+.plans-backdrop {
+  position: fixed;
+  z-index: 1300;
+  inset: 0;
+  background: rgba(10,12,11,.32);
+  backdrop-filter: blur(5px);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity .25s ease,visibility .25s;
+}
+
+.plans-backdrop.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+
+.plans-overlay {
+  position: fixed;
+  z-index: 1301;
+  left: 50%;
+  top: 50%;
+  width: min(1080px,calc(100vw - 32px));
+  max-height: calc(100dvh - 64px);
+  overflow-y: auto;
+  padding: 28px;
+  border: 0;
+  border-radius: 16px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translate(-50%,-48%) scale(.97);
+  transition: opacity .18s ease,transform .3s var(--ease-in),visibility .3s;
+}
+
+.plans-overlay.is-open {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translate(-50%,-50%) scale(1);
+  transition: opacity .16s ease,transform .38s var(--ease-out),visibility 0s;
+}
+
+.plans-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 20px;
+}
+
+.plans-head h2 {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 600;
+}
+
+.plans-grid {
+  display: grid;
+  grid-template-columns: repeat(3,minmax(0,1fr));
+  gap: 16px;
+}
+
+.plan-card {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 22px;
+  background: var(--surface-2);
+}
+
+.plan-card.is-current {
+  border-color: var(--accent);
+}
+
+.plan-card-icon {
+  width: 26px;
+  height: 26px;
+  color: var(--text);
+  margin-bottom: 14px;
+}
+
+.plan-card-title {
+  margin: 0 0 6px;
+  font-size: 19px;
+  font-weight: 650;
+  letter-spacing: -.01em;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.plan-card-price {
+  font-size: 13px;
+  font-weight: 520;
+  color: var(--muted);
+}
+
+.plan-card-desc {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.plan-card-cta {
+  border: 0;
+  border-radius: 10px;
+  padding: 10px 14px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s ease,transform .15s var(--ease-gentle);
+}
+
+.plan-card-cta:hover {
+  opacity: .88;
+}
+
+.plan-card-cta:active {
+  transform: scale(.98);
+}
+
+.plan-card-cta:disabled {
+  background: var(--btn);
+  color: var(--muted);
+  cursor: default;
+  opacity: 1;
+}
+
+.plan-card-features {
+  list-style: none;
+  margin: 20px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.plan-card-features li {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.4;
+}
+
+.plan-card-features svg {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+  flex: none;
+  margin-top: 1px;
+}
+
+.plan-includes {
+  color: var(--muted);
+  font-weight: 560;
+}
+
+.plan-card-footnote {
+  margin: 14px 0 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+@media (max-width:900px) {
+  .plans-grid {
+    grid-template-columns: 1fr;
+  }
+  .plans-overlay {
+    padding: 20px;
+    width: calc(100vw - 24px);
+  }
+}
+
 .project-back {
   display: none;
 }

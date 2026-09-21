@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>NeoChat</title>
-<link rel="stylesheet" href="/assets/fluid.css?v=5" />
+<link rel="stylesheet" href="/assets/fluid.css?v=6" />
 </head>
 <body>
 <!-- UI glyphs use the verified Lucide 1.43.0 paths and names. Product and
@@ -44,7 +44,7 @@
       <div class="chat-history-title"><button class="history-toggle" type="button" aria-expanded="true" aria-controls="conversationList"><svg class="lucide lucide-chevron-down" data-lucide-icon="chevron-down" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>Recent chats</button></div>
       <div class="conversation-list" id="conversationList"><div class="conversation-empty">Add your NeoChat access key to load saved chats.</div></div>
     </section>
-    <div class="profile"><div class="avatar">SK</div><div class="profile-copy"><strong>skipjust</strong><span>Plus</span></div><button class="icon-btn store-icon" id="openSettings" aria-label="Open settings" aria-haspopup="dialog"><svg class="lucide lucide-settings-2" data-lucide-icon="settings-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 17H5" /><path d="M19 7h-9" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></svg></button></div>
+    <div class="profile"><div class="avatar">SK</div><div class="profile-copy"><strong>skipjust</strong><span id="profilePlanLabel">Free</span></div><button class="icon-btn store-icon" id="openSettings" aria-label="Open settings" aria-haspopup="dialog"><svg class="lucide lucide-settings-2" data-lucide-icon="settings-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 17H5" /><path d="M19 7h-9" /><circle cx="17" cy="17" r="3" /><circle cx="7" cy="7" r="3" /></svg></button></div>
     <button class="sidebar-rail" type="button" aria-label="Resize or collapse sidebar" title="Drag to resize · click to collapse"></button>
   </aside>
   <main class="main">
@@ -74,6 +74,12 @@
         </div>
       </div>
     </header>
+    <div class="free-plan-banner" id="freePlanBanner" hidden>
+      <button type="button" class="free-plan-banner-btn" id="freePlanBannerBtn">
+        <svg class="lucide lucide-gem" data-lucide-icon="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3 8 9l4 13 4-13-2.5-6" /><path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" /><path d="M2 9h20" /></svg>
+        <span>Get more from NeoChat</span>
+      </button>
+    </div>
     <section class="projects-page" aria-label="Projects"><div class="page-eyebrow">Workspace / Projects</div><div class="projects-heading"><svg class="lucide lucide-folder-kanban" data-lucide-icon="folder-kanban" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.93a2 2 0 0 1-1.66-.9l-.82-1.2A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13c0 1.1.9 2 2 2Z" /><path d="M8 10v4" /><path d="M12 10v2" /><path d="M16 10v6" /></svg><span>Projects</span><button class="project-create-btn" type="button"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>Create</button></div><p class="page-description">Keep related conversations together, with a shared purpose and instructions.</p><div class="page-tools"><label class="filter-field"><svg class="lucide lucide-search" data-lucide-icon="search" viewBox="0 0 24 24" aria-hidden="true"><path d="m21 21-4.34-4.34" /><circle cx="11" cy="11" r="8" /></svg><input id="projectSearch" type="search" placeholder="Find a project…" aria-label="Find a project"/></label><span class="result-count" id="projectCount">Your projects</span></div><div class="projects-empty"><svg class="projects-empty-icon lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6" /><path d="M9 13h6" /><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg><h2>Start your first project</h2><p>Give your work a home. Add a name and instructions, then start a conversation.</p><button class="project-create-btn"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg>Create</button></div><div class="projects-grid"></div></section>
     <section class="collection-page" aria-label="Library" hidden>
       <div class="page-eyebrow">Workspace</div>
@@ -191,21 +197,25 @@
                   <span class="mode-symbol"><svg viewBox="0 0 24 24"><path d="M4 14a1 1 0 0 1-.78-1.63l9.9-10.2a.5.5 0 0 1 .86.46l-1.92 6.02A1 1 0 0 0 13 10h7a1 1 0 0 1 .78 1.63l-9.9 10.2a.5.5 0 0 1-.86-.46l1.92-6.02A1 1 0 0 0 11 14z"/></svg></span>
                   <span class="mode-copy"><strong>Instant</strong><span>A quick answer to any question</span></span>
                   <svg class="mode-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>
+                  <svg class="mode-lock lucide lucide-lock" data-lucide-icon="lock" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </label>
                 <label class="mode-choice" for="mode-thinking">
                   <span class="mode-symbol"><svg viewBox="0 0 24 24"><path d="M12 18V5"/><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4"/><path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 0 0-5.598 1.5"/><path d="M17.997 5.125a4 4 0 0 1 2.526 5.77"/><path d="M18 18a4 4 0 0 0 2-7.464"/><path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517"/><path d="M6 18a4 4 0 0 1-2-7.464"/><path d="M6.003 5.125a4 4 0 0 0-2.526 5.77"/></svg></span>
                   <span class="mode-copy"><strong>Thinking</strong><span>Thinks longer about your answer</span></span>
                   <svg class="mode-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>
+                  <svg class="mode-lock lucide lucide-lock" data-lucide-icon="lock" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </label>
                 <label class="mode-choice" for="mode-max">
                   <span class="mode-symbol"><svg viewBox="0 0 24 24"><path d="M6 3h12l4 6-10 13L2 9Z"/><path d="M11 3 8 9l4 13 4-13-3-6"/><path d="M2 9h20"/></svg></span>
                   <span class="mode-copy"><strong>Max</strong><span>Deepest reasoning</span></span>
                   <svg class="mode-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>
+                  <svg class="mode-lock lucide lucide-lock" data-lucide-icon="lock" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </label>
                 <label class="mode-choice" for="mode-manual" id="manualChoice">
                   <span class="mode-symbol"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="1"/></svg></span>
                   <span class="mode-copy"><strong>Manual</strong><span id="manualState">Select a model</span></span>
                   <svg class="mode-check" viewBox="0 0 24 24"><path d="m5 12 4 4L19 6"/></svg>
+                  <svg class="mode-lock lucide lucide-lock" data-lucide-icon="lock" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="11" x="3" y="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
                 </label>
                 </div>
                 <div class="reasoning-effort" id="reasoningEffort" aria-hidden="true" inert>
@@ -582,13 +592,13 @@
       <section class="settings-pane" data-pane="billing" role="tabpanel" aria-label="Billing">
         <h3 class="pane-heading">Billing</h3><p class="pane-description">Your plan and payment details.</p>
         <div class="set-sec">
-          <div class="plan-name">NeoChat Max <span>$199/m</span></div>
+          <div class="plan-name" id="billingPlanName">NeoChat Free</div>
           <div class="set-row">
-            <span class="label soft">Subscription paid until September 1, 2026</span>
-            <span class="val"><button class="link-btn" data-toast="Billing portal isn't wired up in this preview.">Manage subscription</button></span>
+            <span class="label soft" id="billingPlanStatus">You're on the Free plan.</span>
+            <span class="val"><button class="link-btn" id="manageSubscription">Manage subscription</button></span>
           </div>
         </div>
-        <div class="set-sec">
+        <div class="set-sec" id="paymentMethodSec" hidden>
           <div class="set-sec-title"><svg class="lucide lucide-credit-card" data-lucide-icon="credit-card" viewBox="0 0 24 24" aria-hidden="true"><rect width="20" height="14" x="2" y="5" rx="2" /><line x1="2" x2="22" y1="10" y2="10" /><path d="M6 14h2" /></svg>Payment method</div>
           <div class="set-row">
             <span class="label">Visa 2114</span>
@@ -624,7 +634,62 @@
     </div>
   </div>
   <div class="toast" id="toast" role="status" aria-live="polite"></div>
-</div>
+
+  <div class="plans-backdrop" id="plansBackdrop"></div>
+  <div class="plans-overlay" id="plansOverlay" role="dialog" aria-modal="true" aria-labelledby="plansTitle">
+    <div class="plans-head">
+      <h2 id="plansTitle">Choose your plan</h2>
+      <button class="icon-btn" id="plansClose" aria-label="Close plans"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
+    </div>
+    <div class="plans-grid">
+      <article class="plan-card" data-plan="free">
+        <svg class="plan-card-icon lucide lucide-circle-small" data-lucide-icon="circle-small" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="6" /></svg>
+        <h3 class="plan-card-title">Free</h3>
+        <p class="plan-card-desc">Meet NeoChat</p>
+        <button type="button" class="plan-card-cta" data-select-plan="free">Start using Free</button>
+        <ul class="plan-card-features">
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Access to Instant mode</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Limited access to Thinking mode</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Limited access to image generation</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Up to 3 Projects</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Free migration from another AI service</span></li>
+        </ul>
+      </article>
+
+      <article class="plan-card" data-plan="pro">
+        <svg class="plan-card-icon lucide lucide-astroid" data-lucide-icon="astroid" viewBox="0 0 24 24" aria-hidden="true"><path d="M12.983 21.186a1 1 0 0 1-1.966 0 10 10 0 0 0-8.203-8.203 1 1 0 0 1 0-1.966 10 10 0 0 0 8.203-8.203 1 1 0 0 1 1.966 0 10 10 0 0 0 8.203 8.203 1 1 0 0 1 0 1.966 10 10 0 0 0-8.203 8.203" /></svg>
+        <h3 class="plan-card-title">Pro <span class="plan-card-price">$19/m</span></h3>
+        <p class="plan-card-desc">Get more from NeoChat</p>
+        <button type="button" class="plan-card-cta" data-select-plan="pro">Get Pro plan</button>
+        <ul class="plan-card-features">
+          <li class="plan-includes">Everything in Free, plus:</li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Unlimited* access to Instant mode</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Expanded access to Thinking mode</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Access to Max mode</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Expanded access to image generation</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Unlimited* access to Projects</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Access to Voice mode</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Access to Manual mode</span></li>
+        </ul>
+        <p class="plan-card-footnote">*Subject to fair-use limits.</p>
+      </article>
+
+      <article class="plan-card" data-plan="proplus">
+        <svg class="plan-card-icon lucide lucide-rocket" data-lucide-icon="rocket" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5" /><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09" /><path d="M9 12a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.4 22.4 0 0 1-4 2z" /><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 .05 5 .05" /></svg>
+        <h3 class="plan-card-title">Pro+ <span class="plan-card-price">$100/m</span></h3>
+        <p class="plan-card-desc">Supercharge your productivity</p>
+        <button type="button" class="plan-card-cta" data-select-plan="proplus">Get Pro+ plan</button>
+        <ul class="plan-card-features">
+          <li class="plan-includes">Everything in Pro, plus:</li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Unlimited access to Instant mode</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>High limits on Thinking mode</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Expanded access to Max mode</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Unlimited access to Projects</span></li>
+          <li><svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg><span>Early access to new features</span></li>
+        </ul>
+      </article>
+    </div>
+  </div>
 <script>
   (function(){
     const textarea=document.getElementById('message');
@@ -853,6 +918,16 @@
     // clicking Manual again while already selected won't fire 'change' — cover that case too
     manualChoice.addEventListener('click',function(){showScreen('vendors')});
 
+    panel.querySelectorAll('.mode-choice').forEach(function(label){
+      label.addEventListener('click',function(event){
+        if(!label.classList.contains('is-locked'))return;
+        event.preventDefault();
+        event.stopPropagation();
+        closePicker();
+        if(window.openPlansOverlay)window.openPlansOverlay();
+      });
+    });
+
     document.getElementById('vendorsBack').addEventListener('click',function(){showScreen('root')});
     document.getElementById('modelsBack').addEventListener('click',function(){showScreen('vendors')});
     document.getElementById('modelsOpenaiBack').addEventListener('click',function(){showScreen('vendors')});
@@ -941,6 +1016,7 @@
       clearTimeout(toastTimer);
       toastTimer=setTimeout(function(){toastEl.classList.remove('is-shown')},2200);
     }
+    window.toast=toast;
 
     /* ---------- tabs ---------- */
     function setTab(name){
@@ -999,6 +1075,7 @@
       backdrop.classList.remove('is-open');
       if(lastFocus&&lastFocus.focus)lastFocus.focus({preventScroll:true});
     }
+    window.closeSettings=closeSettings;
     openBtn.addEventListener('click',openSettings);
     closeBtn.addEventListener('click',closeSettings);
     backdrop.addEventListener('click',closeSettings);
@@ -2887,6 +2964,99 @@
       document.getElementById('pageTitle').textContent=collection?collectionTitle:plugins?'Plugins':projects?'Projects':main.classList.contains('has-active-chat')?'Conversation':'New chat';
     }
     new MutationObserver(updateNavigation).observe(main,{attributes:true,attributeFilter:['class']});updateNavigation();
+  })();
+</script>
+<script>
+  (function(){
+    const PLAN_KEY='neochat.plan';
+    const plans={
+      free:{label:'Free',priceLabel:'',status:"You're on the Free plan.",showPayment:false},
+      pro:{label:'Pro',priceLabel:'$19/m',status:'Subscription renews automatically each month.',showPayment:true},
+      proplus:{label:'Pro+',priceLabel:'$100/m',status:'Subscription renews automatically each month.',showPayment:true}
+    };
+    function readPlan(){
+      try{
+        const stored=localStorage.getItem(PLAN_KEY);
+        return plans[stored]?stored:'free';
+      }catch(error){return 'free'}
+    }
+    function savePlan(value){try{localStorage.setItem(PLAN_KEY,value)}catch(error){}}
+
+    let currentPlan=readPlan();
+
+    const backdrop=document.getElementById('plansBackdrop');
+    const overlay=document.getElementById('plansOverlay');
+    const closeBtn=document.getElementById('plansClose');
+    const manageBtn=document.getElementById('manageSubscription');
+    const banner=document.getElementById('freePlanBanner');
+    const bannerBtn=document.getElementById('freePlanBannerBtn');
+    const profileLabel=document.getElementById('profilePlanLabel');
+    const billingPlanName=document.getElementById('billingPlanName');
+    const billingPlanStatus=document.getElementById('billingPlanStatus');
+    const paymentSec=document.getElementById('paymentMethodSec');
+    const cards=Array.from(document.querySelectorAll('.plan-card'));
+    const lockableLabels=['mode-instant','mode-thinking','mode-max','mode-manual'].map(function(id){
+      return document.querySelector('label[for="'+id+'"]');
+    }).filter(Boolean);
+
+    cards.forEach(function(card){
+      const cta=card.querySelector('.plan-card-cta');
+      cta.dataset.originalLabel=cta.textContent;
+    });
+
+    function applyPlan(){
+      const info=plans[currentPlan];
+      profileLabel.textContent=info.label;
+      billingPlanName.innerHTML='NeoChat '+info.label+(info.priceLabel?' <span>'+info.priceLabel+'</span>':'');
+      billingPlanStatus.textContent=info.status;
+      paymentSec.hidden=!info.showPayment;
+      banner.hidden=currentPlan!=='free';
+      lockableLabels.forEach(function(label){label.classList.toggle('is-locked',currentPlan==='free')});
+      cards.forEach(function(card){
+        const isCurrent=card.dataset.plan===currentPlan;
+        const cta=card.querySelector('.plan-card-cta');
+        card.classList.toggle('is-current',isCurrent);
+        cta.disabled=isCurrent;
+        cta.textContent=isCurrent?'Current plan':cta.dataset.originalLabel;
+      });
+    }
+
+    function openPlansOverlay(){
+      document.dispatchEvent(new CustomEvent('panel:opening',{detail:'plans'}));
+      backdrop.classList.add('is-open');
+      overlay.classList.add('is-open');
+    }
+    function closePlansOverlay(){
+      backdrop.classList.remove('is-open');
+      overlay.classList.remove('is-open');
+    }
+    window.openPlansOverlay=openPlansOverlay;
+
+    closeBtn.addEventListener('click',closePlansOverlay);
+    backdrop.addEventListener('click',closePlansOverlay);
+    document.addEventListener('keydown',function(event){
+      if(event.key==='Escape'&&overlay.classList.contains('is-open')){event.preventDefault();closePlansOverlay()}
+    });
+
+    manageBtn.addEventListener('click',function(){
+      if(window.closeSettings)window.closeSettings();
+      openPlansOverlay();
+    });
+    bannerBtn.addEventListener('click',openPlansOverlay);
+
+    cards.forEach(function(card){
+      const cta=card.querySelector('.plan-card-cta');
+      cta.addEventListener('click',function(){
+        if(cta.disabled)return;
+        currentPlan=card.dataset.plan;
+        savePlan(currentPlan);
+        applyPlan();
+        closePlansOverlay();
+        if(window.toast)window.toast('Now on the '+plans[currentPlan].label+' plan (simulated — no real billing).');
+      });
+    });
+
+    applyPlan();
   })();
 </script>
 </body>
