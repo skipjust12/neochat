@@ -1,0 +1,727 @@
+/* Signed-out landing. Loaded render-blocking from frontend.html, so the
+   guest/app switch below applies on first paint. The hero keeps the
+   react-bits template look on purpose; everything under it uses the app's
+   own tokens from fluid.css and follows the light/dark theme. */
+
+#landing-root {
+  display: none;
+}
+
+html.is-guest #landing-root {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: block;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scroll-behavior: smooth;
+  background: var(--surface-1);
+}
+
+html.is-guest .app {
+  display: none;
+}
+
+.lp {
+  min-height: 100%;
+  color: var(--text);
+  font-family: Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+.lp button {
+  font-family: inherit;
+}
+
+.lp :focus-visible {
+  outline: 2px solid var(--focus, #6b97ff);
+  outline-offset: 2px;
+}
+
+/* ---------- hero (react-bits BackgroundContent, dark values) ---------- */
+
+.lp-hero {
+  position: relative;
+  height: 100svh;
+  min-height: 560px;
+  overflow: hidden;
+  background: #120f17;
+  color: #fff;
+  user-select: none;
+}
+
+.lp-hero-bg {
+  position: absolute;
+  inset: 0;
+}
+
+/* The smooth hand-off into the page below. */
+.lp-hero::after {
+  content: '';
+  position: absolute;
+  inset: auto 0 0;
+  height: 180px;
+  background: linear-gradient(to bottom, transparent, var(--surface-1));
+  pointer-events: none;
+  z-index: 1;
+}
+
+.lp-glass {
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.lp-nav {
+  position: absolute;
+  top: 20px;
+  left: 50%;
+  z-index: 3;
+  width: 92%;
+  height: 48px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 8px 0 14px;
+  border-radius: 14px;
+}
+
+.lp-brand {
+  font-size: 16px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  color: #fff;
+}
+
+.lp-nav-menu {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.5);
+  cursor: pointer;
+}
+
+.lp-nav-menu svg {
+  width: 18px;
+  height: 18px;
+}
+
+.lp-nav-links {
+  display: none;
+  align-items: center;
+  gap: 20px;
+}
+
+.lp-nav-links button {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.lp-nav-links button:hover {
+  color: #fff;
+}
+
+.lp-nav-links .lp-nav-signup {
+  height: 30px;
+  padding: 0 16px;
+  border-radius: 8px;
+  background: #fff;
+  color: #09090b;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.lp-nav-links .lp-nav-signup:hover {
+  color: #09090b;
+  opacity: 0.9;
+}
+
+/* Mobile: the template's menu glyph opens the same three links. */
+.lp-nav-links.is-open {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  min-width: 180px;
+  padding: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 14px;
+  background: rgba(18, 15, 23, 0.82);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+}
+
+.lp-nav-links.is-open button {
+  height: 34px;
+  padding: 0 10px;
+  border-radius: 8px;
+  text-align: left;
+}
+
+.lp-nav-links.is-open .lp-nav-signup {
+  text-align: center;
+}
+
+@media (min-width: 768px) {
+  .lp-nav {
+    width: 70%;
+  }
+  .lp-nav-menu {
+    display: none;
+  }
+  .lp-nav-links,
+  .lp-nav-links.is-open {
+    position: static;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    gap: 20px;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    background: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+  .lp-nav-links.is-open button {
+    height: auto;
+    padding: 0;
+  }
+  .lp-nav-links.is-open .lp-nav-signup {
+    height: 30px;
+    padding: 0 16px;
+  }
+}
+
+.lp-hero-content {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 0 24px;
+}
+
+.lp-tag {
+  padding: 5px 14px;
+  border-color: rgba(255, 255, 255, 0.08);
+  border-radius: 50px;
+  background: rgba(18, 15, 23, 0.5);
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lp-headline {
+  max-width: 20ch;
+  margin: 24px 0 0;
+  color: #fff;
+  font-size: clamp(1.6rem, 4vw, 2.4rem);
+  font-weight: 600;
+  line-height: 1.1;
+  letter-spacing: -0.03em;
+  text-align: center;
+  text-shadow: 0 4px 24px rgba(0, 0, 0, 0.5);
+}
+
+.lp-hero-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 12px;
+  margin-top: 28px;
+}
+
+.lp-btn-solid,
+.lp-btn-glass {
+  height: 40px;
+  padding: 0 20px;
+  border-radius: 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: opacity 0.18s ease, transform 0.18s ease;
+}
+
+.lp-btn-solid {
+  border: 0;
+  background: #fff;
+  color: #09090b;
+  font-weight: 600;
+}
+
+.lp-btn-glass {
+  color: rgba(255, 255, 255, 0.5);
+  font-weight: 500;
+}
+
+.lp-btn-solid:hover,
+.lp-btn-glass:hover {
+  opacity: 0.88;
+}
+
+.lp-btn-solid:active,
+.lp-btn-glass:active {
+  transform: scale(0.98);
+}
+
+/* ---------- page body (app tokens) ---------- */
+
+.lp-body {
+  position: relative;
+  padding: 0 16px 96px;
+  background: var(--surface-1);
+}
+
+[data-reveal] {
+  opacity: 0;
+  transform: translate3d(0, 28px, 0);
+  transition: opacity 0.8s var(--ease-gentle, ease), transform 0.9s var(--ease-out, ease);
+}
+
+[data-reveal].is-revealed {
+  opacity: 1;
+  transform: none;
+}
+
+/* Demo chat, framed like a device on a faint grid. */
+.lp-demo {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  margin: 0 -16px;
+  padding: 24px 16px 72px;
+}
+
+/* The grid fades out at its edges; the frame itself stays fully opaque. */
+.lp-demo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(var(--line) 1px, transparent 1px),
+    linear-gradient(90deg, var(--line) 1px, transparent 1px);
+  background-size: 64px 64px;
+  background-position: center top;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 80%, transparent);
+  mask-image: linear-gradient(to bottom, transparent, #000 12%, #000 80%, transparent);
+  pointer-events: none;
+}
+
+.lp-device {
+  position: relative;
+  width: min(1100px, 100%);
+  height: clamp(520px, 74vh, 700px);
+  padding: 10px;
+  border-radius: 28px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-lg), 0 0 0 1px var(--line-strong);
+}
+
+.lp-device-glow {
+  position: absolute;
+  left: 50%;
+  bottom: -1px;
+  width: 36%;
+  height: 2px;
+  transform: translateX(-50%);
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, var(--text), transparent);
+  opacity: 0.55;
+  filter: blur(0.4px);
+  box-shadow: 0 0 18px 2px color-mix(in srgb, var(--text) 35%, transparent);
+}
+
+.lp .lp-demo-main {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  border-radius: 18px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  transition: none;
+}
+
+/* Empty demo matches the app's home screen: no title bar until a message. */
+.lp .lp-demo-main:not(.has-active-chat) .topbar {
+  border-bottom-color: transparent;
+}
+
+.lp .lp-demo-main:not(.has-active-chat) .topbar-title {
+  visibility: hidden;
+}
+
+/* The app sizes the newest reply from the viewport; inside the frame it has
+   to follow the frame's height instead. */
+.lp .lp-demo-main {
+  container-type: size;
+}
+
+.lp .lp-demo-main .chat-message.assistant.is-latest-response {
+  min-height: max(160px, calc(100cqh - 300px));
+}
+
+.lp .lp-demo-main .round-btn {
+  cursor: default;
+}
+
+.lp .lp-demo-main .mode-trigger {
+  cursor: default;
+}
+
+/* Model marquee. */
+.lp-models {
+  margin: 8px -16px 0;
+}
+
+.lp-marquee {
+  display: flex;
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+  mask-image: linear-gradient(90deg, transparent, #000 10%, #000 90%, transparent);
+}
+
+.lp-marquee-track {
+  display: flex;
+  flex-shrink: 0;
+  gap: 16px;
+  margin: 0;
+  padding: 0 16px 0 0;
+  list-style: none;
+  animation: lp-marquee 48s linear infinite;
+}
+
+.lp-marquee:hover .lp-marquee-track {
+  animation-play-state: paused;
+}
+
+@keyframes lp-marquee {
+  to {
+    transform: translate3d(-100%, 0, 0);
+  }
+}
+
+.lp-model {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 88px;
+  min-width: 220px;
+  padding: 0 32px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  white-space: nowrap;
+}
+
+.lp-model-logo {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  color: var(--text);
+}
+
+.lp-model-logo svg {
+  width: 26px;
+  height: 26px;
+  stroke: none;
+}
+
+/* Positioning copy. */
+.lp-about {
+  max-width: 880px;
+  margin: 120px auto 0;
+  text-align: center;
+}
+
+.lp-about h2 {
+  margin: 0;
+  text-wrap: balance;
+  font-size: clamp(34px, 6vw, 60px);
+  font-weight: 650;
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+}
+
+.lp-about p {
+  max-width: 640px;
+  margin: 22px auto 0;
+  color: var(--muted);
+  font-size: clamp(16px, 2vw, 18px);
+  line-height: 1.6;
+}
+
+/* Four reasons. */
+.lp-reasons {
+  max-width: 1000px;
+  margin: 120px auto 0;
+}
+
+.lp-reasons h3 {
+  margin: 0 0 28px;
+  font-size: clamp(24px, 3.4vw, 32px);
+  font-weight: 650;
+  letter-spacing: -0.035em;
+  text-align: center;
+}
+
+.lp-reason-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.lp-reason {
+  padding: 24px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-2);
+}
+
+.lp-reason-grid .lp-reason:nth-child(2) {
+  transition-delay: 0.08s;
+}
+
+.lp-reason-grid .lp-reason:nth-child(3) {
+  transition-delay: 0.16s;
+}
+
+.lp-reason-grid .lp-reason:nth-child(4) {
+  transition-delay: 0.24s;
+}
+
+.lp-reason-icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: var(--hover);
+  color: var(--text);
+}
+
+.lp-reason-icon svg {
+  width: 20px;
+  height: 20px;
+}
+
+.lp-reason h4 {
+  margin: 18px 0 0;
+  font-size: 16px;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+.lp-reason p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+@media (max-width: 720px) {
+  .lp-reason-grid {
+    grid-template-columns: 1fr;
+  }
+  .lp-model {
+    height: 72px;
+    min-width: 0;
+    padding: 0 24px;
+    font-size: 18px;
+  }
+  .lp-about,
+  .lp-reasons {
+    margin-top: 88px;
+  }
+}
+
+/* Log in: the bottom block and the dialog share AuthForm. */
+.lp-auth {
+  max-width: 460px;
+  margin: 120px auto 0;
+}
+
+.lp-auth-card,
+.lp-dialog {
+  padding: 28px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-3);
+}
+
+.lp-auth-card h3,
+.lp-dialog h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+}
+
+.lp-auth-card > p,
+.lp-dialog > p {
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.lp-auth-form {
+  display: grid;
+  gap: 12px;
+  margin-top: 22px;
+}
+
+.lp-auth-label {
+  display: grid;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.lp-auth-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--hover);
+  color: var(--text);
+  font: inherit;
+  font-size: 14px;
+  outline: none;
+  transition: box-shadow 0.18s ease;
+}
+
+.lp-auth-input:focus {
+  box-shadow: 0 0 0 2px var(--line-strong);
+}
+
+.lp-auth-input[aria-invalid='true'] {
+  box-shadow: 0 0 0 1px var(--danger);
+}
+
+.lp-auth-submit {
+  height: 40px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.18s ease;
+}
+
+.lp-auth-submit:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.lp-auth-error {
+  margin: 0;
+  color: var(--danger);
+  font-size: 13px;
+}
+
+.lp-dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / 0.5);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  animation: lp-fade 0.2s ease;
+}
+
+.lp-dialog {
+  position: relative;
+  width: min(420px, 100%);
+  animation: lp-dialog-in 0.32s var(--ease-out, ease);
+}
+
+.lp-dialog-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.lp-dialog-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.lp-dialog-close svg {
+  width: 18px;
+  height: 18px;
+}
+
+@keyframes lp-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes lp-dialog-in {
+  from {
+    opacity: 0;
+    transform: translate3d(0, 10px, 0) scale(0.98);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.is-guest #landing-root {
+    scroll-behavior: auto;
+  }
+  [data-reveal] {
+    opacity: 1;
+    transform: none;
+    transition: none;
+  }
+  .lp-marquee-track {
+    animation: none;
+  }
+  .lp-dialog-backdrop,
+  .lp-dialog {
+    animation: none;
+  }
+}

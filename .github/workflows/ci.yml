@@ -151,6 +151,29 @@ jobs:
       - name: docker build
         run: docker build -t neochat-ci-check .
 
+  landing:
+    name: landing bundle is up to date
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/landing/package-lock.json
+
+      # server/assets/landing is the committed build of web/landing, embedded
+      # into the Go binary so neither `go build` nor the Dockerfile needs
+      # Node. Rebuilding here and diffing catches a source edit that was
+      # pushed without its rebuilt bundle.
+      - name: Rebuild and compare
+        working-directory: web/landing
+        run: |
+          npm ci --no-audit --no-fund
+          npm run build
+          git diff --exit-code -- ../../server/assets/landing
+
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest

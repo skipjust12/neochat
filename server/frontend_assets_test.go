@@ -17,6 +17,8 @@ func TestFrontendAssetsAreEmbedded(t *testing.T) {
 		{"/assets/fluid.css", "text/css", 1000},
 		{"/assets/InterVariable.ttf", "font/ttf", 100000},
 		{"/assets/Charter-Regular.woff2", "font/woff2", 10000},
+		{"/assets/landing/landing.js", "text/javascript", 10000},
+		{"/assets/landing/landing.css", "text/css", 1000},
 	} {
 		t.Run(asset.path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -37,7 +39,10 @@ func TestFrontendRevalidatesAfterDeployment(t *testing.T) {
 	if response.Header().Get("Cache-Control") != "no-cache" {
 		t.Fatal("HTML must revalidate after a frontend deployment")
 	}
-	if !strings.Contains(response.Body.String(), `/assets/fluid.css?v=4`) {
-		t.Fatal("frontend does not load the embedded design system")
+	// Asset URLs carry a ?v= cache-buster that is bumped on each change.
+	for _, asset := range []string{`/assets/fluid.css?v=`, `/assets/landing/landing.css?v=`, `/assets/landing/landing.js?v=`} {
+		if !strings.Contains(response.Body.String(), asset) {
+			t.Fatalf("frontend does not load %s", asset)
+		}
 	}
 }

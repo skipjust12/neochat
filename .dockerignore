@@ -6,3 +6,4 @@ docs/
 bin/
 *.test
 *.out
+web/landing/node_modules/
