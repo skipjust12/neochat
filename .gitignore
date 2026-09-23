@@ -8,3 +8,6 @@
 
 # Editor/OS cruft
 .DS_Store
+
+# Landing page toolchain (the built bundle in server/assets/landing is committed)
+node_modules/

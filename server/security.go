@@ -17,7 +17,10 @@ func buildFrontendCSP() string {
 		digest := sha256.Sum256(script[1])
 		hashes = append(hashes, "'sha256-"+base64.StdEncoding.EncodeToString(digest[:])+"'")
 	}
-	return "default-src 'self'; script-src " + strings.Join(hashes, " ") + "; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
+	// 'self' admits the landing bundle (/assets/landing/landing.js, built
+	// from web/landing and embedded like every other asset); inline scripts
+	// still need a matching hash.
+	return "default-src 'self'; script-src 'self' " + strings.Join(hashes, " ") + "; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'"
 }
 
 func (s *Server) trustedProxy(ip string) bool {

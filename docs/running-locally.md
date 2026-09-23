@@ -208,6 +208,25 @@ against the same `docker-compose.yml` services, and fails the run if any
 of these tests skip — so a broken store implementation can't reach `main`
 just because nobody remembered to run the tagged suite by hand.
 
+## Editing the landing page
+
+Visitors without an API key see the landing page instead of the chat. It is a
+small React app in `web/landing/` (including the vendored react-bits
+`AeroShards` background, which needs WebGPU and falls back to a flat
+background without it). Its build output in `server/assets/landing/` is
+committed and embedded into the Go binary, so `go build` and the Dockerfile
+never need Node. After changing anything under `web/landing/src`:
+
+```bash
+cd web/landing
+npm ci
+npm run build   # rewrites server/assets/landing/landing.{js,css}
+```
+
+Then bump the `?v=` query on both `/assets/landing/...` URLs in
+`server/frontend.html` so browsers drop the cached copy. CI rebuilds the
+bundle and fails if the committed output is stale.
+
 ## After testing
 
 Rotate any key that was ever pasted anywhere outside your own shell (chat, a shared doc, etc.) — treat a key that touched a chat transcript as compromised, regardless of whether the test succeeded.
