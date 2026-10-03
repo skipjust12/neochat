@@ -19,6 +19,12 @@ func TestFrontendAssetsAreEmbedded(t *testing.T) {
 		{"/assets/Charter-Regular.woff2", "font/woff2", 10000},
 		{"/assets/landing/landing.js", "text/javascript", 10000},
 		{"/assets/landing/landing.css", "text/css", 1000},
+		{"/favicon.ico", "image/x-icon", 1000},
+		{"/assets/icons/favicon.svg", "image/svg+xml", 200},
+		{"/assets/icons/apple-touch-icon.png", "image/png", 1000},
+		{"/assets/icons/icon-192.png", "image/png", 1000},
+		{"/assets/icons/icon-512.png", "image/png", 1000},
+		{"/assets/icons/manifest.json", "application/json", 100},
 	} {
 		t.Run(asset.path, func(t *testing.T) {
 			response := httptest.NewRecorder()
@@ -40,7 +46,7 @@ func TestFrontendRevalidatesAfterDeployment(t *testing.T) {
 		t.Fatal("HTML must revalidate after a frontend deployment")
 	}
 	// Asset URLs carry a ?v= cache-buster that is bumped on each change.
-	for _, asset := range []string{`/assets/fluid.css?v=`, `/assets/landing/landing.css?v=`, `/assets/landing/landing.js?v=`} {
+	for _, asset := range []string{`/assets/fluid.css?v=`, `/assets/landing/landing.css?v=`, `/assets/landing/landing.js?v=`, `/assets/icons/favicon.svg?v=`, `href="/favicon.ico"`} {
 		if !strings.Contains(response.Body.String(), asset) {
 			t.Fatalf("frontend does not load %s", asset)
 		}

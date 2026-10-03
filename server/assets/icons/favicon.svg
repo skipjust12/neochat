@@ -1,0 +1,13 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256">
+  <style>.mark{fill:#000}@media (prefers-color-scheme:dark){.mark{fill:#fff}}</style>
+  <mask id="cut">
+    <rect width="256" height="256" rx="48" fill="#fff"/>
+    <circle cx="128" cy="128" r="60"/>
+    <circle cx="128" cy="-10" r="59"/>
+    <circle cx="128" cy="266" r="59"/>
+    <circle cx="-10" cy="128" r="59"/>
+    <circle cx="266" cy="128" r="59"/>
+    <path d="M-20-20 276 276M276-20-20 276" stroke="#000" stroke-width="24"/>
+  </mask>
+  <rect class="mark" width="256" height="256" rx="48" mask="url(#cut)"/>
+</svg>

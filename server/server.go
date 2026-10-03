@@ -352,6 +352,8 @@ func (s *Server) Mux() *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", recovered(s.frontend))
 	mux.Handle("GET /assets/", http.FileServer(http.FS(frontendAssets)))
+	// Browsers ask for /favicon.ico on their own, whatever the page links.
+	mux.HandleFunc("GET /favicon.ico", serveFavicon)
 	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
@@ -366,6 +368,17 @@ func (s *Server) Mux() *http.ServeMux {
 		w.WriteHeader(http.StatusOK)
 	}))
 	return mux
+}
+
+func serveFavicon(w http.ResponseWriter, _ *http.Request) {
+	data, err := frontendAssets.ReadFile("assets/icons/favicon.ico")
+	if err != nil {
+		http.NotFound(w, nil)
+		return
+	}
+	w.Header().Set("Content-Type", "image/x-icon")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(data)
 }
 
 type conversationListResponse struct {
