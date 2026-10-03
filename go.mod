@@ -14,6 +14,7 @@ require (
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/redis/go-redis/v9 v9.22.0
 	golang.org/x/image v0.45.0
+	golang.org/x/net v0.58.0
 )
 
 require (

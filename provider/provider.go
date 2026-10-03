@@ -5,7 +5,10 @@
 // implementation, not touching callers.
 package provider
 
-import "context"
+import (
+	"context"
+	"encoding/json"
+)
 
 // Message is one turn in a chat-style completion request.
 //
@@ -14,9 +17,30 @@ import "context"
 // wire; Content then stays the text-only view used for estimates, logs and
 // summaries.
 type Message struct {
-	Role    string // "system" | "user" | "assistant"
+	Role    string // "system" | "user" | "assistant" | "tool"
 	Content string
 	Parts   []Part
+
+	// ToolCalls are the function calls an assistant turn asked for (see
+	// WithFunctionTools); ToolCallID ties a "tool" turn -- a function's
+	// result, in Content -- to one of them.
+	ToolCalls  []ToolCall
+	ToolCallID string
+
+	// Reasoning and ReasoningDetails are an assistant turn's reasoning as
+	// the vendor returned it, sent back with that turn's tool calls: some
+	// models (Claude with thinking, Gemini 3) need their reasoning to carry
+	// on after a tool result.
+	Reasoning        string
+	ReasoningDetails json.RawMessage
+}
+
+// ToolCall is one function call requested by the model. Arguments is the
+// raw JSON object the model produced.
+type ToolCall struct {
+	ID        string
+	Name      string
+	Arguments string
 }
 
 // Part kinds.
@@ -45,13 +69,18 @@ type GenerateResult struct {
 	InputTokens  int
 	OutputTokens int
 
-	// Web tool activity, when the call had WebTools enabled: the
-	// server-tool events seen in the stream, the cited sources, and how
-	// many searches/page fetches the vendor billed.
-	ToolEvents  []ToolEvent
+	// ToolCalls are the functions the model asked to call (FinishReason
+	// "tool_calls"); the caller runs them and continues the conversation.
+	// Reasoning/ReasoningDetails come back with them -- see Message.
+	ToolCalls        []ToolCall
+	FinishReason     string
+	Reasoning        string
+	ReasoningDetails json.RawMessage
+
+	// Citations are url_citation annotations (web plugin results);
+	// WebSearches is the number of searches the vendor billed for.
 	Citations   []WebResult
 	WebSearches int
-	WebFetches  int
 }
 
 // Client generates a completion from one vendor's API. apiModelID is the
@@ -71,10 +100,6 @@ type Client interface {
 type StreamChunk struct {
 	Delta string
 	Err   error
-
-	// Tool, when set, is a server-side tool step (a web search or page
-	// fetch) the vendor ran while generating this answer.
-	Tool *ToolEvent
 
 	Done  bool
 	Final GenerateResult // populated only when Done is true

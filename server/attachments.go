@@ -15,6 +15,7 @@ import (
 	"neochat/attachment"
 	"neochat/auth"
 	"neochat/conversation"
+	"neochat/pagestore"
 	"neochat/provider"
 	"neochat/router"
 )
@@ -386,13 +387,17 @@ func withAttachmentNotes(messages []conversation.Message) []conversation.Message
 	return out
 }
 
-// RunAttachmentSweeper deletes, for all users, files that were uploaded but
-// never sent and files left behind by deleted chats -- once shortly after
-// start and then every interval, until ctx is done. Upload-time pruning
-// only covers the uploading user, so without this a user who never uploads
-// again would keep their abandoned files forever.
-func (s *Server) RunAttachmentSweeper(ctx context.Context, interval time.Duration) {
-	if s.Attachments == nil {
+// RunCleanup deletes what would otherwise pile up -- once shortly after
+// start and then every interval, until ctx is done:
+//   - uploads never sent (after attachment.UnclaimedTTL) and files left
+//     behind by deleted chats; upload-time pruning only covers the
+//     uploading user, so a user who never uploads again would keep their
+//     abandoned files forever;
+//   - stored web pages older than pagestore.TTL, pages of chats that were
+//     never stored or are gone, and the oldest pages beyond
+//     PageStoreMaxBytes.
+func (s *Server) RunCleanup(ctx context.Context, interval time.Duration) {
+	if s.Attachments == nil && s.Pages == nil {
 		return
 	}
 	timer := time.NewTimer(time.Minute)
@@ -403,14 +408,32 @@ func (s *Server) RunAttachmentSweeper(ctx context.Context, interval time.Duratio
 			return
 		case <-timer.C:
 		}
-		sweepCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
-		deleted, err := s.Attachments.Sweep(sweepCtx, time.Now().Add(-attachment.UnclaimedTTL))
-		cancel()
+		s.cleanupOnce(ctx)
+		timer.Reset(interval)
+	}
+}
+
+// PageStoreMaxBytes is the size budget for all stored web pages.
+const PageStoreMaxBytes = pagestore.DefaultMaxBytes
+
+func (s *Server) cleanupOnce(ctx context.Context) {
+	sweepCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+	defer cancel()
+	now := time.Now()
+	if s.Attachments != nil {
+		deleted, err := s.Attachments.Sweep(sweepCtx, now.Add(-attachment.UnclaimedTTL))
 		if err != nil {
 			log.Printf("server: attachment sweep: %v", err)
 		} else if deleted > 0 {
 			log.Printf("server: attachment sweep deleted %d files", deleted)
 		}
-		timer.Reset(interval)
+	}
+	if s.Pages != nil {
+		deleted, err := s.Pages.Sweep(sweepCtx, now.Add(-pagestore.TTL), now.Add(-pagestore.OrphanGrace), PageStoreMaxBytes)
+		if err != nil {
+			log.Printf("server: web page sweep: %v", err)
+		} else if deleted > 0 {
+			log.Printf("server: web page sweep deleted %d pages", deleted)
+		}
 	}
 }

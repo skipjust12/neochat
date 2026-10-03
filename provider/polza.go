@@ -9,7 +9,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -45,11 +44,6 @@ type PolzaClient struct {
 	// RequestTimeout bounds one non-streaming Generate call end to end.
 	// Zero uses defaultRequestTimeout.
 	RequestTimeout time.Duration
-
-	// DebugToolEvents logs every raw server-tool event and tool_call delta
-	// (truncated). Polza doesn't document the event shape, so this is how to
-	// see what actually arrives when the web-activity list looks wrong.
-	DebugToolEvents bool
 
 	// StreamTimeout bounds one GenerateStream call end to end -- from the
 	// request going out to the final chunk arriving, not per chunk. It
@@ -120,6 +114,21 @@ func (c *PolzaClient) resolveKey(ctx context.Context) (string, error) {
 type polzaChatMessage struct {
 	Role    string `json:"role"`
 	Content any    `json:"content"`
+	// Function calling: an assistant turn's calls, or which call a "tool"
+	// turn answers. Reasoning travels back with an assistant's calls.
+	ToolCalls        []polzaToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string          `json:"tool_call_id,omitempty"`
+	Reasoning        string          `json:"reasoning,omitempty"`
+	ReasoningDetails json.RawMessage `json:"reasoning_details,omitempty"`
+}
+
+type polzaToolCall struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
 }
 
 type polzaContentPart struct {
@@ -180,33 +189,30 @@ type polzaChatRequest struct {
 	// would have no token counts to bill against.
 	StreamOptions *polzaStreamOptions `json:"stream_options,omitempty"`
 
-	// Web access (see WebTools): Polza server tools the model may call,
-	// the cap on how many tool calls one answer may make, or a search Polza
-	// runs before the model for models without tool calling.
-	Tools            []polzaServerTool `json:"tools,omitempty"`
-	MaxToolCalls     int               `json:"max_tool_calls,omitempty"`
-	WebSearchOptions *struct{}         `json:"web_search_options,omitempty"`
-	// Provider routing. Like OpenRouter, Polza by default sends a request
-	// to a provider even if it doesn't support some of its parameters and
-	// drops those -- for tools that means a model that never sees them and
-	// says it has no web access. require_parameters rules such providers
-	// out; if the request is then refused, it is retried without it, and
-	// then without web tools (see server.routeAndCall).
-	Provider *polzaProviderPrefs `json:"provider,omitempty"`
+	// Functions the model may call (WithFunctionTools) and server-side
+	// plugins such as web search (WithWebPlugin).
+	Tools   []polzaFunctionTool `json:"tools,omitempty"`
+	Plugins []polzaPlugin       `json:"plugins,omitempty"`
 }
 
-type polzaProviderPrefs struct {
-	RequireParameters bool `json:"require_parameters"`
+type polzaFunctionTool struct {
+	Type     string `json:"type"`
+	Function struct {
+		Name        string         `json:"name"`
+		Description string         `json:"description,omitempty"`
+		Parameters  map[string]any `json:"parameters,omitempty"`
+	} `json:"function"`
 }
 
-type polzaServerTool struct {
-	Type       string         `json:"type"`
-	Parameters map[string]any `json:"parameters,omitempty"`
+type polzaPlugin struct {
+	ID           string `json:"id"`
+	Engine       string `json:"engine,omitempty"`
+	MaxResults   int    `json:"max_results,omitempty"`
+	SearchPrompt string `json:"search_prompt,omitempty"`
 }
 
 type polzaStreamOptions struct {
-	IncludeUsage            bool `json:"include_usage"`
-	IncludeServerToolEvents bool `json:"include_server_tool_events,omitempty"`
+	IncludeUsage bool `json:"include_usage"`
 }
 
 type polzaUsage struct {
@@ -214,7 +220,6 @@ type polzaUsage struct {
 	CompletionTokens int `json:"completion_tokens"`
 	ServerToolUse    *struct {
 		WebSearchRequests int `json:"web_search_requests"`
-		WebFetchRequests  int `json:"web_fetch_requests"`
 	} `json:"server_tool_use"`
 }
 
@@ -228,7 +233,11 @@ type polzaChatResponse struct {
 		Message struct {
 			Content     string          `json:"content"`
 			Annotations json.RawMessage `json:"annotations"`
+			ToolCalls   []polzaToolCall `json:"tool_calls"`
+			Reasoning   string          `json:"reasoning"`
 		} `json:"message"`
+		FinishReason     string            `json:"finish_reason"`
+		ReasoningDetails []json.RawMessage `json:"reasoning_details"`
 	} `json:"choices"`
 	Usage    polzaUsage  `json:"usage"`
 	Error    *polzaError `json:"error"`
@@ -236,14 +245,17 @@ type polzaChatResponse struct {
 }
 
 // polzaStreamChunk is one `data: {...}` line of the SSE stream. Reasoning
-// models also send delta.reasoning chunks; those are thinking text, not
-// the answer, and are deliberately not forwarded.
+// models also send delta.reasoning chunks: thinking text, not the answer,
+// so it is never forwarded as text -- only kept to send back with tool
+// calls (see Message.Reasoning).
 type polzaStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content     string          `json:"content"`
-			Annotations json.RawMessage `json:"annotations"`
-			ToolCalls   []struct {
+			Content          string            `json:"content"`
+			Reasoning        string            `json:"reasoning"`
+			ReasoningDetails []json.RawMessage `json:"reasoning_details"`
+			Annotations      json.RawMessage   `json:"annotations"`
+			ToolCalls        []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`
 				Function struct {
@@ -255,13 +267,11 @@ type polzaStreamChunk struct {
 		Message *struct {
 			Annotations json.RawMessage `json:"annotations"`
 		} `json:"message"`
+		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage    *polzaUsage `json:"usage"`
 	Error    *polzaError `json:"error"`
 	Provider string      `json:"provider"`
-	// Polza stores server-tool loop events here when
-	// include_server_tool_events is set; see parseServerToolEvents.
-	Polza json.RawMessage `json:"polza"`
 }
 
 func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messages []Message, stream bool) polzaChatRequest {
@@ -269,33 +279,41 @@ func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messa
 	if stream {
 		req.StreamOptions = &polzaStreamOptions{IncludeUsage: true}
 	}
-	if web := WebToolsFromContext(ctx); web.Tools {
-		req.Tools = []polzaServerTool{
-			{Type: "polza:web_search", Parameters: map[string]any{"max_results": WebSearchMaxResults, "max_uses": WebSearchMaxUses}},
-			{Type: "polza:web_fetch", Parameters: map[string]any{"max_uses": WebFetchMaxUses, "max_characters": WebFetchMaxCharacters}},
-			{Type: "polza:datetime"},
-		}
-		req.MaxToolCalls = WebMaxToolCalls
-		if !web.AnyProvider {
-			req.Provider = &polzaProviderPrefs{RequireParameters: true}
-		}
-		if req.StreamOptions != nil {
-			req.StreamOptions.IncludeServerToolEvents = true
-		}
-	} else if web.SearchFirst {
-		req.WebSearchOptions = &struct{}{}
+	for _, tool := range functionToolsFromContext(ctx) {
+		def := polzaFunctionTool{Type: "function"}
+		def.Function.Name, def.Function.Description, def.Function.Parameters = tool.Name, tool.Description, tool.Parameters
+		req.Tools = append(req.Tools, def)
+	}
+	if p, ok := WebPluginFromContext(ctx); ok {
+		req.Plugins = []polzaPlugin{{ID: "web", Engine: p.Engine, MaxResults: p.MaxResults, SearchPrompt: p.SearchPrompt}}
 	}
 	if r, ok := reasoningFromContext(ctx); ok {
-		if r.Adaptive {
+		switch {
+		case r.Disabled && r.Adaptive:
+			req.Reasoning = &polzaReasoning{Type: "disabled"}
+		case r.Disabled:
+			req.Reasoning = &polzaReasoning{Effort: "none"}
+		case r.Adaptive:
 			req.Reasoning = &polzaReasoning{Type: "adaptive", EffortLevel: r.Effort}
-		} else {
+		default:
 			req.Reasoning = &polzaReasoning{Effort: r.Effort}
 		}
 	}
 	for _, m := range messages {
-		msg := polzaChatMessage{Role: m.Role, Content: m.Content}
+		msg := polzaChatMessage{Role: m.Role, Content: m.Content, ToolCallID: m.ToolCallID}
 		if len(m.Parts) > 0 {
 			msg.Content = encodeParts(m.Parts)
+		}
+		if len(m.ToolCalls) > 0 {
+			if m.Content == "" {
+				msg.Content = nil // null content: a turn that only calls tools
+			}
+			for _, call := range m.ToolCalls {
+				wire := polzaToolCall{ID: call.ID, Type: "function"}
+				wire.Function.Name, wire.Function.Arguments = call.Name, call.Arguments
+				msg.ToolCalls = append(msg.ToolCalls, wire)
+			}
+			msg.Reasoning, msg.ReasoningDetails = m.Reasoning, m.ReasoningDetails
 		}
 		req.Messages = append(req.Messages, msg)
 	}
@@ -369,16 +387,31 @@ func (c *PolzaClient) Generate(ctx context.Context, apiModelID string, messages 
 		return GenerateResult{}, fmt.Errorf("provider: polza response has no choices (status %d): %s", httpResp.StatusCode, respBody)
 	}
 
+	choice := resp.Choices[0]
+	text := choice.Message.Content
+	if paragraphBreakFromContext(ctx) {
+		if text = strings.TrimLeft(text, " \n"); text != "" {
+			text = "\n\n" + text
+		}
+	}
 	result := GenerateResult{
-		Text:         resp.Choices[0].Message.Content,
+		Text:         text,
 		InputTokens:  resp.Usage.PromptTokens,
 		OutputTokens: resp.Usage.CompletionTokens,
-		Citations:    parseCitations(resp.Choices[0].Message.Annotations),
+		Citations:    parseCitations(choice.Message.Annotations),
+		FinishReason: choice.FinishReason,
+		Reasoning:    choice.Message.Reasoning,
 	}
+	for _, call := range choice.Message.ToolCalls {
+		result.ToolCalls = append(result.ToolCalls, ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: call.Function.Arguments})
+	}
+	var details reasoningDetails
+	details.add(choice.ReasoningDetails)
+	result.ReasoningDetails = details.raw()
 	if use := resp.Usage.ServerToolUse; use != nil {
-		result.WebSearches, result.WebFetches = use.WebSearchRequests, use.WebFetchRequests
+		result.WebSearches = use.WebSearchRequests
 	}
-	logWebCall(ctx, apiModelID, resp.Provider, result)
+	logWebPlugin(ctx, apiModelID, resp.Provider, result)
 	return result, nil
 }
 
@@ -453,18 +486,13 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 		var inputTokens, outputTokens int
 		var final GenerateResult
 		var servedBy string
-		toolCalls := map[int]*streamedToolCall{}
-		// toolSinceText marks a tool step after some answer text: the model
-		// said something like "let me check", searched, and is now going on.
-		// The two pieces get a paragraph break instead of running together.
-		toolSinceText := false
-		emitTool := func(event ToolEvent) bool {
-			final.ToolEvents = append(final.ToolEvents, event)
-			if text.Len() > 0 {
-				toolSinceText = true
-			}
-			return send(StreamChunk{Tool: &event})
-		}
+		var reasoning strings.Builder
+		var details reasoningDetails
+		var callOrder []int
+		calls := map[int]*streamedToolCall{}
+		// A call continuing an answer already on screen opens with a
+		// paragraph break (see WithParagraphBreak).
+		pendingBreak := paragraphBreakFromContext(ctx)
 
 		scanner := bufio.NewScanner(httpResp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -494,57 +522,49 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 			if chunk.Provider != "" {
 				servedBy = chunk.Provider
 			}
-			if len(chunk.Polza) > 0 {
-				if c.DebugToolEvents {
-					log.Printf("provider: polza server-tool event: %s", clip(string(chunk.Polza), 2000))
-				}
-				for _, event := range parseServerToolEvents(chunk.Polza) {
-					if !emitTool(event) {
-						return
-					}
-				}
-			}
 			if len(chunk.Choices) > 0 {
 				choice := chunk.Choices[0]
 				for _, call := range choice.Delta.ToolCalls {
-					if c.DebugToolEvents {
-						log.Printf("provider: polza tool_call delta: index=%d id=%s name=%s args=%s", call.Index, call.ID, call.Function.Name, clip(call.Function.Arguments, 500))
-					}
-					acc := toolCalls[call.Index]
+					acc := calls[call.Index]
 					if acc == nil {
 						acc = &streamedToolCall{}
-						toolCalls[call.Index] = acc
+						calls[call.Index] = acc
+						callOrder = append(callOrder, call.Index)
 					}
 					if call.ID != "" {
 						acc.id = call.ID
 					}
 					acc.name += call.Function.Name
-					acc.arguments += call.Function.Arguments
-					if event, ok := acc.event(); ok && !emitTool(event) {
-						return
-					}
+					acc.arguments.WriteString(call.Function.Arguments)
 				}
+				reasoning.WriteString(choice.Delta.Reasoning)
+				details.add(choice.Delta.ReasoningDetails)
 				final.Citations = appendCitations(final.Citations, parseCitations(choice.Delta.Annotations))
 				if choice.Message != nil {
 					final.Citations = appendCitations(final.Citations, parseCitations(choice.Message.Annotations))
 				}
-			}
-			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-				delta := chunk.Choices[0].Delta.Content
-				if toolSinceText {
-					delta = "\n\n" + strings.TrimLeft(delta, " ")
-					toolSinceText = false
+				if choice.FinishReason != nil && *choice.FinishReason != "" {
+					final.FinishReason = *choice.FinishReason
 				}
-				text.WriteString(delta)
-				if !send(StreamChunk{Delta: delta}) {
-					return
+				delta := choice.Delta.Content
+				if pendingBreak && delta != "" {
+					if delta = strings.TrimLeft(delta, " \n"); delta != "" {
+						delta = "\n\n" + delta
+						pendingBreak = false
+					}
+				}
+				if delta != "" {
+					text.WriteString(delta)
+					if !send(StreamChunk{Delta: delta}) {
+						return
+					}
 				}
 			}
 			if chunk.Usage != nil {
 				inputTokens = chunk.Usage.PromptTokens
 				outputTokens = chunk.Usage.CompletionTokens
 				if use := chunk.Usage.ServerToolUse; use != nil {
-					final.WebSearches, final.WebFetches = use.WebSearchRequests, use.WebFetchRequests
+					final.WebSearches = use.WebSearchRequests
 				}
 			}
 		}
@@ -553,8 +573,13 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 			return
 		}
 
+		for _, index := range callOrder {
+			acc := calls[index]
+			final.ToolCalls = append(final.ToolCalls, ToolCall{ID: acc.id, Name: acc.name, Arguments: acc.arguments.String()})
+		}
 		final.Text, final.InputTokens, final.OutputTokens = text.String(), inputTokens, outputTokens
-		logWebCall(ctx, apiModelID, servedBy, final)
+		final.Reasoning, final.ReasoningDetails = reasoning.String(), details.raw()
+		logWebPlugin(ctx, apiModelID, servedBy, final)
 		send(StreamChunk{Done: true, Final: final})
 	}()
 

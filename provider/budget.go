@@ -37,9 +37,12 @@ func apiKeyFromContext(ctx context.Context) string {
 // "low", "medium", "high", "xhigh", "max" (already normalized for the
 // model -- see server's reasoningFor); Adaptive selects the
 // type=adaptive + effort_level form newer Claude models require.
+// Disabled turns reasoning off instead (type=disabled for adaptive
+// models, effort=none for the rest).
 type Reasoning struct {
 	Effort   string
 	Adaptive bool
+	Disabled bool
 }
 
 type reasoningKey struct{}
@@ -53,5 +56,5 @@ func WithReasoning(ctx context.Context, r Reasoning) context.Context {
 
 func reasoningFromContext(ctx context.Context) (Reasoning, bool) {
 	r, ok := ctx.Value(reasoningKey{}).(Reasoning)
-	return r, ok && r.Effort != ""
+	return r, ok && (r.Effort != "" || r.Disabled)
 }

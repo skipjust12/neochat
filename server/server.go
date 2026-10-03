@@ -28,11 +28,13 @@ import (
 	"neochat/idempotency"
 	"neochat/limits"
 	"neochat/moderation"
+	"neochat/pagestore"
 	"neochat/provider"
 	"neochat/ratelimit"
 	"neochat/router"
 	"neochat/summarizer"
 	"neochat/tokenizer"
+	"neochat/webfetch"
 )
 
 //go:embed frontend.html
@@ -206,6 +208,15 @@ type Server struct {
 	// by chat requests. Nil disables uploads: the endpoint answers 503 and a
 	// request carrying attachments gets a user-facing error.
 	Attachments attachment.Store
+
+	// Web access (see websearch.go). Fetcher downloads pages for the
+	// web_fetch tool (nil: a default webfetch.Fetcher); Pages keeps what was
+	// read per chat (nil: nothing is kept); WebSearchModelID is the catalog
+	// model that runs each web_search through Polza's web plugin (empty:
+	// defaultWebSearchModelID).
+	Fetcher          *webfetch.Fetcher
+	Pages            pagestore.Store
+	WebSearchModelID string
 }
 
 // providerKeyHeader carries the user's own Polza AI key on chat requests.
@@ -346,6 +357,8 @@ type chatResponse struct {
 	// answer (searches, opened pages) and which pages it cited.
 	Activity []conversation.ToolActivity `json:"activity,omitempty"`
 	Sources  []conversation.WebLink      `json:"sources,omitempty"`
+	// ThoughtMS is "Thought for N seconds" (see ResponseVersion.ThoughtMS).
+	ThoughtMS int64 `json:"thought_ms,omitempty"`
 
 	// Blocked is true when Layer 1 moderation flagged the request before
 	// any generation happened -- ResponseText is then tosViolationMessage,
@@ -561,6 +574,13 @@ func (s *Server) handleConversationDelete(w http.ResponseWriter, r *http.Request
 	if s.Attachments != nil {
 		if err := s.Attachments.DeleteConversation(r.Context(), identity.UserID, conversationID); err != nil {
 			log.Printf("server: delete attachments of conversation_id=%s for user_id=%s: %v", conversationID, identity.UserID, err)
+		}
+	}
+	// The Postgres conversation store already dropped the chat's pages in
+	// its delete transaction; this covers the other stores.
+	if s.Pages != nil {
+		if err := s.Pages.DeleteConversation(r.Context(), identity.UserID, conversationID); err != nil {
+			log.Printf("server: delete web pages of conversation_id=%s for user_id=%s: %v", conversationID, identity.UserID, err)
 		}
 	}
 	w.WriteHeader(http.StatusNoContent)
@@ -1283,9 +1303,6 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 	if instructions := strings.TrimSpace(req.Instructions); instructions != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: "The user's custom instructions (from their settings) -- follow them unless they conflict with the rules above:\n" + instructions})
 	}
-	if req.WebSearch == webSearchOn {
-		messages = append(messages, provider.Message{Role: "system", Content: webSearchInstruction})
-	}
 	if project.ID != "" && project.Description != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: "Project " + project.Name + " instructions:\n" + project.Description})
 	}
@@ -1466,10 +1483,9 @@ func directGenerate(ctx context.Context, gen provider.Client, apiModelID string,
 
 // streamingGenerate builds the generateCaller handleStream uses: it
 // streams through gen's provider.StreamingClient, invoking onDelta for
-// every text chunk and onTool for every web step as they arrive, and
-// returns the stream's final GenerateResult once the vendor signals it's
-// done. onTool may be nil.
-func streamingGenerate(onDelta func(delta string), onTool func(provider.ToolEvent)) generateCaller {
+// every text chunk as it arrives, and returns the stream's final
+// GenerateResult once the vendor signals it's done.
+func streamingGenerate(onDelta func(delta string)) generateCaller {
 	return func(ctx context.Context, gen provider.Client, apiModelID string, messages []provider.Message) (provider.GenerateResult, error) {
 		streamingClient, ok := gen.(provider.StreamingClient)
 		if !ok {
@@ -1482,16 +1498,18 @@ func streamingGenerate(onDelta func(delta string), onTool func(provider.ToolEven
 		// On failure the result carries the text streamed so far (no usage):
 		// billedCall prices a user-stopped generation from it.
 		var partial strings.Builder
+		firstDelta := firstDeltaHook(ctx)
 		for chunk := range ch {
 			if chunk.Err != nil {
 				return provider.GenerateResult{Text: partial.String()}, chunk.Err
 			}
 			if chunk.Delta != "" {
+				if firstDelta != nil {
+					firstDelta()
+					firstDelta = nil
+				}
 				partial.WriteString(chunk.Delta)
 				onDelta(chunk.Delta)
-			}
-			if chunk.Tool != nil && onTool != nil {
-				onTool(*chunk.Tool)
 			}
 			if chunk.Done {
 				return chunk.Final, nil
@@ -1519,12 +1537,12 @@ func streamingGenerate(onDelta func(delta string), onTool func(provider.ToolEven
 // finish. It fires again on every failover retry, so a client watching
 // "meta" events always sees the model an in-flight attempt is actually
 // using.
-func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared preparedRequest, onRoute func(router.RouteResult), call generateCaller) (router.RouteResult, router.Model, provider.GenerateResult, error) {
+func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared preparedRequest, onRoute func(router.RouteResult), call generateCaller, onActivity func([]conversation.ToolActivity)) (router.RouteResult, router.Model, webAnswer, error) {
 	excludedModelIDs := map[string]bool{}
 	for attempt := 0; ; attempt++ {
 		result, err := s.Router.Route(prepared.classified, req.RequestedMode, req.ManualModelID, prepared.estimatedContextTokens, prepared.locked, excludedModelIDs)
 		if err != nil {
-			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("route: %w", err)
+			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("route: %w", err)
 		}
 		if onRoute != nil {
 			onRoute(result)
@@ -1532,64 +1550,39 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 
 		model, ok := s.Router.Catalog.FindModel(result.SelectedModelID)
 		if !ok {
-			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("selected model %q not found in catalog", result.SelectedModelID)
+			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("selected model %q not found in catalog", result.SelectedModelID)
 		}
 		gen, ok := s.Generators[model.Provider]
 		if !ok {
-			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
+			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
 		}
 
 		messages, err := adaptForModel(prepared.messages, model)
 		if err != nil {
-			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, err
+			return router.RouteResult{}, router.Model{}, webAnswer{}, err
 		}
-		callCtx := provider.WithWebTools(ctx, webToolsFor(model, req.WebSearch))
-		if req.WebSearch == webSearchAuto && !model.ToolCalling {
-			messages = withSystemNote(messages, noWebToolsNote)
-		}
+		callCtx := ctx
 		if r, ok := reasoningFor(model, req.ReasoningEffort); ok {
 			callCtx = provider.WithReasoning(callCtx, r)
 		}
 		generate := func(ctx context.Context, messages []provider.Message) (provider.GenerateResult, error) {
 			return s.billedCall(ctx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), messages, call)
 		}
-		genResult, err := generate(callCtx, messages)
-		// Web access is on by default (Auto), so a vendor refusing the web
-		// settings must not take every chat down with it. A refusal comes
-		// before any generation (billedCall already released the
-		// reservation), so step down: first let any provider take the
-		// tools, then answer without web access and say why.
-		web := provider.WebToolsFromContext(callCtx)
-		if web.Tools && rejectedRequest(err) {
-			log.Printf("server: vendor rejected web tools with require_parameters for model_id=%s, retrying with any provider: %v", model.ID, err)
-			web.AnyProvider = true
-			callCtx = provider.WithWebTools(callCtx, web)
-			genResult, err = generate(callCtx, messages)
-		}
-		if (web.Tools || web.SearchFirst) && rejectedRequest(err) {
-			log.Printf("server: vendor rejected web tools for model_id=%s, retrying without them: %v", model.ID, err)
-			refusal := webRefusal(err)
-			callCtx = provider.WithWebTools(callCtx, provider.WebTools{})
-			messages = withSystemNote(withoutWebInstruction(messages), webUnavailableNote)
-			genResult, err = generate(callCtx, messages)
-			if err == nil {
-				// Shown in the answer's web panel, so the reason is visible
-				// without digging through server logs.
-				genResult.ToolEvents = append([]provider.ToolEvent{{Tool: "web_search", Phase: "call", Error: refusal}}, genResult.ToolEvents...)
-			}
-		}
+		answer, err := s.answer(callCtx, req, prepared, model, messages, generate, onActivity)
 		if err == nil {
-			return result, model, genResult, nil
+			return result, model, answer, nil
 		}
 
 		var circuitErr *provider.CircuitOpenError
-		if !errors.As(err, &circuitErr) || attempt >= maxCircuitFailoverAttempts-1 {
+		// Once a web answer has gone past its first model call, its text
+		// may be on screen: another model must not start over below it.
+		if !errors.As(err, &circuitErr) || answer.Continued || attempt >= maxCircuitFailoverAttempts-1 {
 			// result and model are returned even though this failed: the
 			// call reached a specific model, so the vendor may already
 			// have generated (and charged for) tokens. recordAbortedSpend
 			// needs to know which model to price that against -- returning
 			// zero values here is what made that cost invisible.
-			return result, model, provider.GenerateResult{}, fmt.Errorf("generate: %w", err)
+			return result, model, webAnswer{Activity: answer.Activity}, fmt.Errorf("generate: %w", err)
 		}
 		log.Printf("server: circuit open for model_id=%s (api_model_id=%s), rerouting: %v", result.SelectedModelID, model.ResolveAPIModelID(), err)
 		excludedModelIDs[result.SelectedModelID] = true
@@ -1602,12 +1595,16 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 // their answer, so a persistence failure here shouldn't turn into a
 // request failure -- it just means this turn won't be there for History
 // on the next one. Same reasoning as prepare's ModerationLog handling.
-func (s *Server) finalize(ctx context.Context, req chatRequest, prepared preparedRequest, result router.RouteResult, model router.Model, genResult provider.GenerateResult) (chatResponse, error) {
+func (s *Server) finalize(ctx context.Context, req chatRequest, prepared preparedRequest, result router.RouteResult, model router.Model, answer webAnswer, thought time.Duration) (chatResponse, error) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	now := time.Now()
-	activity, sources := buildActivity(genResult.ToolEvents), webLinks(genResult.Citations)
-	regenerated, err := s.persistTurn(ctx, req, prepared, model, genResult.Text, activity, sources, now)
+	genResult := answer.GenerateResult
+	version := conversation.ResponseVersion{
+		Content: genResult.Text, ModelID: model.ID, CreatedAt: now,
+		Activity: answer.Activity, Sources: webLinks(genResult.Citations), ThoughtMS: thought.Milliseconds(),
+	}
+	regenerated, err := s.persistTurn(ctx, req, prepared, model, version)
 	if err != nil {
 		return chatResponse{}, err
 	}
@@ -1632,8 +1629,9 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		EstimatedCostUSD: result.EstimatedCostUSD,
 		ActualCostUSD:    actualCost,
 		ResponseText:     genResult.Text,
-		Activity:         activity,
-		Sources:          sources,
+		Activity:         version.Activity,
+		Sources:          version.Sources,
+		ThoughtMS:        version.ThoughtMS,
 	}
 	if req.regenerateMessageID > 0 {
 		response.MessageID = regenerated.ID
@@ -1645,8 +1643,8 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 // version when regenerating, otherwise the user message plus the reply.
 // Incognito turns are never stored. ctx must already be detached from the
 // request (finalize and persistStopped both pass a WithoutCancel context).
-func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, text string, activity []conversation.ToolActivity, sources []conversation.WebLink, now time.Time) (conversation.Message, error) {
-	version := conversation.ResponseVersion{Content: text, ModelID: model.ID, CreatedAt: now, Activity: activity, Sources: sources}
+func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, version conversation.ResponseVersion) (conversation.Message, error) {
+	text, now := version.Content, version.CreatedAt
 	var regenerated conversation.Message
 	if req.Incognito {
 		// Incognito turns intentionally never reach Conversations. Usage and
@@ -1692,13 +1690,13 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 // the partial reply is stored like a normal turn, so the conversation the
 // server remembers matches the one on screen. Nothing is stored when the
 // stop came before any text arrived.
-func (s *Server) persistStopped(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, partial string) (conversation.Message, bool) {
+func (s *Server) persistStopped(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, partial string, activity []conversation.ToolActivity, thought time.Duration) (conversation.Message, bool) {
 	if model.ID == "" || strings.TrimSpace(partial) == "" {
 		return conversation.Message{}, false
 	}
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	msg, err := s.persistTurn(persistCtx, req, prepared, model, partial, nil, nil, time.Now())
+	msg, err := s.persistTurn(persistCtx, req, prepared, model, conversation.ResponseVersion{Content: partial, ModelID: model.ID, CreatedAt: time.Now(), Activity: activity, ThoughtMS: thought.Milliseconds()})
 	if err != nil {
 		log.Printf("server: persist stopped response for conversation_id=%s: %v", prepared.conversationID, err)
 		return conversation.Message{}, false
@@ -1864,7 +1862,7 @@ func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.Pl
 		return *blocked, nil
 	}
 
-	result, model, genResult, err := s.routeAndCall(ctx, req, prepared, nil, directGenerate)
+	result, model, answer, err := s.routeAndCall(ctx, req, prepared, nil, directGenerate, nil)
 	if err != nil {
 		// No partial text to price: a failed non-streaming call reports no
 		// usage at all, so this only logs the possible unbilled cost -- see
@@ -1873,7 +1871,7 @@ func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.Pl
 		return chatResponse{}, err
 	}
 
-	return s.finalize(ctx, req, prepared, result, model, genResult)
+	return s.finalize(ctx, req, prepared, result, model, answer, 0)
 }
 
 // handleStream is handle's streaming counterpart: identical pipeline
@@ -1936,16 +1934,27 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 	// record of how much the vendor actually generated and billed for --
 	// the failed call itself reports no usage. See recordAbortedSpend.
 	var streamed strings.Builder
-	var toolEvents []provider.ToolEvent
+	// thinking tracks "Thought for N seconds": the time until the answer's
+	// text starts -- again after each web step, so it ends where the last
+	// stretch of writing began.
+	var mu sync.Mutex
+	started, thoughtUntil, waiting := time.Now(), time.Time{}, true
+	var liveActivity []conversation.ToolActivity
 	call := streamingGenerate(func(delta string) {
+		mu.Lock()
+		if waiting {
+			thoughtUntil, waiting = time.Now(), false
+		}
 		streamed.WriteString(delta)
+		mu.Unlock()
 		send("delta", map[string]string{"text": delta})
-	}, func(event provider.ToolEvent) {
-		// The whole merged list each time: a result fills in an entry the
-		// client already shows, and resending a dozen entries is cheap.
-		toolEvents = append(toolEvents, event)
-		send("activity", map[string]any{"activity": buildActivity(toolEvents)})
 	})
+	onActivity := func(activity []conversation.ToolActivity) {
+		mu.Lock()
+		waiting, liveActivity = true, activity
+		mu.Unlock()
+		send("activity", map[string]any{"activity": activity})
+	}
 	onRoute := func(result router.RouteResult) {
 		send("meta", map[string]any{
 			"conversation_id":    prepared.conversationID,
@@ -1955,18 +1964,30 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 		})
 	}
 
-	result, model, genResult, err := s.routeAndCall(ctx, req, prepared, onRoute, call)
+	result, model, answer, err := s.routeAndCall(ctx, req, prepared, onRoute, call, onActivity)
+	mu.Lock()
+	partial, activity := streamed.String(), liveActivity
+	end := thoughtUntil
+	if end.IsZero() || (waiting && err == nil) {
+		// No text yet, or the answer ended on a web step: thinking ran to
+		// the end. A stopped answer keeps the time its text last started,
+		// as the client shows it.
+		end = time.Now()
+	}
+	thought := end.Sub(started)
+	mu.Unlock()
 	if err != nil {
-		s.recordAbortedSpend(ctx, req, prepared, result, model, streamed.String(), err)
+		s.recordAbortedSpend(ctx, req, prepared, result, model, partial, err)
 		// The client went away mid-generation -- almost always the Stop
-		// button aborting the request. Keep the partial reply the user saw.
+		// button aborting the request. Keep the partial reply the user saw,
+		// with the web steps that led up to it.
 		if errors.Is(ctx.Err(), context.Canceled) {
-			s.persistStopped(ctx, req, prepared, model, streamed.String())
+			s.persistStopped(ctx, req, prepared, model, partial, finishedSteps(activity), thought)
 		}
 		return chatResponse{}, err
 	}
 
-	resp, err := s.finalize(ctx, req, prepared, result, model, genResult)
+	resp, err := s.finalize(ctx, req, prepared, result, model, answer, thought)
 	if err != nil {
 		return chatResponse{}, err
 	}

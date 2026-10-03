@@ -37,13 +37,11 @@ type polzaStandIn struct {
 	// chunks are raw SSE data lines sent before the reply (server-tool
 	// events, annotations, usage) to imitate a web-search answer.
 	chunks []string
-	// rejectWeb refuses any request carrying web settings, like a vendor
-	// that doesn't accept them, with rejectStatus (default 400).
+	// rejectWeb refuses any request carrying web settings (function tools
+	// or the web plugin), like a vendor that doesn't accept them, with
+	// rejectStatus (default 400).
 	rejectWeb    bool
 	rejectStatus int
-	// rejectStrict answers 404 to requests filtering providers by
-	// require_parameters, like Polza finding no provider that qualifies.
-	rejectStrict bool
 }
 
 func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -53,18 +51,13 @@ func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.auth = append(p.auth, r.Header.Get("Authorization"))
 	p.bodies = append(p.bodies, body)
 	p.mu.Unlock()
-	if p.rejectWeb && (body["tools"] != nil || body["web_search_options"] != nil) {
+	if p.rejectWeb && (body["tools"] != nil || body["plugins"] != nil) {
 		status := p.rejectStatus
 		if status == 0 {
 			status = http.StatusBadRequest
 		}
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(`{"error":{"code":"BAD_REQUEST","message":"tools are not supported"}}`))
-		return
-	}
-	if p.rejectStrict && body["provider"] != nil {
-		w.WriteHeader(http.StatusNotFound)
-		_, _ = w.Write([]byte(`{"error":{"code":"NOT_FOUND","message":"no provider supports all parameters"}}`))
 		return
 	}
 	if p.status != 0 {

@@ -322,6 +322,10 @@ func (s *PostgresStore) Delete(ctx context.Context, userID, conversationID strin
 	if _, err := tx.ExecContext(ctx, `DELETE FROM attachments WHERE user_id = $1 AND conversation_id = $2`, userID, conversationID); err != nil {
 		return err
 	}
+	// Likewise the pages the model read in it (package pagestore).
+	if _, err := tx.ExecContext(ctx, `DELETE FROM web_pages WHERE user_id = $1 AND conversation_id = $2`, userID, conversationID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

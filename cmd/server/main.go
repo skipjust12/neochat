@@ -29,11 +29,13 @@ import (
 	"neochat/internal/envfile"
 	"neochat/limits"
 	"neochat/moderation"
+	"neochat/pagestore"
 	"neochat/provider"
 	"neochat/ratelimit"
 	"neochat/router"
 	"neochat/server"
 	"neochat/summarizer"
+	"neochat/webfetch"
 )
 
 func main() {
@@ -90,10 +92,6 @@ func main() {
 	// optional server-side fallback for calls made without one -- it is
 	// not required to start.
 	polzaClient := provider.NewPolzaClient(os.Getenv("POLZA_API_KEY"))
-	// Logs raw web-search/fetch events from the stream. Polza doesn't
-	// document their exact shape; turn this on when the "Searching the web"
-	// list in the UI looks empty or wrong, and compare against the parser.
-	polzaClient.DebugToolEvents = os.Getenv("POLZA_DEBUG_TOOL_EVENTS") == "true"
 
 	// Hard ceiling on output tokens for every generation call, regardless
 	// of which catalog model gets selected -- see
@@ -302,9 +300,16 @@ func main() {
 		RouterDisabled: os.Getenv("ROUTER_ENABLED") != "true",
 		// Postgres-backed file uploads (POST /files) -- see package
 		// attachment and db/migrations/0008_attachments.sql.
-		Attachments:     attachment.NewPostgresStore(pgDB),
-		IPRateLimiter:   ipRateLimiter,
-		UserRateLimiter: userRateLimiter,
+		Attachments: attachment.NewPostgresStore(pgDB),
+		// Web access: pages the model reads are fetched by this server and
+		// kept per chat (db/migrations/0009_web_pages.sql); searches run on
+		// Polza's web plugin through WEB_SEARCH_MODEL (a catalog model id;
+		// default: the cheapest current one).
+		Fetcher:          &webfetch.Fetcher{},
+		Pages:            pagestore.NewPostgresStore(pgDB),
+		WebSearchModelID: os.Getenv("WEB_SEARCH_MODEL"),
+		IPRateLimiter:    ipRateLimiter,
+		UserRateLimiter:  userRateLimiter,
 		// Postgres-backed -- see auth.Store's doc comment and audit.md
 		// finding #1. Keys are minted out of band via `go run
 		// ./cmd/issuekey` (see docs/running-locally.md); there is no HTTP
@@ -357,9 +362,9 @@ func main() {
 	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Hourly cleanup of unsent uploads and files of deleted chats -- see
-	// server.RunAttachmentSweeper.
-	go srv.RunAttachmentSweeper(stopCtx, time.Hour)
+	// Hourly cleanup of unsent uploads, files of deleted chats and stored
+	// web pages past their time or budget -- see server.RunCleanup.
+	go srv.RunCleanup(stopCtx, time.Hour)
 
 	select {
 	case err := <-serveErrs:

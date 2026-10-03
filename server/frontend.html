@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=11" />
+<link rel="stylesheet" href="/assets/fluid.css?v=12" />
 <link rel="stylesheet" href="/assets/landing/landing.css?v=1" />
 <script>try{if(!sessionStorage.getItem('neochat-api-key'))document.documentElement.classList.add('is-guest')}catch(error){document.documentElement.classList.add('is-guest')}</script>
 </head>
@@ -1815,28 +1815,13 @@
       state.append(dot,label);body.append(state);
     }
 
-    function showThoughtTime(message,elapsedMilliseconds){
-      const copy=message.querySelector('.chat-copy');
-      const previous=copy.querySelector('.thought-time');
-      if(previous)previous.remove();
-      const seconds=Math.max(1,Math.round(elapsedMilliseconds/1000));
-      const timing=document.createElement('details');
-      timing.className='thought-time';
-      const summary=document.createElement('summary');
-      summary.textContent='Thought for '+seconds+' '+(seconds===1?'second':'seconds');
-      const step=document.createElement('div');
-      step.className='thinking-content';
-      step.textContent='Response started after '+seconds+' '+(seconds===1?'second.':'seconds.');
-      timing.append(summary,step);
-      copy.prepend(timing);
-    }
-
-    /* ---------- web activity ---------- */
-    // What the model did on the web while answering: shown live instead of
-    // "Thinking" ("Searching the web" / "Reading example.com") and kept as
-    // a collapsible list of searches with their results, pages it read and
-    // the sources it cited. URLs come from search results, so only http(s)
-    // links are ever rendered.
+    /* ---------- thinking block ---------- */
+    // The block above an answer: "Thinking" while the model works, the web
+    // step in progress in its place ("Searching the web", "Reading
+    // example.com"), then "Thought for N seconds". Opened, it lists what the
+    // model searched (query and results) and, separately, the pages it read.
+    // URLs come from search results and pages, so only http(s) links are
+    // ever rendered.
     function safeURL(value){
       try{
         const url=new URL(String(value||''));
@@ -1846,28 +1831,18 @@
     function hostOf(url){
       try{return new URL(url).hostname.replace(/^www\./,'')}catch(error){return ''}
     }
-    function webActivityLabel(activity,running){
-      if(running){
-        const last=activity[activity.length-1];
-        if(last&&last.tool==='web_fetch'){
-          const host=hostOf(safeURL(last.url));
-          return host?'Reading '+host:'Reading a page';
-        }
-        return 'Searching the web';
-      }
-      const done=activity.filter(function(step){return !webStepFailed(step)});
-      const searches=done.filter(function(step){return step.tool==='web_search'}).length;
-      const reads=done.filter(function(step){return step.tool==='web_fetch'}).length;
-      const parts=[];
-      if(searches)parts.push(searches+(searches===1?' search':' searches'));
-      if(reads)parts.push(reads+(reads===1?' page read':' pages read'));
-      if(!searches&&!reads&&activity.length)return 'Web search unavailable';
-      return (searches||reads?'Searched the web':'Sources')+(parts.length?' · '+parts.join(', '):'');
-    }
+    function plural(count,one,many){return count+' '+(count===1?one:many)}
     // A step that never ran: the vendor refused web search before the model
     // could use it (no query, no page, only an error).
     function webStepFailed(step){
       return Boolean(step&&step.error&&!step.query&&!step.url&&!(step.results&&step.results.length));
+    }
+    function webStepLabel(step){
+      if(step.tool==='web_fetch'){
+        const host=hostOf(safeURL(step.url));
+        return host?'Reading '+host:'Reading a page';
+      }
+      return 'Searching the web';
     }
     function webLink(link){
       const href=safeURL(link&&link.url);
@@ -1879,13 +1854,25 @@
       anchor.textContent=link.title||hostOf(href)||href;
       return anchor;
     }
+    function stepIcon(kind){
+      const icon=document.createElement('span');
+      icon.className='web-step-icon';
+      icon.innerHTML=kind==='fetch'
+        ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8"/><path d="M8 17h5"/></svg>'
+        :'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
+      return icon;
+    }
+    const visibleResults=4;
     function webResultList(links){
       const list=document.createElement('ol');
       list.className='web-results';
+      let shown=0;
       links.forEach(function(link){
         const anchor=webLink(link);
         if(!anchor)return;
         const item=document.createElement('li');
+        if(shown>=visibleResults)item.className='is-extra';
+        shown++;
         const host=document.createElement('span');
         host.className='web-result-host';
         host.textContent=hostOf(anchor.href);
@@ -1898,75 +1885,244 @@
         }
         list.append(item);
       });
-      return list;
+      if(shown<=visibleResults)return list;
+      const wrap=document.createElement('div');
+      const more=document.createElement('button');
+      more.type='button';
+      more.className='web-results-more';
+      more.textContent='Show '+(shown-visibleResults)+' more';
+      more.addEventListener('click',function(){
+        const expanded=list.classList.toggle('is-expanded');
+        more.textContent=expanded?'Show less':'Show '+(shown-visibleResults)+' more';
+      });
+      wrap.append(list,more);
+      return wrap;
     }
-    function renderWebActivity(message,activity,sources,running){
-      activity=Array.isArray(activity)?activity:[];
-      sources=Array.isArray(sources)?sources:[];
-      const copy=message.querySelector('.chat-copy');
-      let panel=copy.querySelector('.web-activity');
-      if(!activity.length&&!sources.length&&!running){
-        if(panel)panel.remove();
-        return;
+    // A page without a title is named by its host and path.
+    function pageName(url){
+      try{
+        const parsed=new URL(url);
+        const name=parsed.hostname.replace(/^www\./,'')+(parsed.pathname==='/'?'':parsed.pathname);
+        return name.length>70?name.slice(0,69)+'…':name;
+      }catch(error){return ''}
+    }
+    function formatChars(count){
+      if(!count)return '';
+      return count<1000?plural(count,'character','characters'):(count/1000).toFixed(count<10000?1:0).replace(/\.0$/,'')+'k characters';
+    }
+    function webSection(title,count){
+      const section=document.createElement('section');
+      section.className='thought-section';
+      const head=document.createElement('div');
+      head.className='thought-section-head';
+      head.textContent=title;
+      if(count){
+        const badge=document.createElement('span');
+        badge.className='thought-section-count';
+        badge.textContent=count;
+        head.append(badge);
       }
-      if(!panel){
-        panel=document.createElement('details');
-        panel.className='thought-time web-activity';
+      section.append(head);
+      return section;
+    }
+    function searchStep(step){
+      const row=document.createElement('div');
+      row.className='web-step';
+      const head=document.createElement('div');
+      head.className='web-step-head';
+      const text=document.createElement('span');
+      text.className='web-step-text';
+      if(webStepFailed(step))text.textContent='Couldn’t search the web';
+      else if(step.pending){
+        text.textContent=step.query?'Searching “'+step.query+'”':'Searching the web';
+        text.classList.add('thinking-label');
+        text.dataset.text=text.textContent;
+      }else text.textContent=step.query?'“'+step.query+'”':'Web search';
+      head.append(stepIcon('search'),text);
+      if(!step.pending&&!step.error){
+        const note=document.createElement('span');
+        note.className='web-step-note';
+        const count=(step.results||[]).length;
+        note.textContent=count?plural(count,'result','results'):'no results';
+        head.append(note);
+      }
+      row.append(head);
+      if(step.error){
+        const error=document.createElement('p');
+        error.className='web-step-error'+(step.error==='stopped'?' is-muted':'');
+        error.textContent=step.error;
+        row.append(error);
+      }
+      if(step.results&&step.results.length)row.append(webResultList(step.results));
+      return row;
+    }
+    function pageStep(step){
+      const row=document.createElement('div');
+      row.className='web-step web-page';
+      const head=document.createElement('div');
+      head.className='web-step-head';
+      const text=document.createElement('span');
+      text.className='web-step-text';
+      if(step.pending){
+        text.textContent=webStepLabel(step);
+        text.classList.add('thinking-label');
+        text.dataset.text=text.textContent;
+      }else{
+        text.append(webLink({url:step.url,title:step.title||pageName(step.url)})||document.createTextNode(step.title||'A page'));
+      }
+      head.append(stepIcon('fetch'),text);
+      row.append(head);
+      const href=safeURL(step.url);
+      const meta=[step.title?hostOf(href):'',formatChars(step.chars)].filter(Boolean).join(' · ');
+      if(meta&&!step.pending){
+        const line=document.createElement('div');
+        line.className='web-page-meta';
+        line.textContent=meta;
+        row.append(line);
+      }
+      if(step.excerpt){
+        const excerpt=document.createElement('p');
+        excerpt.className='web-page-excerpt';
+        excerpt.textContent=step.excerpt;
+        row.append(excerpt);
+      }
+      if(step.error){
+        const error=document.createElement('p');
+        error.className='web-step-error'+(step.error==='stopped'?' is-muted':'');
+        error.textContent=step.error;
+        row.append(error);
+      }
+      return row;
+    }
+    function thoughtBlock(message){
+      const copy=message.querySelector('.chat-copy');
+      let block=copy.querySelector(':scope > .thought-time');
+      if(!block){
+        block=document.createElement('details');
+        block.className='thought-time';
         const summary=document.createElement('summary');
         const label=document.createElement('span');
-        label.className='web-activity-label';
-        summary.append(label);
+        label.className='thought-label';
+        const meta=document.createElement('span');
+        meta.className='thought-meta';
+        summary.append(label,meta);
         const body=document.createElement('div');
-        body.className='web-activity-body';
-        panel.append(summary,body);
-        copy.prepend(panel);
+        body.className='thinking-content';
+        block.append(summary,body);
+        copy.prepend(block);
       }
-      panel.classList.toggle('is-running',Boolean(running));
-      const label=panel.querySelector('.web-activity-label');
-      label.textContent=webActivityLabel(activity,running);
-      label.dataset.text=label.textContent;
-      label.classList.toggle('thinking-label',Boolean(running));
-      const body=panel.querySelector('.web-activity-body');
+      return block;
+    }
+    // state: live (the model is still working), seconds (thinking time, once
+    // known), activity (web steps; running ones carry pending) and sources.
+    function renderThought(message,state){
+      const activity=Array.isArray(state.activity)?state.activity:[];
+      const sources=Array.isArray(state.sources)?state.sources:[];
+      const seconds=state.seconds?Math.max(1,Math.round(state.seconds)):0;
+      const running=activity.filter(function(step){return step.pending});
+      const live=Boolean(state.live||running.length);
+      if(!live&&!seconds&&!activity.length&&!sources.length){
+        const old=message.querySelector('.chat-copy > .thought-time');
+        if(old)old.remove();
+        return;
+      }
+      const block=thoughtBlock(message);
+      block.classList.toggle('is-live',live);
+      const label=block.querySelector('.thought-label');
+      let text;
+      if(running.length)text=webStepLabel(running[running.length-1]);
+      else if(live)text='Thinking';
+      else if(seconds)text='Thought for '+plural(seconds,'second','seconds');
+      else text=activity.some(function(step){return !webStepFailed(step)})?'Searched the web':activity.length?'Web search unavailable':'Sources';
+      label.textContent=text;
+      label.dataset.text=text;
+      label.classList.toggle('thinking-label',live);
+
+      const done=activity.filter(function(step){return !step.pending&&!step.error});
+      const searches=done.filter(function(step){return step.tool==='web_search'}).length;
+      const pages=done.filter(function(step){return step.tool==='web_fetch'&&!step.error}).length;
+      const parts=[];
+      if(searches)parts.push(plural(searches,'search','searches'));
+      if(pages)parts.push(plural(pages,'page','pages'));
+      if(!parts.length&&activity.some(webStepFailed))parts.push('search unavailable');
+      block.querySelector('.thought-meta').textContent=live||!parts.length?'':parts.join(' · ');
+
+      const body=block.querySelector('.thinking-content');
       body.replaceChildren();
-      activity.forEach(function(step,index){
-        const row=document.createElement('div');
-        row.className='web-step';
-        row.dataset.tool=step.tool==='web_fetch'?'fetch':'search';
-        const head=document.createElement('div');
-        head.className='web-step-head';
-        const icon=document.createElement('span');
-        icon.className='web-step-icon';
-        icon.innerHTML=step.tool==='web_fetch'
-          ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>'
-          :'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
-        const busy=running&&index===activity.length-1&&!(step.results&&step.results.length)&&!step.error;
-        const text=document.createElement('span');
-        if(step.tool==='web_fetch'){
-          text.append(document.createTextNode(busy?'Reading ':'Read '));
-          const anchor=webLink({url:step.url,title:step.title});
-          text.append(anchor||document.createTextNode(step.title||'a page'));
-        }else if(webStepFailed(step)){
-          text.textContent='Couldn’t search the web';
-        }else{
-          text.textContent=(busy?'Searching':'Searched')+(step.query?' “'+step.query+'”':' the web');
-        }
-        head.append(icon,text);
-        row.append(head);
-        if(step.error){
-          const error=document.createElement('p');
-          error.className='web-step-error';
-          error.textContent=step.error;
-          row.append(error);
-        }
-        if(step.results&&step.results.length)row.append(webResultList(step.results));
-        body.append(row);
-      });
-      if(sources.length){
-        const heading=document.createElement('div');
-        heading.className='web-step-head web-sources-head';
-        heading.textContent='Sources';
-        body.append(heading,webResultList(sources));
+      const searchSteps=activity.filter(function(step){return step.tool!=='web_fetch'});
+      const pageSteps=activity.filter(function(step){return step.tool==='web_fetch'});
+      if(searchSteps.length){
+        const section=webSection('Searched',searchSteps.length>1?searchSteps.length:0);
+        searchSteps.forEach(function(step){section.append(searchStep(step))});
+        body.append(section);
       }
+      if(pageSteps.length){
+        const section=webSection('Read',pageSteps.length>1?pageSteps.length:0);
+        pageSteps.forEach(function(step){section.append(pageStep(step))});
+        body.append(section);
+      }
+      if(sources.length){
+        const section=webSection('Sources',0);
+        section.append(webResultList(sources));
+        body.append(section);
+      }
+      body.classList.toggle('has-web',Boolean(activity.length||sources.length));
+      if(!body.childElementCount){
+        if(seconds)body.textContent='Response started after '+plural(seconds,'second.','seconds.');
+        else if(live)body.textContent='Working on the answer…';
+      }
+    }
+    // A stopped answer's steps: any still running is shown as stopped.
+    function stoppedActivity(activity){
+      return (activity||[]).map(function(step){
+        return step.pending?Object.assign({},step,{pending:false,error:step.error||'stopped'}):step;
+      });
+    }
+    // Follows one answer while it streams: "Thinking" until text comes, a
+    // web step's label while it runs, back to "Thinking" after it, and the
+    // time it took when the text (re)starts.
+    function thoughtTracker(message,startedAt){
+      const state={live:true,seconds:0,activity:[],sources:[]};
+      let waiting=true;
+      function since(){return (performance.now()-startedAt)/1000}
+      function clearThinkingState(){
+        const thinking=message.querySelector('.chat-text .thinking-state');
+        if(thinking)thinking.remove();
+      }
+      return {
+        activity:function(list){
+          state.activity=Array.isArray(list)?list:[];
+          waiting=true;
+          state.live=true;
+          clearThinkingState();
+          renderThought(message,state);
+        },
+        text:function(){
+          if(!waiting)return;
+          waiting=false;
+          state.live=false;
+          state.seconds=since();
+          renderThought(message,state);
+        },
+        done:function(data){
+          state.live=false;
+          if(data&&Array.isArray(data.activity))state.activity=data.activity;
+          state.sources=data&&Array.isArray(data.sources)?data.sources:[];
+          if(data&&data.thought_ms)state.seconds=data.thought_ms/1000;
+          else if(!state.seconds)state.seconds=since();
+          renderThought(message,state);
+        },
+        ms:function(){return Math.round(state.seconds*1000)},
+        stop:function(){
+          if(!state.live&&!state.activity.some(function(step){return step.pending}))return;
+          state.live=false;
+          state.activity=state.activity.map(function(step){
+            return step.pending?Object.assign({},step,{pending:false,error:step.error||'stopped'}):step;
+          });
+          if(!state.seconds)state.seconds=since();
+          renderThought(message,state);
+        }
+      };
     }
 
     function messageActionButton(label,iconName,paths){
@@ -2039,7 +2195,7 @@
       const version=versions[message.responseVersionIndex];
       message.dataset.messageText=version.content;
       renderMarkdown(message.querySelector('.chat-text'),version.content);
-      renderWebActivity(message,version.activity,version.sources,false);
+      renderThought(message,{live:false,seconds:version.thought_ms?version.thought_ms/1000:0,activity:version.activity,sources:version.sources});
       const navigation=message.querySelector('.response-versions');
       if(!navigation)return;
       navigation.hidden=versions.length<2;
@@ -2647,8 +2803,9 @@
       let liveActivity=[];
       const controller=new AbortController();
       activeAbort=controller;
-      // The new version brings its own timing or web activity.
+      // The new version brings its own timing and web activity.
       message.querySelectorAll('.chat-copy > .thought-time').forEach(function(element){element.remove()});
+      const thought=thoughtTracker(message,thinkingStartedAt);
 
       try{
         const response=await fetch(isIncognito?'/chat/stream':'/chat/regenerate/stream',{
@@ -2667,18 +2824,17 @@
           if(event==='versions'){versionsData=data;return}
           if(event==='activity'){
             liveActivity=Array.isArray(data&&data.activity)?data.activity:[];
-            const thinking=message.querySelector('.chat-text .thinking-state');
-            if(thinking)thinking.remove();
-            renderWebActivity(message,liveActivity,[],!receivedFirstText);
+            thought.activity(liveActivity);
             return;
           }
           if(event==='delta'){
             const text=data&&data.text?String(data.text):'';
-            if(text&&!receivedFirstText){
-              receivedFirstText=true;
-              message.classList.remove('is-pending');
-              if(liveActivity.length)renderWebActivity(message,liveActivity,[],false);
-              else showThoughtTime(message,performance.now()-thinkingStartedAt);
+            if(text){
+              if(!receivedFirstText){
+                receivedFirstText=true;
+                message.classList.remove('is-pending');
+              }
+              thought.text();
             }
             receivedText+=text;
             stream.append(text);
@@ -2686,14 +2842,14 @@
           if(event==='done'){
             terminalData=data;
             message.classList.remove('is-pending');
-            if(!receivedFirstText&&!liveActivity.length)showThoughtTime(message,performance.now()-thinkingStartedAt);
+            thought.done(data);
             stream.replace(data.response_text||'The server returned an empty response.');
           }
         });
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
         if(isIncognito){
-          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[]}]);
+          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0}]);
           incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||''};
         }else{
           message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
@@ -2709,7 +2865,7 @@
         if(controller.signal.aborted&&receivedText){
           // Stopped mid-regeneration: the server kept what was streamed as
           // a new version, so show it as one.
-          message.responseVersions=(message.responseVersions||[]).concat([{content:receivedText,model_id:request.manual_model_id||'',activity:liveActivity}]);
+          message.responseVersions=(message.responseVersions||[]).concat([{content:receivedText,model_id:request.manual_model_id||'',activity:stoppedActivity(liveActivity),thought_ms:thought.ms()}]);
           if(isIncognito)incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:receivedText};
           renderResponseVersion(message,message.responseVersions.length-1);
           message.classList.add('is-complete');
@@ -2770,6 +2926,7 @@
       let liveActivity=[];
       const controller=new AbortController();
       activeAbort=controller;
+      const thought=thoughtTracker(pending,thinkingStartedAt);
 
       try{
         const response=await fetch('/chat/stream',{
@@ -2794,20 +2951,20 @@
             return;
           }
           if(event==='activity'){
+            // "Searching the web" / "Reading example.com" take the place of
+            // "Thinking" while a step runs.
             liveActivity=Array.isArray(data&&data.activity)?data.activity:[];
-            // "Searching the web" takes the place of "Thinking".
-            const thinking=pending.querySelector('.chat-text .thinking-state');
-            if(thinking)thinking.remove();
-            renderWebActivity(pending,liveActivity,[],!receivedFirstText);
+            thought.activity(liveActivity);
             return;
           }
           if(event==='delta'){
             const text=data&&data.text?String(data.text):'';
-            if(text&&!receivedFirstText){
-              receivedFirstText=true;
-              pending.classList.remove('is-pending');
-              if(liveActivity.length)renderWebActivity(pending,liveActivity,[],false);
-              else showThoughtTime(pending,performance.now()-thinkingStartedAt);
+            if(text){
+              if(!receivedFirstText){
+                receivedFirstText=true;
+                pending.classList.remove('is-pending');
+              }
+              thought.text();
             }
             receivedText+=text;
             stream.append(text);
@@ -2821,15 +2978,14 @@
               storeValue(localStorage,currentConversationStorageKey,conversationID);
             }
             pending.classList.remove('is-pending');
-            if(!receivedFirstText&&!liveActivity.length&&!(data.activity&&data.activity.length))showThoughtTime(pending,performance.now()-thinkingStartedAt);
-            renderWebActivity(pending,data.activity||liveActivity,data.sources,false);
+            thought.done(data);
             stream.replace(data.response_text||'The server returned an empty response.');
           }
         });
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(apiKeyInput.value.trim()!==token){stream.cancel();return}
         await stream.finish();
-        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[]}];
+        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0}];
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
         if(activeChatIncognito&&!terminalData.blocked){
@@ -2844,14 +3000,14 @@
           stream.cancel();
           pending.classList.remove('is-pending');
           const body=pending.querySelector('.chat-text');
+          thought.stop();
           if(receivedText){
-            pending.responseVersions=[{content:receivedText,model_id:request.manual_model_id||'',activity:liveActivity}];
+            pending.responseVersions=[{content:receivedText,model_id:request.manual_model_id||'',activity:stoppedActivity(liveActivity),thought_ms:thought.ms()}];
             pending.responseVersionIndex=0;
             renderResponseVersion(pending,0);
             pending.classList.add('is-complete');
           }else{
             body.replaceChildren();
-            renderWebActivity(pending,liveActivity,[],false);
           }
           const note=document.createElement('p');
           note.className='stopped-note';
@@ -2866,6 +3022,7 @@
         }
         const partialText=stream.visibleText();
         stream.cancel();
+        thought.stop();
         pending.classList.remove('is-pending');
         pending.classList.add('is-error');
         const body=pending.querySelector('.chat-text');

@@ -222,6 +222,30 @@ func TestPostgresStore_DeleteRemovesTheChatsFiles(t *testing.T) {
 	}
 }
 
+func TestPostgresStore_DeleteRemovesTheChatsPages(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_summaries", "web_pages")
+	store := NewPostgresStore(pgDB)
+	ctx := context.Background()
+
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "read this", CreatedAt: time.Now().UTC()}))
+	for _, row := range [][2]string{{"https://a.dev", "c1"}, {"https://b.dev", "c1"}, {"https://a.dev", "c2"}} {
+		if _, err := pgDB.ExecContext(ctx, `
+			INSERT INTO web_pages (user_id, conversation_id, url, final_url, content, content_bytes, fetched_at)
+			VALUES ('u1', $2, $1, $1, 'text', 4, now())`, row[0], row[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(t, store.Delete(ctx, "u1", "c1"))
+	var left int
+	must(t, pgDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM web_pages WHERE conversation_id = 'c1'`).Scan(&left))
+	var other int
+	must(t, pgDB.QueryRowContext(ctx, `SELECT COUNT(*) FROM web_pages WHERE conversation_id = 'c2'`).Scan(&other))
+	if left != 0 || other != 1 {
+		t.Fatalf("pages left: deleted chat %d (want 0), other chat %d (want 1)", left, other)
+	}
+}
+
 func TestPostgresStore_AddResponseVersion(t *testing.T) {
 	pgDB := dbtest.Postgres(t)
 	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_summaries")

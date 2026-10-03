@@ -68,17 +68,26 @@ type ResponseVersion struct {
 	// the pages it cited. Both live inside the versions JSON column.
 	Activity []ToolActivity `json:"activity,omitempty"`
 	Sources  []WebLink      `json:"sources,omitempty"`
+	// ThoughtMS is how long the answer took before its text started (the
+	// last time, if web steps came in between): "Thought for N seconds".
+	ThoughtMS int64 `json:"thought_ms,omitempty"`
 }
 
 // ToolActivity is one web step: a search ("web_search", with the query and
-// what came back) or a page the model opened ("web_fetch").
+// what came back) or a page the model read ("web_fetch", with its title,
+// the start of its text and its length).
 type ToolActivity struct {
 	Tool    string    `json:"tool"`
 	Query   string    `json:"query,omitempty"`
 	URL     string    `json:"url,omitempty"`
 	Title   string    `json:"title,omitempty"`
 	Results []WebLink `json:"results,omitempty"`
+	Excerpt string    `json:"excerpt,omitempty"`
+	Chars   int       `json:"chars,omitempty"`
 	Error   string    `json:"error,omitempty"`
+	// Pending marks a step still running; only ever set in the live
+	// stream, never stored.
+	Pending bool `json:"pending,omitempty"`
 }
 
 // WebLink is a search hit or a cited page.

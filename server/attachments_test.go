@@ -328,7 +328,7 @@ func TestAttachmentSweeperStopsWithContext(t *testing.T) {
 	s := newDirectServer(t, &polzaStandIn{reply: "ok"})
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan struct{})
-	go func() { s.RunAttachmentSweeper(ctx, time.Hour); close(done) }()
+	go func() { s.RunCleanup(ctx, time.Hour); close(done) }()
 	cancel()
 	select {
 	case <-done:

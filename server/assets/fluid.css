@@ -6700,42 +6700,105 @@ html[data-theme="dark"] .brand-shimmer {
   display: none;
 }
 
-/* Web activity: searches the model ran and pages it read, collapsible
-   like "Thought for N seconds". While running, the label shimmers like
-   "Thinking". */
-.web-activity .web-activity-label {
+/* The thinking block's web steps: what the model searched (query and
+   results) and, separately, the pages it read. A running step's label
+   shimmers like "Thinking". */
+.thought-label {
   font: inherit;
   color: inherit;
 }
 
-.web-activity.is-running .web-activity-label {
+.thought-time.is-live .thought-label {
   font: 450 13px Inter;
 }
 
-.web-activity-body {
+.thought-meta:not(:empty)::before {
+  content: '·';
+  margin-right: 8px;
+}
+
+.thought-meta {
+  font-weight: 450;
+  opacity: .85;
+}
+
+.thinking-content.has-web {
   display: grid;
-  gap: 12px;
-  max-height: 340px;
+  gap: 14px;
+  max-height: 360px;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: 6px 8px 4px 12px;
-  margin: 2px 0 6px 2px;
-  border-left: 1px solid var(--line-strong);
+  padding: 6px 10px 6px 20px;
+  scrollbar-width: thin;
+}
+
+.thought-section {
+  display: grid;
+  gap: 10px;
+}
+
+.thought-section-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+
+.thought-section-count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--line);
+  color: var(--text);
+  font-size: 10px;
+  letter-spacing: 0;
+}
+
+.web-step {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
 }
 
 .web-step-head {
   display: flex;
-  align-items: baseline;
-  gap: 6px;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
   color: var(--text);
   font-size: 12.5px;
   font-weight: 560;
+  line-height: 1.4;
+}
+
+.web-step-text {
+  min-width: 0;
   overflow-wrap: anywhere;
+}
+
+.web-step .thinking-label {
+  font: 560 12.5px Inter;
+  white-space: normal;
+}
+
+.web-step-note {
+  flex: none;
+  margin-left: auto;
+  padding-left: 8px;
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 450;
 }
 
 .web-step-icon {
   flex: none;
-  align-self: center;
   display: grid;
   width: 14px;
   height: 14px;
@@ -6767,8 +6830,8 @@ html[data-theme="dark"] .brand-shimmer {
 .web-results {
   display: grid;
   gap: 8px;
-  margin: 8px 0 0;
-  padding: 0 0 0 20px;
+  margin: 4px 0 0;
+  padding: 0 0 0 21px;
   list-style: none;
 }
 
@@ -6776,19 +6839,51 @@ html[data-theme="dark"] .brand-shimmer {
   display: grid;
   justify-items: start;
   gap: 1px;
+  min-width: 0;
   font-size: 12.5px;
+  font-weight: 450;
+  overflow-wrap: anywhere;
+}
+
+.web-results li.is-extra {
+  display: none;
+}
+
+.web-results.is-expanded li.is-extra {
+  display: grid;
+}
+
+.web-results-more {
+  margin: 6px 0 0 21px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: 500 11.5px Inter;
+  cursor: pointer;
+}
+
+.web-results-more:hover {
+  color: var(--text);
+}
+
+.web-result-host,
+.web-page-meta {
+  color: var(--muted);
+  font-size: 11px;
   font-weight: 450;
 }
 
-.web-result-host {
-  color: var(--muted);
-  font-size: 11px;
+.web-page-meta {
+  padding-left: 21px;
 }
 
-.web-result-snippet {
+.web-result-snippet,
+.web-page-excerpt {
   margin: 1px 0 0;
   color: var(--muted);
   font-size: 12px;
+  font-weight: 400;
   line-height: 1.45;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -6796,13 +6891,18 @@ html[data-theme="dark"] .brand-shimmer {
   overflow: hidden;
 }
 
-.web-step-error {
-  margin: 4px 0 0 20px;
-  color: #e5484d;
-  font-size: 12px;
+.web-page-excerpt {
+  padding-left: 21px;
+  -webkit-line-clamp: 3;
 }
 
-.web-sources-head {
-  margin-top: 2px;
+.web-step-error {
+  margin: 0 0 0 21px;
+  color: #e5484d;
+  font-size: 12px;
+  font-weight: 450;
+}
+
+.web-step-error.is-muted {
   color: var(--muted);
 }

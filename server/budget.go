@@ -58,16 +58,14 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 	if maxOutput <= 0 || maxOutput > defaultOutputLimit {
 		maxOutput = defaultOutputLimit
 	}
-	// With web tools the vendor runs several model steps inside this one
-	// call, each re-reading the context plus what the tools returned. Not a
-	// hard ceiling any more (up to provider.WebMaxToolCalls steps), but
-	// enough headroom for a typical few-searches answer; actual usage
-	// settles it either way.
-	web := provider.WebToolsFromContext(ctx)
-	if web.Tools {
-		inputBound = inputBound*5 + provider.WebSearchMaxUses*provider.WebSearchMaxResults*400 + provider.WebFetchMaxUses*provider.WebFetchMaxCharacters/3
-	} else if web.SearchFirst {
-		inputBound += provider.WebSearchMaxResults * 400
+	// The web plugin puts its search results into the prompt. (Tool-loop
+	// results are ordinary messages, counted above.)
+	if p, ok := provider.WebPluginFromContext(ctx); ok {
+		results := p.MaxResults
+		if results <= 0 {
+			results = 5
+		}
+		inputBound += results * 600
 	}
 	amount := router.ComputeCostUSDRates(inputRate, outputRate, inputBound, maxOutput)
 	cap := plan.ThinkingMaxCapUSD
@@ -103,7 +101,7 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 		if result.InputTokens < 0 || result.OutputTokens < 0 || (amount > 0 && (result.InputTokens == 0 || (result.Text != "" && result.OutputTokens == 0))) {
 			return result, fmt.Errorf("provider returned missing or invalid usage; reservation retained")
 		}
-		actual = router.ComputeCostUSDRates(inputRate, outputRate, result.InputTokens, result.OutputTokens) + float64(result.WebSearches)*webSearchFeeUSD
+		actual = router.ComputeCostUSDRates(inputRate, outputRate, result.InputTokens, result.OutputTokens) + float64(result.WebSearches)*webPluginFeeUSD
 	}
 	billCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
