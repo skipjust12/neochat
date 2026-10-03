@@ -6578,3 +6578,16 @@ html[data-theme="dark"] .brand-shimmer {
   font-size: 12px;
   margin-top: 6px;
 }
+
+/* Manual picker: at most four models visible, the rest scroll (height set
+   by capModelLists). Uses the same track-less thin scrollbar as Settings. */
+.model-list {
+  position: relative;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.model-list.is-scrollable {
+  margin-right: -4px;
+  padding-right: 4px;
+}
