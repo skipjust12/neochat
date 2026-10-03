@@ -44,6 +44,14 @@ type GenerateResult struct {
 	Text         string
 	InputTokens  int
 	OutputTokens int
+
+	// Web tool activity, when the call had WebTools enabled: the
+	// server-tool events seen in the stream, the cited sources, and how
+	// many searches/page fetches the vendor billed.
+	ToolEvents  []ToolEvent
+	Citations   []WebResult
+	WebSearches int
+	WebFetches  int
 }
 
 // Client generates a completion from one vendor's API. apiModelID is the
@@ -63,6 +71,10 @@ type Client interface {
 type StreamChunk struct {
 	Delta string
 	Err   error
+
+	// Tool, when set, is a server-side tool step (a web search or page
+	// fetch) the vendor ran while generating this answer.
+	Tool *ToolEvent
 
 	Done  bool
 	Final GenerateResult // populated only when Done is true

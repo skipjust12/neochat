@@ -90,6 +90,10 @@ func main() {
 	// optional server-side fallback for calls made without one -- it is
 	// not required to start.
 	polzaClient := provider.NewPolzaClient(os.Getenv("POLZA_API_KEY"))
+	// Logs raw web-search/fetch events from the stream. Polza doesn't
+	// document their exact shape; turn this on when the "Searching the web"
+	// list in the UI looks empty or wrong, and compare against the parser.
+	polzaClient.DebugToolEvents = os.Getenv("POLZA_DEBUG_TOOL_EVENTS") == "true"
 
 	// Hard ceiling on output tokens for every generation call, regardless
 	// of which catalog model gets selected -- see

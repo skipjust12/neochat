@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=9" />
+<link rel="stylesheet" href="/assets/fluid.css?v=11" />
 <link rel="stylesheet" href="/assets/landing/landing.css?v=1" />
 <script>try{if(!sessionStorage.getItem('neochat-api-key'))document.documentElement.classList.add('is-guest')}catch(error){document.documentElement.classList.add('is-guest')}</script>
 </head>
@@ -1548,6 +1548,8 @@
     // Shared by send and regenerate: settings that shape every reply.
     function applyReplySettings(request){
       request.reasoning_effort=selectedReasoningEffort();
+      const webSearchMode=(document.getElementById('webSearchState').textContent||'Auto').trim().toLowerCase();
+      request.web_search=['auto','on','off'].indexOf(webSearchMode)>-1?webSearchMode:'auto';
       const instructions=document.getElementById('instructions').value.trim();
       if(instructions)request.instructions=instructions;
       if(request.requested_mode==='manual')request.manual_model_id=document.getElementById('manualState').dataset.modelId||'';
@@ -1829,6 +1831,135 @@
       copy.prepend(timing);
     }
 
+    /* ---------- web activity ---------- */
+    // What the model did on the web while answering: shown live instead of
+    // "Thinking" ("Searching the web" / "Reading example.com") and kept as
+    // a collapsible list of searches with their results, pages it read and
+    // the sources it cited. URLs come from search results, so only http(s)
+    // links are ever rendered.
+    function safeURL(value){
+      try{
+        const url=new URL(String(value||''));
+        return url.protocol==='https:'||url.protocol==='http:'?url.href:'';
+      }catch(error){return ''}
+    }
+    function hostOf(url){
+      try{return new URL(url).hostname.replace(/^www\./,'')}catch(error){return ''}
+    }
+    function webActivityLabel(activity,running){
+      if(running){
+        const last=activity[activity.length-1];
+        if(last&&last.tool==='web_fetch'){
+          const host=hostOf(safeURL(last.url));
+          return host?'Reading '+host:'Reading a page';
+        }
+        return 'Searching the web';
+      }
+      const searches=activity.filter(function(step){return step.tool==='web_search'}).length;
+      const reads=activity.filter(function(step){return step.tool==='web_fetch'}).length;
+      const parts=[];
+      if(searches)parts.push(searches+(searches===1?' search':' searches'));
+      if(reads)parts.push(reads+(reads===1?' page read':' pages read'));
+      return (searches||reads?'Searched the web':'Sources')+(parts.length?' · '+parts.join(', '):'');
+    }
+    function webLink(link){
+      const href=safeURL(link&&link.url);
+      if(!href)return null;
+      const anchor=document.createElement('a');
+      anchor.href=href;
+      anchor.target='_blank';
+      anchor.rel='noopener noreferrer';
+      anchor.textContent=link.title||hostOf(href)||href;
+      return anchor;
+    }
+    function webResultList(links){
+      const list=document.createElement('ol');
+      list.className='web-results';
+      links.forEach(function(link){
+        const anchor=webLink(link);
+        if(!anchor)return;
+        const item=document.createElement('li');
+        const host=document.createElement('span');
+        host.className='web-result-host';
+        host.textContent=hostOf(anchor.href);
+        item.append(anchor,host);
+        if(link.snippet){
+          const snippet=document.createElement('p');
+          snippet.className='web-result-snippet';
+          snippet.textContent=link.snippet;
+          item.append(snippet);
+        }
+        list.append(item);
+      });
+      return list;
+    }
+    function renderWebActivity(message,activity,sources,running){
+      activity=Array.isArray(activity)?activity:[];
+      sources=Array.isArray(sources)?sources:[];
+      const copy=message.querySelector('.chat-copy');
+      let panel=copy.querySelector('.web-activity');
+      if(!activity.length&&!sources.length&&!running){
+        if(panel)panel.remove();
+        return;
+      }
+      if(!panel){
+        panel=document.createElement('details');
+        panel.className='thought-time web-activity';
+        const summary=document.createElement('summary');
+        const label=document.createElement('span');
+        label.className='web-activity-label';
+        summary.append(label);
+        const body=document.createElement('div');
+        body.className='web-activity-body';
+        panel.append(summary,body);
+        copy.prepend(panel);
+      }
+      panel.classList.toggle('is-running',Boolean(running));
+      const label=panel.querySelector('.web-activity-label');
+      label.textContent=webActivityLabel(activity,running);
+      label.dataset.text=label.textContent;
+      label.classList.toggle('thinking-label',Boolean(running));
+      const body=panel.querySelector('.web-activity-body');
+      body.replaceChildren();
+      activity.forEach(function(step,index){
+        const row=document.createElement('div');
+        row.className='web-step';
+        row.dataset.tool=step.tool==='web_fetch'?'fetch':'search';
+        const head=document.createElement('div');
+        head.className='web-step-head';
+        const icon=document.createElement('span');
+        icon.className='web-step-icon';
+        icon.innerHTML=step.tool==='web_fetch'
+          ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>'
+          :'<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>';
+        const busy=running&&index===activity.length-1&&!(step.results&&step.results.length)&&!step.error;
+        const text=document.createElement('span');
+        if(step.tool==='web_fetch'){
+          text.append(document.createTextNode(busy?'Reading ':'Read '));
+          const anchor=webLink({url:step.url,title:step.title});
+          text.append(anchor||document.createTextNode(step.title||'a page'));
+        }else{
+          text.textContent=(busy?'Searching':'Searched')+(step.query?' “'+step.query+'”':' the web');
+        }
+        head.append(icon,text);
+        row.append(head);
+        if(step.error){
+          const error=document.createElement('p');
+          error.className='web-step-error';
+          error.textContent=step.error;
+          row.append(error);
+        }
+        if(step.results&&step.results.length)row.append(webResultList(step.results));
+        body.append(row);
+      });
+      if(sources.length){
+        const heading=document.createElement('div');
+        heading.className='web-step-head web-sources-head';
+        heading.textContent='Sources';
+        body.append(heading,webResultList(sources));
+      }
+    }
+
     function messageActionButton(label,iconName,paths){
       const button=document.createElement('button');
       button.type='button';
@@ -1899,6 +2030,7 @@
       const version=versions[message.responseVersionIndex];
       message.dataset.messageText=version.content;
       renderMarkdown(message.querySelector('.chat-text'),version.content);
+      renderWebActivity(message,version.activity,version.sources,false);
       const navigation=message.querySelector('.response-versions');
       if(!navigation)return;
       navigation.hidden=versions.length<2;
@@ -2503,8 +2635,11 @@
       let versionsData=null;
       let receivedFirstText=false;
       let receivedText='';
+      let liveActivity=[];
       const controller=new AbortController();
       activeAbort=controller;
+      // The new version brings its own timing or web activity.
+      message.querySelectorAll('.chat-copy > .thought-time').forEach(function(element){element.remove()});
 
       try{
         const response=await fetch(isIncognito?'/chat/stream':'/chat/regenerate/stream',{
@@ -2521,12 +2656,20 @@
           if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
           if(event==='blocked')throw new Error(data.response_text||'Regeneration was blocked.');
           if(event==='versions'){versionsData=data;return}
+          if(event==='activity'){
+            liveActivity=Array.isArray(data&&data.activity)?data.activity:[];
+            const thinking=message.querySelector('.chat-text .thinking-state');
+            if(thinking)thinking.remove();
+            renderWebActivity(message,liveActivity,[],!receivedFirstText);
+            return;
+          }
           if(event==='delta'){
             const text=data&&data.text?String(data.text):'';
             if(text&&!receivedFirstText){
               receivedFirstText=true;
               message.classList.remove('is-pending');
-              showThoughtTime(message,performance.now()-thinkingStartedAt);
+              if(liveActivity.length)renderWebActivity(message,liveActivity,[],false);
+              else showThoughtTime(message,performance.now()-thinkingStartedAt);
             }
             receivedText+=text;
             stream.append(text);
@@ -2534,14 +2677,14 @@
           if(event==='done'){
             terminalData=data;
             message.classList.remove('is-pending');
-            if(!receivedFirstText)showThoughtTime(message,performance.now()-thinkingStartedAt);
+            if(!receivedFirstText&&!liveActivity.length)showThoughtTime(message,performance.now()-thinkingStartedAt);
             stream.replace(data.response_text||'The server returned an empty response.');
           }
         });
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
         if(isIncognito){
-          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||''}]);
+          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[]}]);
           incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||''};
         }else{
           message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
@@ -2557,7 +2700,7 @@
         if(controller.signal.aborted&&receivedText){
           // Stopped mid-regeneration: the server kept what was streamed as
           // a new version, so show it as one.
-          message.responseVersions=(message.responseVersions||[]).concat([{content:receivedText,model_id:request.manual_model_id||''}]);
+          message.responseVersions=(message.responseVersions||[]).concat([{content:receivedText,model_id:request.manual_model_id||'',activity:liveActivity}]);
           if(isIncognito)incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:receivedText};
           renderResponseVersion(message,message.responseVersions.length-1);
           message.classList.add('is-complete');
@@ -2615,6 +2758,7 @@
       let receivedFirstText=false;
       let terminalData=null;
       let receivedText='';
+      let liveActivity=[];
       const controller=new AbortController();
       activeAbort=controller;
 
@@ -2640,12 +2784,21 @@
             }
             return;
           }
+          if(event==='activity'){
+            liveActivity=Array.isArray(data&&data.activity)?data.activity:[];
+            // "Searching the web" takes the place of "Thinking".
+            const thinking=pending.querySelector('.chat-text .thinking-state');
+            if(thinking)thinking.remove();
+            renderWebActivity(pending,liveActivity,[],!receivedFirstText);
+            return;
+          }
           if(event==='delta'){
             const text=data&&data.text?String(data.text):'';
             if(text&&!receivedFirstText){
               receivedFirstText=true;
               pending.classList.remove('is-pending');
-              showThoughtTime(pending,performance.now()-thinkingStartedAt);
+              if(liveActivity.length)renderWebActivity(pending,liveActivity,[],false);
+              else showThoughtTime(pending,performance.now()-thinkingStartedAt);
             }
             receivedText+=text;
             stream.append(text);
@@ -2659,14 +2812,15 @@
               storeValue(localStorage,currentConversationStorageKey,conversationID);
             }
             pending.classList.remove('is-pending');
-            if(!receivedFirstText)showThoughtTime(pending,performance.now()-thinkingStartedAt);
+            if(!receivedFirstText&&!liveActivity.length&&!(data.activity&&data.activity.length))showThoughtTime(pending,performance.now()-thinkingStartedAt);
+            renderWebActivity(pending,data.activity||liveActivity,data.sources,false);
             stream.replace(data.response_text||'The server returned an empty response.');
           }
         });
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(apiKeyInput.value.trim()!==token){stream.cancel();return}
         await stream.finish();
-        pending.responseVersions=normalizeResponseVersions(null,terminalData.response_text);
+        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[]}];
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
         if(activeChatIncognito&&!terminalData.blocked){
@@ -2682,12 +2836,13 @@
           pending.classList.remove('is-pending');
           const body=pending.querySelector('.chat-text');
           if(receivedText){
-            pending.responseVersions=normalizeResponseVersions(null,receivedText);
+            pending.responseVersions=[{content:receivedText,model_id:request.manual_model_id||'',activity:liveActivity}];
             pending.responseVersionIndex=0;
             renderResponseVersion(pending,0);
             pending.classList.add('is-complete');
           }else{
             body.replaceChildren();
+            renderWebActivity(pending,liveActivity,[],false);
           }
           const note=document.createElement('p');
           note.className='stopped-note';

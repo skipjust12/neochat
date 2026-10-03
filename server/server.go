@@ -292,6 +292,10 @@ type chatRequest struct {
 	// for NeoChat"), sent as a system message after the persona prompt.
 	Instructions string `json:"instructions,omitempty"`
 
+	// WebSearch is the composer's Web search toggle: "auto", "on" or
+	// "off" (see webToolsFor). Empty means off.
+	WebSearch string `json:"web_search,omitempty"`
+
 	// Attachments are ids returned by POST /files. Images and PDF/DOCX
 	// files go to the model as native parts, text files are inlined. With
 	// attachments, Message may be empty.
@@ -337,6 +341,11 @@ type chatResponse struct {
 	ActualCostUSD    float64 `json:"actual_cost_usd"`
 	ResponseText     string  `json:"response_text"`
 	MessageID        int64   `json:"message_id,omitempty"`
+
+	// Activity and Sources describe what the model did on the web for this
+	// answer (searches, opened pages) and which pages it cited.
+	Activity []conversation.ToolActivity `json:"activity,omitempty"`
+	Sources  []conversation.WebLink      `json:"sources,omitempty"`
 
 	// Blocked is true when Layer 1 moderation flagged the request before
 	// any generation happened -- ResponseText is then tosViolationMessage,
@@ -957,6 +966,7 @@ type regenerateRequest struct {
 
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	Instructions    string `json:"instructions,omitempty"`
+	WebSearch       string `json:"web_search,omitempty"`
 }
 
 func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
@@ -1008,6 +1018,7 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		ProjectID:           input.ProjectID,
 		ReasoningEffort:     input.ReasoningEffort,
 		Instructions:        input.Instructions,
+		WebSearch:           input.WebSearch,
 		providerKey:         strings.TrimSpace(r.Header.Get(providerKeyHeader)),
 		regenerateMessageID: target.ID, regenerationHistoryDrop: 2,
 	}
@@ -1272,6 +1283,9 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 	if instructions := strings.TrimSpace(req.Instructions); instructions != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: "The user's custom instructions (from their settings) -- follow them unless they conflict with the rules above:\n" + instructions})
 	}
+	if req.WebSearch == webSearchOn {
+		messages = append(messages, provider.Message{Role: "system", Content: webSearchInstruction})
+	}
 	if project.ID != "" && project.Description != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: "Project " + project.Name + " instructions:\n" + project.Description})
 	}
@@ -1452,9 +1466,10 @@ func directGenerate(ctx context.Context, gen provider.Client, apiModelID string,
 
 // streamingGenerate builds the generateCaller handleStream uses: it
 // streams through gen's provider.StreamingClient, invoking onDelta for
-// every text chunk as it arrives, and returns the stream's final
-// GenerateResult once the vendor signals it's done.
-func streamingGenerate(onDelta func(delta string)) generateCaller {
+// every text chunk and onTool for every web step as they arrive, and
+// returns the stream's final GenerateResult once the vendor signals it's
+// done. onTool may be nil.
+func streamingGenerate(onDelta func(delta string), onTool func(provider.ToolEvent)) generateCaller {
 	return func(ctx context.Context, gen provider.Client, apiModelID string, messages []provider.Message) (provider.GenerateResult, error) {
 		streamingClient, ok := gen.(provider.StreamingClient)
 		if !ok {
@@ -1474,6 +1489,9 @@ func streamingGenerate(onDelta func(delta string)) generateCaller {
 			if chunk.Delta != "" {
 				partial.WriteString(chunk.Delta)
 				onDelta(chunk.Delta)
+			}
+			if chunk.Tool != nil && onTool != nil {
+				onTool(*chunk.Tool)
 			}
 			if chunk.Done {
 				return chunk.Final, nil
@@ -1525,9 +1543,9 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 		if err != nil {
 			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, err
 		}
-		callCtx := ctx
+		callCtx := provider.WithWebTools(ctx, webToolsFor(model, req.WebSearch))
 		if r, ok := reasoningFor(model, req.ReasoningEffort); ok {
-			callCtx = provider.WithReasoning(ctx, r)
+			callCtx = provider.WithReasoning(callCtx, r)
 		}
 		genResult, err := s.billedCall(callCtx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), messages, call)
 		if err == nil {
@@ -1558,7 +1576,8 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	now := time.Now()
-	regenerated, err := s.persistTurn(ctx, req, prepared, model, genResult.Text, now)
+	activity, sources := buildActivity(genResult.ToolEvents), webLinks(genResult.Citations)
+	regenerated, err := s.persistTurn(ctx, req, prepared, model, genResult.Text, activity, sources, now)
 	if err != nil {
 		return chatResponse{}, err
 	}
@@ -1583,6 +1602,8 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		EstimatedCostUSD: result.EstimatedCostUSD,
 		ActualCostUSD:    actualCost,
 		ResponseText:     genResult.Text,
+		Activity:         activity,
+		Sources:          sources,
 	}
 	if req.regenerateMessageID > 0 {
 		response.MessageID = regenerated.ID
@@ -1594,7 +1615,8 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 // version when regenerating, otherwise the user message plus the reply.
 // Incognito turns are never stored. ctx must already be detached from the
 // request (finalize and persistStopped both pass a WithoutCancel context).
-func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, text string, now time.Time) (conversation.Message, error) {
+func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, text string, activity []conversation.ToolActivity, sources []conversation.WebLink, now time.Time) (conversation.Message, error) {
+	version := conversation.ResponseVersion{Content: text, ModelID: model.ID, CreatedAt: now, Activity: activity, Sources: sources}
 	var regenerated conversation.Message
 	if req.Incognito {
 		// Incognito turns intentionally never reach Conversations. Usage and
@@ -1602,7 +1624,7 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 		return regenerated, nil
 	} else if req.regenerateMessageID > 0 {
 		var err error
-		regenerated, err = s.Conversations.AddResponseVersion(ctx, req.UserID, prepared.conversationID, req.regenerateMessageID, conversation.ResponseVersion{Content: text, ModelID: model.ID, CreatedAt: now})
+		regenerated, err = s.Conversations.AddResponseVersion(ctx, req.UserID, prepared.conversationID, req.regenerateMessageID, version)
 		if err != nil {
 			return regenerated, fmt.Errorf("persist regenerated response: %w", err)
 		}
@@ -1619,7 +1641,7 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 				log.Printf("server: claim attachments for conversation_id=%s: %v", prepared.conversationID, err)
 			}
 		}
-		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: text, ModelID: model.ID, CreatedAt: now}); err != nil {
+		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: text, ModelID: model.ID, CreatedAt: now, Versions: []conversation.ResponseVersion{version}}); err != nil {
 			log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
 		}
 	}
@@ -1646,7 +1668,7 @@ func (s *Server) persistStopped(ctx context.Context, req chatRequest, prepared p
 	}
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	msg, err := s.persistTurn(persistCtx, req, prepared, model, partial, time.Now())
+	msg, err := s.persistTurn(persistCtx, req, prepared, model, partial, nil, nil, time.Now())
 	if err != nil {
 		log.Printf("server: persist stopped response for conversation_id=%s: %v", prepared.conversationID, err)
 		return conversation.Message{}, false
@@ -1884,9 +1906,15 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 	// record of how much the vendor actually generated and billed for --
 	// the failed call itself reports no usage. See recordAbortedSpend.
 	var streamed strings.Builder
+	var toolEvents []provider.ToolEvent
 	call := streamingGenerate(func(delta string) {
 		streamed.WriteString(delta)
 		send("delta", map[string]string{"text": delta})
+	}, func(event provider.ToolEvent) {
+		// The whole merged list each time: a result fills in an entry the
+		// client already shows, and resending a dozen entries is cheap.
+		toolEvents = append(toolEvents, event)
+		send("activity", map[string]any{"activity": buildActivity(toolEvents)})
 	})
 	onRoute := func(result router.RouteResult) {
 		send("meta", map[string]any{

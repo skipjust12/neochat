@@ -9,6 +9,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -1638,7 +1639,7 @@ func TestHandle_IdempotencyKeyReplaysWithoutRegenerating(t *testing.T) {
 		t.Fatalf("retried attempt: unexpected error: %v", err)
 	}
 
-	if second != first {
+	if !reflect.DeepEqual(second, first) {
 		t.Errorf("retried response = %+v, want identical to first attempt %+v", second, first)
 	}
 	if len(genClient.Requests) != 1 {
@@ -1790,7 +1791,7 @@ func TestHandleStream_IdempotencyKeyReplaysWithoutRegenerating(t *testing.T) {
 			firstDone = ev.payload.(chatResponse)
 		}
 	}
-	if second[0].payload.(chatResponse) != firstDone {
+	if !reflect.DeepEqual(second[0].payload.(chatResponse), firstDone) {
 		t.Errorf("replayed done payload = %+v, want identical to first attempt's %+v", second[0].payload, firstDone)
 	}
 }

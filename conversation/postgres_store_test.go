@@ -242,3 +242,34 @@ func TestPostgresStore_AddResponseVersion(t *testing.T) {
 		t.Fatalf("updated message = %+v", updated)
 	}
 }
+
+func TestPostgresStore_WebActivityRoundTrip(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_summaries")
+	store := NewPostgresStore(pgDB)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	version := ResponseVersion{
+		Content: "answer", ModelID: "m1", CreatedAt: now,
+		Activity: []ToolActivity{{Tool: "web_search", Query: "q", Results: []WebLink{{Title: "A", URL: "https://a.example", Snippet: "s"}}}},
+		Sources:  []WebLink{{Title: "A", URL: "https://a.example"}},
+	}
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "q", CreatedAt: now}))
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: "answer", ModelID: "m1", CreatedAt: now, Versions: []ResponseVersion{version}}))
+	history, err := store.History(ctx, "u1", "c1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := history[1].Versions
+	if len(got) != 1 || len(got[0].Activity) != 1 || got[0].Activity[0].Results[0].URL != "https://a.example" || len(got[0].Sources) != 1 {
+		t.Fatalf("stored versions = %+v", got)
+	}
+	updated, err := store.AddResponseVersion(ctx, "u1", "c1", history[1].ID, ResponseVersion{Content: "again", CreatedAt: now, Activity: []ToolActivity{{Tool: "web_fetch", URL: "https://b.example"}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(updated.Versions) != 2 || updated.Versions[0].Activity[0].Query != "q" || updated.Versions[1].Activity[0].URL != "https://b.example" {
+		t.Fatalf("versions after regenerate = %+v", updated.Versions)
+	}
+}

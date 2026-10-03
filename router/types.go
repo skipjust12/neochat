@@ -80,6 +80,11 @@ type Model struct {
 	// server checks attachments against it before calling the model.
 	InputModalities []string `json:"input_modalities,omitempty"`
 
+	// ToolCalling says the vendor accepts tools for this model, which is
+	// what Polza's server-side web search/fetch loop runs on. Models
+	// without it can only get a search done before they run.
+	ToolCalling bool `json:"tool_calling,omitempty"`
+
 	// ManualOnly keeps a model out of automatic routing (applyHardFilters)
 	// while still letting Manual mode select it directly -- used for
 	// models the router's task scores were never calibrated against.

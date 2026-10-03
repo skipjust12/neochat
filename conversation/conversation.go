@@ -62,6 +62,30 @@ type ResponseVersion struct {
 	Content   string    `json:"content"`
 	ModelID   string    `json:"model_id,omitempty"`
 	CreatedAt time.Time `json:"created_at"`
+
+	// Activity is what the model did on the web while writing this
+	// version (searches with their results, pages it opened); Sources are
+	// the pages it cited. Both live inside the versions JSON column.
+	Activity []ToolActivity `json:"activity,omitempty"`
+	Sources  []WebLink      `json:"sources,omitempty"`
+}
+
+// ToolActivity is one web step: a search ("web_search", with the query and
+// what came back) or a page the model opened ("web_fetch").
+type ToolActivity struct {
+	Tool    string    `json:"tool"`
+	Query   string    `json:"query,omitempty"`
+	URL     string    `json:"url,omitempty"`
+	Title   string    `json:"title,omitempty"`
+	Results []WebLink `json:"results,omitempty"`
+	Error   string    `json:"error,omitempty"`
+}
+
+// WebLink is a search hit or a cited page.
+type WebLink struct {
+	Title   string `json:"title,omitempty"`
+	URL     string `json:"url"`
+	Snippet string `json:"snippet,omitempty"`
 }
 
 // Overview is the compact representation used by conversation lists.

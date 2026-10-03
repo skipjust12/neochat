@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -44,6 +45,11 @@ type PolzaClient struct {
 	// RequestTimeout bounds one non-streaming Generate call end to end.
 	// Zero uses defaultRequestTimeout.
 	RequestTimeout time.Duration
+
+	// DebugToolEvents logs every raw server-tool event and tool_call delta
+	// (truncated). Polza doesn't document the event shape, so this is how to
+	// see what actually arrives when the web-activity list looks wrong.
+	DebugToolEvents bool
 
 	// StreamTimeout bounds one GenerateStream call end to end -- from the
 	// request going out to the final chunk arriving, not per chunk. It
@@ -173,15 +179,32 @@ type polzaChatRequest struct {
 	// carrying real token usage -- without it a streamed GenerateResult
 	// would have no token counts to bill against.
 	StreamOptions *polzaStreamOptions `json:"stream_options,omitempty"`
+
+	// Web access (see WebTools): Polza server tools the model may call,
+	// the cap on how many tool calls one answer may make, or a search Polza
+	// runs before the model for models without tool calling.
+	Tools            []polzaServerTool `json:"tools,omitempty"`
+	MaxToolCalls     int               `json:"max_tool_calls,omitempty"`
+	WebSearchOptions *struct{}         `json:"web_search_options,omitempty"`
+}
+
+type polzaServerTool struct {
+	Type       string         `json:"type"`
+	Parameters map[string]any `json:"parameters,omitempty"`
 }
 
 type polzaStreamOptions struct {
-	IncludeUsage bool `json:"include_usage"`
+	IncludeUsage            bool `json:"include_usage"`
+	IncludeServerToolEvents bool `json:"include_server_tool_events,omitempty"`
 }
 
 type polzaUsage struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
+	ServerToolUse    *struct {
+		WebSearchRequests int `json:"web_search_requests"`
+		WebFetchRequests  int `json:"web_fetch_requests"`
+	} `json:"server_tool_use"`
 }
 
 type polzaError struct {
@@ -192,7 +215,8 @@ type polzaError struct {
 type polzaChatResponse struct {
 	Choices []struct {
 		Message struct {
-			Content string `json:"content"`
+			Content     string          `json:"content"`
+			Annotations json.RawMessage `json:"annotations"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage polzaUsage  `json:"usage"`
@@ -205,17 +229,45 @@ type polzaChatResponse struct {
 type polzaStreamChunk struct {
 	Choices []struct {
 		Delta struct {
-			Content string `json:"content"`
+			Content     string          `json:"content"`
+			Annotations json.RawMessage `json:"annotations"`
+			ToolCalls   []struct {
+				Index    int    `json:"index"`
+				ID       string `json:"id"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
 		} `json:"delta"`
+		Message *struct {
+			Annotations json.RawMessage `json:"annotations"`
+		} `json:"message"`
 	} `json:"choices"`
 	Usage *polzaUsage `json:"usage"`
 	Error *polzaError `json:"error"`
+	// Polza stores server-tool loop events here when
+	// include_server_tool_events is set; see parseServerToolEvents.
+	Polza json.RawMessage `json:"polza"`
 }
 
 func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messages []Message, stream bool) polzaChatRequest {
 	req := polzaChatRequest{Model: apiModelID, MaxTokens: outputLimit(ctx, c.MaxTokens), Stream: stream}
 	if stream {
 		req.StreamOptions = &polzaStreamOptions{IncludeUsage: true}
+	}
+	if web := WebToolsFromContext(ctx); web.Tools {
+		req.Tools = []polzaServerTool{
+			{Type: "polza:web_search", Parameters: map[string]any{"max_results": WebSearchMaxResults, "max_uses": WebSearchMaxUses}},
+			{Type: "polza:web_fetch", Parameters: map[string]any{"max_uses": WebFetchMaxUses, "max_characters": WebFetchMaxCharacters}},
+			{Type: "polza:datetime"},
+		}
+		req.MaxToolCalls = WebMaxToolCalls
+		if req.StreamOptions != nil {
+			req.StreamOptions.IncludeServerToolEvents = true
+		}
+	} else if web.SearchFirst {
+		req.WebSearchOptions = &struct{}{}
 	}
 	if r, ok := reasoningFromContext(ctx); ok {
 		if r.Adaptive {
@@ -301,11 +353,16 @@ func (c *PolzaClient) Generate(ctx context.Context, apiModelID string, messages 
 		return GenerateResult{}, fmt.Errorf("provider: polza response has no choices (status %d): %s", httpResp.StatusCode, respBody)
 	}
 
-	return GenerateResult{
+	result := GenerateResult{
 		Text:         resp.Choices[0].Message.Content,
 		InputTokens:  resp.Usage.PromptTokens,
 		OutputTokens: resp.Usage.CompletionTokens,
-	}, nil
+		Citations:    parseCitations(resp.Choices[0].Message.Annotations),
+	}
+	if use := resp.Usage.ServerToolUse; use != nil {
+		result.WebSearches, result.WebFetches = use.WebSearchRequests, use.WebFetchRequests
+	}
+	return result, nil
 }
 
 // GenerateStream is Generate's streaming counterpart: same request, but
@@ -377,6 +434,12 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 
 		var text strings.Builder
 		var inputTokens, outputTokens int
+		var final GenerateResult
+		toolCalls := map[int]*streamedToolCall{}
+		emitTool := func(event ToolEvent) bool {
+			final.ToolEvents = append(final.ToolEvents, event)
+			return send(StreamChunk{Tool: &event})
+		}
 
 		scanner := bufio.NewScanner(httpResp.Body)
 		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
@@ -403,6 +466,41 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 				send(StreamChunk{Err: fmt.Errorf("provider: polza stream error (code=%v): %s", chunk.Error.Code, chunk.Error.Message)})
 				return
 			}
+			if len(chunk.Polza) > 0 {
+				if c.DebugToolEvents {
+					log.Printf("provider: polza server-tool event: %s", clip(string(chunk.Polza), 2000))
+				}
+				for _, event := range parseServerToolEvents(chunk.Polza) {
+					if !emitTool(event) {
+						return
+					}
+				}
+			}
+			if len(chunk.Choices) > 0 {
+				choice := chunk.Choices[0]
+				for _, call := range choice.Delta.ToolCalls {
+					if c.DebugToolEvents {
+						log.Printf("provider: polza tool_call delta: index=%d id=%s name=%s args=%s", call.Index, call.ID, call.Function.Name, clip(call.Function.Arguments, 500))
+					}
+					acc := toolCalls[call.Index]
+					if acc == nil {
+						acc = &streamedToolCall{}
+						toolCalls[call.Index] = acc
+					}
+					if call.ID != "" {
+						acc.id = call.ID
+					}
+					acc.name += call.Function.Name
+					acc.arguments += call.Function.Arguments
+					if event, ok := acc.event(); ok && !emitTool(event) {
+						return
+					}
+				}
+				final.Citations = appendCitations(final.Citations, parseCitations(choice.Delta.Annotations))
+				if choice.Message != nil {
+					final.Citations = appendCitations(final.Citations, parseCitations(choice.Message.Annotations))
+				}
+			}
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 				delta := chunk.Choices[0].Delta.Content
 				text.WriteString(delta)
@@ -413,6 +511,9 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 			if chunk.Usage != nil {
 				inputTokens = chunk.Usage.PromptTokens
 				outputTokens = chunk.Usage.CompletionTokens
+				if use := chunk.Usage.ServerToolUse; use != nil {
+					final.WebSearches, final.WebFetches = use.WebSearchRequests, use.WebFetchRequests
+				}
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -420,11 +521,8 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 			return
 		}
 
-		send(StreamChunk{Done: true, Final: GenerateResult{
-			Text:         text.String(),
-			InputTokens:  inputTokens,
-			OutputTokens: outputTokens,
-		}})
+		final.Text, final.InputTokens, final.OutputTokens = text.String(), inputTokens, outputTokens
+		send(StreamChunk{Done: true, Final: final})
 	}()
 
 	return ch, nil
