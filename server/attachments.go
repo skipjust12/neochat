@@ -74,9 +74,14 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request, identi
 	}
 	name = attachment.SanitizeName(name)
 	kind, mimeType, err := attachment.Classify(name, data)
+	if err == nil && kind == attachment.KindImage {
+		// Stored at the size models actually use; see NormalizeImage.
+		data, mimeType, err = attachment.NormalizeImage(data, mimeType)
+		name = attachment.RenameForMIME(name, mimeType)
+	}
 	if err != nil {
 		status := http.StatusUnsupportedMediaType
-		if errors.Is(err, attachment.ErrTooLarge) {
+		if errors.Is(err, attachment.ErrTooLarge) || errors.Is(err, attachment.ErrImageDimensions) {
 			status = http.StatusRequestEntityTooLarge
 		}
 		http.Error(w, err.Error(), status)
@@ -178,7 +183,10 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request, iden
 	w.Header().Set("Content-Type", contentType)
 	w.Header().Set("Content-Disposition", mime.FormatMediaType(disposition, map[string]string{"filename": file.Name}))
 	w.Header().Set("Content-Security-Policy", "default-src 'none'; sandbox")
-	w.Header().Set("Cache-Control", "private, max-age=86400")
+	// No browser caching (recovered already sends no-store): a file must
+	// stop being reachable the moment its chat is deleted. The page keeps
+	// its own in-memory copy for thumbnails, so this costs one fetch per
+	// file per page load.
 	_, _ = w.Write(file.Data)
 }
 
@@ -376,4 +384,33 @@ func withAttachmentNotes(messages []conversation.Message) []conversation.Message
 		out[i].Content = strings.TrimSpace(m.Content + "\n[Attached: " + strings.Join(names, ", ") + "]")
 	}
 	return out
+}
+
+// RunAttachmentSweeper deletes, for all users, files that were uploaded but
+// never sent and files left behind by deleted chats -- once shortly after
+// start and then every interval, until ctx is done. Upload-time pruning
+// only covers the uploading user, so without this a user who never uploads
+// again would keep their abandoned files forever.
+func (s *Server) RunAttachmentSweeper(ctx context.Context, interval time.Duration) {
+	if s.Attachments == nil {
+		return
+	}
+	timer := time.NewTimer(time.Minute)
+	defer timer.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+		sweepCtx, cancel := context.WithTimeout(ctx, 2*time.Minute)
+		deleted, err := s.Attachments.Sweep(sweepCtx, time.Now().Add(-attachment.UnclaimedTTL))
+		cancel()
+		if err != nil {
+			log.Printf("server: attachment sweep: %v", err)
+		} else if deleted > 0 {
+			log.Printf("server: attachment sweep deleted %d files", deleted)
+		}
+		timer.Reset(interval)
+	}
 }

@@ -3101,8 +3101,8 @@
     // instant: the chat request only carries the ids the server returned.
     const MAX_FILES=10;
     const MAX_FILE_BYTES=20*1024*1024;
-    const MAX_IMAGE_BYTES=5*1024*1024;
-    const IMAGE_MAX_SIDE=2048;
+    const IMAGE_MAX_SIDE=1568;
+    const IMAGE_QUALITY=0.82;
     const items=[];
     const fileIcon='<svg class="lucide lucide-file-text" data-lucide-icon="file-text" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M10 9H8" /><path d="M16 13H8" /><path d="M16 17H8" /></svg>';
     const removeIcon='<svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg>';
@@ -3116,32 +3116,36 @@
       return new Promise(function(resolve){canvas.toBlob(resolve,type,quality)});
     }
 
-    // Big photos are shrunk before upload: vendors downscale to ~1.5k px
-    // anyway, and Anthropic rejects images over 5 MB. GIFs and images that
-    // are already small go up untouched.
+    // Every image is re-encoded before upload: at most 1568 px on the long
+    // side (what Claude and GPT actually look at; anything bigger they
+    // downscale themselves) as WebP 0.82, which keeps transparency and
+    // sharp text on screenshots. Browsers that can't encode WebP get JPEG.
+    // A phone photo goes from 3-5 MB to ~150-300 KB. The server enforces
+    // the same limits for uploads that skip this.
     async function prepareImage(file){
-      if(file.type==='image/gif'||typeof createImageBitmap!=='function')return file;
+      if(typeof createImageBitmap!=='function')return file;
       let bitmap;
       try{bitmap=await createImageBitmap(file)}catch(error){return file}
       const scale=Math.min(1,IMAGE_MAX_SIDE/Math.max(bitmap.width,bitmap.height));
-      if(scale===1&&file.size<=MAX_IMAGE_BYTES*0.9){bitmap.close();return file}
       const canvas=document.createElement('canvas');
       canvas.width=Math.max(1,Math.round(bitmap.width*scale));
       canvas.height=Math.max(1,Math.round(bitmap.height*scale));
       const context=canvas.getContext('2d');
+      context.imageSmoothingQuality='high';
       context.drawImage(bitmap,0,0,canvas.width,canvas.height);
-      let blob=file.type==='image/png'?await canvasBlob(canvas,'image/png'):null;
-      if(!blob||blob.size>MAX_IMAGE_BYTES*0.9){
+      bitmap.close();
+      let blob=await canvasBlob(canvas,'image/webp',IMAGE_QUALITY);
+      if(!blob||blob.type!=='image/webp'){
         // JPEG has no alpha: flatten onto white so transparent areas don't turn black.
         context.globalCompositeOperation='destination-over';
         context.fillStyle='#fff';
         context.fillRect(0,0,canvas.width,canvas.height);
-        blob=await canvasBlob(canvas,'image/jpeg',0.88);
+        blob=await canvasBlob(canvas,'image/jpeg',IMAGE_QUALITY);
       }
-      bitmap.close();
-      if(!blob)return file;
+      // A small, already well-compressed image can come out bigger.
+      if(!blob||(scale===1&&blob.size>=file.size))return file;
       const base=file.name.replace(/\.[^.]+$/,'')||'image';
-      return new File([blob],base+(blob.type==='image/png'?'.png':'.jpg'),{type:blob.type});
+      return new File([blob],base+(blob.type==='image/webp'?'.webp':'.jpg'),{type:blob.type});
     }
 
     function renderChip(item){
@@ -3189,7 +3193,7 @@
       try{
         if(item.image)file=await prepareImage(file);
         if(item.removed)return;
-        if(file.size>(item.image?MAX_IMAGE_BYTES:MAX_FILE_BYTES))throw new Error('file is too large');
+        if(file.size>MAX_FILE_BYTES)throw new Error('file is larger than 20 MB');
         const form=new FormData();
         form.append('file',file,file.name);
         const response=await fetch('/files',{method:'POST',headers:{'Authorization':'Bearer '+apiToken()},body:form,signal:item.controller.signal});
@@ -3211,7 +3215,7 @@
       if(!file)return;
       if(items.length>=MAX_FILES){notify('You can attach up to '+MAX_FILES+' files to one message.');return}
       const image=isImageFile(file);
-      if(!image&&file.size>MAX_FILE_BYTES){notify(file.name+' is larger than 20 MB.');return}
+      if(file.size>MAX_FILE_BYTES){notify(file.name+' is larger than 20 MB.');return}
       if(!apiToken()){notify('Sign in to attach files.');return}
       const item={name:file.name||'file',size:file.size,image:image,status:'uploading',id:'',kind:'',preview:image?URL.createObjectURL(file):'',controller:new AbortController()};
       items.push(item);

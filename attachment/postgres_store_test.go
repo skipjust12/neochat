@@ -58,3 +58,45 @@ func TestPostgresStoreLifecycle(t *testing.T) {
 		t.Fatal("conversation delete kept its file")
 	}
 }
+
+func TestPostgresStoreSweep(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "attachments", "conversation_messages")
+	s := NewPostgresStore(pgDB)
+	ctx := context.Background()
+	now := time.Now().UTC()
+
+	if _, err := pgDB.ExecContext(ctx, `
+		INSERT INTO conversation_messages (user_id, conversation_id, role, content, created_at)
+		VALUES ('u1', 'live', 'user', 'hi', now())`); err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range []File{
+		{ID: "fresh-unclaimed", UserID: "u1", CreatedAt: now},
+		{ID: "stale-unclaimed", UserID: "u2", CreatedAt: now.Add(-48 * time.Hour)},
+		{ID: "live-chat", UserID: "u1", ConversationID: "live", CreatedAt: now.Add(-48 * time.Hour)},
+		{ID: "deleted-chat", UserID: "u2", ConversationID: "gone", CreatedAt: now},
+	} {
+		f.Name, f.MIME, f.Kind, f.Size, f.Data = "a.txt", "text/plain", KindText, 1, []byte("x")
+		if err := s.Put(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	deleted, err := s.Sweep(ctx, now.Add(-UnclaimedTTL))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if deleted != 2 {
+		t.Fatalf("Sweep deleted %d, want 2", deleted)
+	}
+	for id, user := range map[string]string{"fresh-unclaimed": "u1", "live-chat": "u1"} {
+		if _, err := s.Get(ctx, user, id); err != nil {
+			t.Errorf("%s was swept: %v", id, err)
+		}
+	}
+	for id, user := range map[string]string{"stale-unclaimed": "u2", "deleted-chat": "u2"} {
+		if _, err := s.Get(ctx, user, id); !errors.Is(err, ErrNotFound) {
+			t.Errorf("%s survived the sweep", id)
+		}
+	}
+}

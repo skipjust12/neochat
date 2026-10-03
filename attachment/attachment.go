@@ -28,9 +28,10 @@ const (
 	KindText     = "text"
 )
 
-// Per-kind size ceilings. Images stay under the strictest vendor limit
-// (Anthropic: 5 MB per image); documents under the common inline-PDF
-// limits; text under what still fits a model's context comfortably.
+// Per-kind size ceilings. An uploaded image may be up to MaxUploadBytes,
+// but NormalizeImage stores it at most MaxImageBytes (the strictest vendor
+// limit, Anthropic's 5 MB per image); documents stay under the common
+// inline-PDF limits; text under what still fits a model's context.
 const (
 	MaxImageBytes    = 5 << 20
 	MaxDocumentBytes = 20 << 20
@@ -84,6 +85,11 @@ type Store interface {
 	// PruneUnclaimed deletes the user's unclaimed files created before cutoff.
 	PruneUnclaimed(ctx context.Context, userID string, cutoff time.Time) error
 	CountUnclaimed(ctx context.Context, userID string) (int, error)
+	// Sweep is the periodic, all-users cleanup: unclaimed files created
+	// before cutoff, and files whose conversation no longer exists (a
+	// failed write between storing a message and claiming its files).
+	// It returns how many files were deleted.
+	Sweep(ctx context.Context, cutoff time.Time) (int64, error)
 }
 
 // Classify decides what a file is from its bytes, not from the name or the
@@ -112,15 +118,14 @@ func Classify(name string, data []byte) (kind, mime string, err error) {
 	return kind, mime, nil
 }
 
-// MaxBytes is the size ceiling for kind.
+// MaxBytes is the upload size ceiling for kind. Images are re-encoded
+// after upload (NormalizeImage), so they may arrive larger than they are
+// stored.
 func MaxBytes(kind string) int {
-	switch kind {
-	case KindImage:
-		return MaxImageBytes
-	case KindText:
+	if kind == KindText {
 		return MaxTextBytes
 	}
-	return MaxDocumentBytes
+	return MaxUploadBytes
 }
 
 func isText(data []byte) bool {

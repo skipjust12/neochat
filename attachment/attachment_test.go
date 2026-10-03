@@ -48,7 +48,7 @@ func TestClassifyRejects(t *testing.T) {
 	if _, _, err := Classify("big.txt", big); !errors.Is(err, ErrTooLarge) {
 		t.Errorf("oversized text: err = %v, want ErrTooLarge", err)
 	}
-	bigImage := append(append([]byte(nil), pngBytes...), make([]byte, MaxImageBytes)...)
+	bigImage := append(append([]byte(nil), pngBytes...), make([]byte, MaxUploadBytes)...)
 	if _, _, err := Classify("big.png", bigImage); !errors.Is(err, ErrTooLarge) {
 		t.Errorf("oversized image: err = %v, want ErrTooLarge", err)
 	}
@@ -118,5 +118,24 @@ func TestInMemoryStoreScopingAndLifecycle(t *testing.T) {
 	}
 	if _, err := s.Get(ctx, "u1", "a"); !errors.Is(err, ErrNotFound) {
 		t.Fatal("deleting the conversation kept its file")
+	}
+}
+
+func TestInMemoryStoreSweep(t *testing.T) {
+	ctx := context.Background()
+	s := NewInMemoryStore()
+	old := time.Now().Add(-48 * time.Hour)
+	for _, f := range []File{
+		{ID: "a", UserID: "u1", CreatedAt: old},
+		{ID: "b", UserID: "u2", CreatedAt: old},
+		{ID: "c", UserID: "u2", CreatedAt: time.Now()},
+		{ID: "d", UserID: "u2", ConversationID: "chat", CreatedAt: old},
+	} {
+		if err := s.Put(ctx, f); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if n, err := s.Sweep(ctx, time.Now().Add(-UnclaimedTTL)); err != nil || n != 2 {
+		t.Fatalf("Sweep = %d, %v; want 2 stale unclaimed files across users", n, err)
 	}
 }

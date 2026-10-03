@@ -353,6 +353,10 @@ func main() {
 	stopCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
+	// Hourly cleanup of unsent uploads and files of deleted chats -- see
+	// server.RunAttachmentSweeper.
+	go srv.RunAttachmentSweeper(stopCtx, time.Hour)
+
 	select {
 	case err := <-serveErrs:
 		if err != nil && !errors.Is(err, http.ErrServerClosed) {

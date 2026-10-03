@@ -317,6 +317,11 @@ func (s *PostgresStore) Delete(ctx context.Context, userID, conversationID strin
 	if _, err := tx.ExecContext(ctx, `DELETE FROM conversation_metadata WHERE user_id = $1 AND conversation_id = $2`, userID, conversationID); err != nil {
 		return err
 	}
+	// Files sent in the chat (package attachment) go in the same
+	// transaction: either the chat and its files are gone, or neither is.
+	if _, err := tx.ExecContext(ctx, `DELETE FROM attachments WHERE user_id = $1 AND conversation_id = $2`, userID, conversationID); err != nil {
+		return err
+	}
 	return tx.Commit()
 }
 

@@ -189,3 +189,35 @@ func TestPostgresStore_AttachmentsRoundTrip(t *testing.T) {
 		t.Fatalf("HistoryPage attachments = %+v", page.Messages)
 	}
 }
+
+func TestPostgresStore_DeleteRemovesTheChatsFiles(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_summaries", "attachments")
+	store := NewPostgresStore(pgDB)
+	ctx := context.Background()
+
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "see file", CreatedAt: time.Now().UTC()}))
+	for _, row := range [][2]string{{"f1", "c1"}, {"f2", "c2"}, {"f3", ""}} {
+		if _, err := pgDB.ExecContext(ctx, `
+			INSERT INTO attachments (user_id, attachment_id, conversation_id, name, mime, kind, size, data, created_at)
+			VALUES ('u1', $1, $2, 'a.txt', 'text/plain', 'text', 1, 'x', now())`, row[0], row[1]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	must(t, store.Delete(ctx, "u1", "c1"))
+
+	var left []string
+	rows, err := pgDB.QueryContext(ctx, `SELECT attachment_id FROM attachments ORDER BY attachment_id`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var id string
+		must(t, rows.Scan(&id))
+		left = append(left, id)
+	}
+	if len(left) != 2 || left[0] != "f2" || left[1] != "f3" {
+		t.Fatalf("files left after deleting c1 = %v, want [f2 f3]", left)
+	}
+}

@@ -83,3 +83,18 @@ func (s *InMemoryStore) CountUnclaimed(_ context.Context, userID string) (int, e
 	}
 	return n, nil
 }
+
+// Sweep removes stale unclaimed files. InMemoryStore can't see
+// conversations, so orphaned claimed files are left to DeleteConversation.
+func (s *InMemoryStore) Sweep(_ context.Context, cutoff time.Time) (int64, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	var n int64
+	for key, f := range s.files {
+		if f.ConversationID == "" && f.CreatedAt.Before(cutoff) {
+			delete(s.files, key)
+			n++
+		}
+	}
+	return n, nil
+}

@@ -6,17 +6,30 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
+	"image"
+	"image/png"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"neochat/attachment"
 	"neochat/conversation"
 )
 
-var testPNG = append([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), make([]byte, 64)...)
+var testPNG = func() []byte {
+	img := image.NewNRGBA(image.Rect(0, 0, 8, 8))
+	for i := range img.Pix {
+		img.Pix[i] = 0xff
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		panic(err)
+	}
+	return buf.Bytes()
+}()
 
 func uploadVia(t *testing.T, mux http.Handler, token, name string, data []byte) (*httptest.ResponseRecorder, uploadResponse) {
 	t.Helper()
@@ -92,6 +105,9 @@ func TestUploadClassifiesAndScopesFiles(t *testing.T) {
 		return response
 	}
 	own := download(alice, image.ID)
+	if cache := own.Header().Get("Cache-Control"); cache != "no-store" {
+		t.Fatalf("Cache-Control = %q: a deleted chat's files must not live on in browser caches", cache)
+	}
 	if own.Code != http.StatusOK || own.Header().Get("Content-Type") != "image/png" || !strings.HasPrefix(own.Header().Get("Content-Disposition"), "inline") || !bytes.Equal(own.Body.Bytes(), testPNG) {
 		t.Fatalf("own download = %d %v", own.Code, own.Header())
 	}
@@ -279,5 +295,44 @@ func TestHistoryBudgetTurnsOldFilesIntoNotes(t *testing.T) {
 	msg := s.historyMessage(ctx, "u1", conversation.Message{Role: conversation.RoleUser, Content: "see this", Attachments: []conversation.Attachment{{ID: "big", Name: "scan.pdf", Size: 20 << 20}}}, &budget)
 	if len(msg.Parts) != 2 || msg.Parts[0].Type != "text" || !strings.Contains(msg.Parts[0].Text, "scan.pdf") {
 		t.Fatalf("over-budget history file = %+v, want a note", msg.Parts)
+	}
+}
+
+func TestUploadShrinksLargeImages(t *testing.T) {
+	s := newDirectServer(t, &polzaStandIn{reply: "ok"})
+	img := image.NewNRGBA(image.Rect(0, 0, 1800, 1200))
+	seed := uint32(7)
+	for i := 0; i < len(img.Pix); i += 4 {
+		seed = seed*1664525 + 1013904223
+		img.Pix[i], img.Pix[i+1], img.Pix[i+2], img.Pix[i+3] = uint8(seed>>8), uint8(seed>>16), uint8(seed>>24), 0xff
+	}
+	var buf bytes.Buffer
+	if err := png.Encode(&buf, img); err != nil {
+		t.Fatal(err)
+	}
+	response, uploaded := uploadVia(t, s.Mux(), issueTestKey(t, s, "u1"), "screen.png", buf.Bytes())
+	if response.Code != http.StatusCreated {
+		t.Fatalf("upload status = %d: %s", response.Code, response.Body.String())
+	}
+	if uploaded.Name != "screen.jpg" || uploaded.MIME != "image/jpeg" || uploaded.Size >= int64(buf.Len()) {
+		t.Fatalf("stored %+v from a %d-byte PNG", uploaded, buf.Len())
+	}
+	stored, _ := s.Attachments.Get(context.Background(), "u1", uploaded.ID)
+	config, _, err := image.DecodeConfig(bytes.NewReader(stored.Data))
+	if err != nil || config.Width != 1568 || config.Height != 1045 {
+		t.Fatalf("stored image is %dx%d (%v), want 1568x1045", config.Width, config.Height, err)
+	}
+}
+
+func TestAttachmentSweeperStopsWithContext(t *testing.T) {
+	s := newDirectServer(t, &polzaStandIn{reply: "ok"})
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { s.RunAttachmentSweeper(ctx, time.Hour); close(done) }()
+	cancel()
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Fatal("sweeper did not stop when its context was canceled")
 	}
 }

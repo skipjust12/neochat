@@ -73,3 +73,29 @@ func (s *PostgresStore) CountUnclaimed(ctx context.Context, userID string) (int,
 	`, userID).Scan(&n)
 	return n, err
 }
+
+func (s *PostgresStore) Sweep(ctx context.Context, cutoff time.Time) (int64, error) {
+	stale, err := s.db.ExecContext(ctx, `DELETE FROM attachments WHERE conversation_id = '' AND created_at < $1`, cutoff)
+	if err != nil {
+		return 0, err
+	}
+	// conversation_messages is the conversation package's table, but it is
+	// the only record of which chats exist; a claimed file whose chat has no
+	// messages left belongs to a deleted chat. No age condition: a file is
+	// only claimed after its message is stored, so a fresh claim always has
+	// messages behind it.
+	orphans, err := s.db.ExecContext(ctx, `
+		DELETE FROM attachments a
+		WHERE a.conversation_id <> ''
+		  AND NOT EXISTS (
+			SELECT 1 FROM conversation_messages m
+			WHERE m.user_id = a.user_id AND m.conversation_id = a.conversation_id
+		  )
+	`)
+	if err != nil {
+		return 0, err
+	}
+	n1, _ := stale.RowsAffected()
+	n2, _ := orphans.RowsAffected()
+	return n1 + n2, nil
+}
