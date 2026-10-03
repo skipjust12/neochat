@@ -51,7 +51,7 @@ func (s *PostgresStore) AddResponseVersion(ctx context.Context, userID, conversa
 	var message Message
 	var encoded []byte
 	err = tx.QueryRowContext(ctx, `
-		SELECT id, role, content, model_id, is_summary, created_at, versions, attachments
+		SELECT id, role, content, model_id, is_summary, created_at, versions
 		FROM conversation_messages
 		WHERE user_id = $1 AND conversation_id = $2 AND id = $3 AND role = $4
 		FOR UPDATE

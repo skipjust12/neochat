@@ -221,3 +221,24 @@ func TestPostgresStore_DeleteRemovesTheChatsFiles(t *testing.T) {
 		t.Fatalf("files left after deleting c1 = %v, want [f2 f3]", left)
 	}
 }
+
+func TestPostgresStore_AddResponseVersion(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_summaries")
+	store := NewPostgresStore(pgDB)
+	ctx := context.Background()
+
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "hi", CreatedAt: time.Now().UTC()}))
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: "first", ModelID: "m1", CreatedAt: time.Now().UTC()}))
+	history, err := store.History(ctx, "u1", "c1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated, err := store.AddResponseVersion(ctx, "u1", "c1", history[1].ID, ResponseVersion{Content: "second", ModelID: "m2", CreatedAt: time.Now().UTC()})
+	if err != nil {
+		t.Fatalf("AddResponseVersion: %v", err)
+	}
+	if updated.Content != "second" || len(updated.Versions) != 2 || updated.Versions[0].Content != "first" {
+		t.Fatalf("updated message = %+v", updated)
+	}
+}
