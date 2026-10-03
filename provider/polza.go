@@ -1,0 +1,397 @@
+package provider
+
+import (
+	"bufio"
+	"bytes"
+	"context"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"strings"
+	"time"
+)
+
+// PolzaClient calls Polza AI (polza.ai), an aggregator serving every
+// catalog vendor behind one OpenAI-compatible chat-completions endpoint
+// (https://polza.ai/api/v1/chat/completions). It replaced the earlier
+// OpenRouter client: same request/response shape, different base URL, and
+// the API key now normally comes from the user making the request (see
+// WithAPIKey) instead of one server-wide secret.
+//
+// Polza keys look like "pza_..." and are sent as "Authorization: Bearer
+// <key>". Prices are billed in rubles on Polza's side; configs/models.json
+// keeps USD figures converted from Polza's catalog for spend accounting.
+type PolzaClient struct {
+	// apiKey is an optional server-wide fallback, used only when the
+	// request context carries no per-user key (WithAPIKey). Empty means
+	// every call must bring its own key.
+	apiKey string
+	// BaseURL is the API root; NewPolzaClient sets PolzaBaseURL. Tests
+	// point it at a local stand-in.
+	BaseURL string
+
+	// MaxTokens, if > 0, is sent as every request's max_tokens -- a hard
+	// ceiling on how many output tokens a single Generate/GenerateStream
+	// call can produce, regardless of the model's own (often much larger,
+	// see configs/models.json's max_output_tokens) default ceiling. Zero
+	// sends no max_tokens at all -- see cmd/server/main.go for how a real
+	// deployment sets this.
+	MaxTokens int
+
+	// RequestTimeout bounds one non-streaming Generate call end to end.
+	// Zero uses defaultRequestTimeout.
+	RequestTimeout time.Duration
+
+	// StreamTimeout bounds one GenerateStream call end to end -- from the
+	// request going out to the final chunk arriving, not per chunk. It
+	// exists only to stop a wedged stream from holding a connection and a
+	// goroutine forever, so it is deliberately far more generous than
+	// RequestTimeout: a "max"-effort generation legitimately runs for
+	// minutes. Zero uses defaultStreamTimeout.
+	StreamTimeout time.Duration
+
+	httpClient *http.Client
+}
+
+// Timeouts are applied per call, through the request context, rather than
+// with http.Client.Timeout. Client.Timeout covers reading the response
+// body too, which for a streamed generation means the whole generation.
+// Connection-level protection (dial, TLS handshake, expect-continue) is
+// unaffected: those come from http.DefaultTransport, which a nil
+// Transport uses.
+const (
+	defaultRequestTimeout = 60 * time.Second
+	defaultStreamTimeout  = 10 * time.Minute
+)
+
+// PolzaBaseURL is Polza AI's OpenAI-compatible API root.
+const PolzaBaseURL = "https://polza.ai/api/v1"
+
+// ErrMissingAPIKey is returned when neither the request context nor the
+// client carries a Polza key -- the user has not added one in Settings.
+var ErrMissingAPIKey = errors.New("provider: no Polza AI API key configured")
+
+// NewPolzaClient builds a client against the real Polza API. fallbackKey
+// may be empty: per-user keys arrive through WithAPIKey.
+func NewPolzaClient(fallbackKey string) *PolzaClient {
+	return &PolzaClient{
+		apiKey:  fallbackKey,
+		BaseURL: PolzaBaseURL,
+		// No Client.Timeout on purpose -- see the constants above.
+		httpClient: &http.Client{},
+	}
+}
+
+func (c *PolzaClient) requestTimeout() time.Duration {
+	if c.RequestTimeout > 0 {
+		return c.RequestTimeout
+	}
+	return defaultRequestTimeout
+}
+
+func (c *PolzaClient) streamTimeout() time.Duration {
+	if c.StreamTimeout > 0 {
+		return c.StreamTimeout
+	}
+	return defaultStreamTimeout
+}
+
+func (c *PolzaClient) resolveKey(ctx context.Context) (string, error) {
+	if key := apiKeyFromContext(ctx); key != "" {
+		return key, nil
+	}
+	if c.apiKey != "" {
+		return c.apiKey, nil
+	}
+	return "", ErrMissingAPIKey
+}
+
+type polzaChatMessage struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
+// polzaReasoning is the body-level "reasoning" object. Polza ignores a
+// top-level reasoning_effort field silently, so this object is the only
+// form sent. Adaptive (Claude Opus 4.7 and newer) models take
+// type=adaptive + effort_level; everything else takes effort.
+type polzaReasoning struct {
+	Type        string `json:"type,omitempty"`
+	Effort      string `json:"effort,omitempty"`
+	EffortLevel string `json:"effort_level,omitempty"`
+}
+
+type polzaChatRequest struct {
+	Model     string             `json:"model"`
+	Messages  []polzaChatMessage `json:"messages"`
+	MaxTokens int                `json:"max_tokens,omitempty"`
+	Reasoning *polzaReasoning    `json:"reasoning,omitempty"`
+	Stream    bool               `json:"stream,omitempty"`
+	// StreamOptions.IncludeUsage asks for one extra chunk at the end
+	// carrying real token usage -- without it a streamed GenerateResult
+	// would have no token counts to bill against.
+	StreamOptions *polzaStreamOptions `json:"stream_options,omitempty"`
+}
+
+type polzaStreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
+}
+
+type polzaUsage struct {
+	PromptTokens     int `json:"prompt_tokens"`
+	CompletionTokens int `json:"completion_tokens"`
+}
+
+type polzaError struct {
+	Message string `json:"message"`
+	Code    any    `json:"code"` // string ("UNAUTHORIZED") or number depending on the failure
+}
+
+type polzaChatResponse struct {
+	Choices []struct {
+		Message polzaChatMessage `json:"message"`
+	} `json:"choices"`
+	Usage polzaUsage  `json:"usage"`
+	Error *polzaError `json:"error"`
+}
+
+// polzaStreamChunk is one `data: {...}` line of the SSE stream. Reasoning
+// models also send delta.reasoning chunks; those are thinking text, not
+// the answer, and are deliberately not forwarded.
+type polzaStreamChunk struct {
+	Choices []struct {
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+	} `json:"choices"`
+	Usage *polzaUsage `json:"usage"`
+	Error *polzaError `json:"error"`
+}
+
+func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messages []Message, stream bool) polzaChatRequest {
+	req := polzaChatRequest{Model: apiModelID, MaxTokens: outputLimit(ctx, c.MaxTokens), Stream: stream}
+	if stream {
+		req.StreamOptions = &polzaStreamOptions{IncludeUsage: true}
+	}
+	if r, ok := reasoningFromContext(ctx); ok {
+		if r.Adaptive {
+			req.Reasoning = &polzaReasoning{Type: "adaptive", EffortLevel: r.Effort}
+		} else {
+			req.Reasoning = &polzaReasoning{Effort: r.Effort}
+		}
+	}
+	for _, m := range messages {
+		req.Messages = append(req.Messages, polzaChatMessage{Role: m.Role, Content: m.Content})
+	}
+	return req
+}
+
+func (c *PolzaClient) newHTTPRequest(ctx context.Context, key string, body []byte, stream bool) (*http.Request, error) {
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.BaseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("Authorization", "Bearer "+key)
+	if stream {
+		httpReq.Header.Set("Accept", "text/event-stream")
+	}
+	return httpReq, nil
+}
+
+func (c *PolzaClient) Generate(ctx context.Context, apiModelID string, messages []Message) (GenerateResult, error) {
+	key, err := c.resolveKey(ctx)
+	if err != nil {
+		return GenerateResult{}, err
+	}
+	body, err := json.Marshal(c.buildRequest(ctx, apiModelID, messages, false))
+	if err != nil {
+		return GenerateResult{}, fmt.Errorf("provider: marshal polza request: %w", err)
+	}
+
+	// Deadline on the caller's context rather than on the shared
+	// http.Client, so it bounds this one call without also bounding
+	// streamed ones (see defaultRequestTimeout).
+	reqCtx, cancel := context.WithTimeout(ctx, c.requestTimeout())
+	defer cancel()
+
+	httpReq, err := c.newHTTPRequest(reqCtx, key, body, false)
+	if err != nil {
+		return GenerateResult{}, fmt.Errorf("provider: build polza request: %w", err)
+	}
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return GenerateResult{}, fmt.Errorf("provider: polza request failed: %w", err)
+	}
+	defer httpResp.Body.Close()
+
+	respBody, err := io.ReadAll(httpResp.Body)
+	if err != nil {
+		return GenerateResult{}, fmt.Errorf("provider: read polza response: %w", err)
+	}
+
+	// A non-2xx status becomes a *StatusError before anything else is
+	// inspected, so RetryClient can tell a rate limit (worth another
+	// attempt) from a bad request (never worth one) without parsing error
+	// text.
+	if httpResp.StatusCode != http.StatusOK {
+		return GenerateResult{}, &StatusError{
+			StatusCode: httpResp.StatusCode,
+			RetryAfter: parseRetryAfter(httpResp.Header),
+			Body:       string(respBody),
+		}
+	}
+
+	var resp polzaChatResponse
+	if err := json.Unmarshal(respBody, &resp); err != nil {
+		return GenerateResult{}, fmt.Errorf("provider: parse polza response (status %d): %w, body=%s", httpResp.StatusCode, err, respBody)
+	}
+	if resp.Error != nil {
+		return GenerateResult{}, fmt.Errorf("provider: polza error (status %d, code=%v): %s", httpResp.StatusCode, resp.Error.Code, resp.Error.Message)
+	}
+	if len(resp.Choices) == 0 {
+		return GenerateResult{}, fmt.Errorf("provider: polza response has no choices (status %d): %s", httpResp.StatusCode, respBody)
+	}
+
+	return GenerateResult{
+		Text:         resp.Choices[0].Message.Content,
+		InputTokens:  resp.Usage.PromptTokens,
+		OutputTokens: resp.Usage.CompletionTokens,
+	}, nil
+}
+
+// GenerateStream is Generate's streaming counterpart: same request, but
+// with stream:true, parsing the vendor's `data: {...}` SSE lines as they
+// arrive. The returned channel is fed by a background goroutine and closed
+// once the stream ends -- see StreamChunk's doc comment for the contract.
+// Canceling ctx (the user pressing Stop) aborts the upstream HTTP request,
+// which is what stops generation on Polza's side.
+func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, messages []Message) (<-chan StreamChunk, error) {
+	key, err := c.resolveKey(ctx)
+	if err != nil {
+		return nil, err
+	}
+	body, err := json.Marshal(c.buildRequest(ctx, apiModelID, messages, true))
+	if err != nil {
+		return nil, fmt.Errorf("provider: marshal polza stream request: %w", err)
+	}
+
+	// streamCtx outlives this function -- the reader goroutine below owns
+	// it -- so cancel is deferred inside that goroutine, not here. Every
+	// early return between here and launching it has to cancel explicitly.
+	streamCtx, cancel := context.WithTimeout(ctx, c.streamTimeout())
+
+	httpReq, err := c.newHTTPRequest(streamCtx, key, body, true)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("provider: build polza stream request: %w", err)
+	}
+	httpResp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		cancel()
+		return nil, fmt.Errorf("provider: polza stream request failed: %w", err)
+	}
+	if httpResp.StatusCode != http.StatusOK {
+		defer httpResp.Body.Close()
+		respBody, _ := io.ReadAll(httpResp.Body)
+		retryAfter := parseRetryAfter(httpResp.Header)
+		cancel()
+		// Returned before the stream channel exists, which is exactly the
+		// window RetryClient is allowed to retry a stream in.
+		return nil, &StatusError{StatusCode: httpResp.StatusCode, RetryAfter: retryAfter, Body: string(respBody)}
+	}
+
+	ch := make(chan StreamChunk)
+	go func() {
+		// Registered first so it runs last: the stream's context stays
+		// alive for as long as the goroutine reading it does.
+		defer cancel()
+		defer close(ch)
+		defer httpResp.Body.Close()
+
+		send := func(chunk StreamChunk) bool {
+			select {
+			case ch <- chunk:
+				return true
+			case <-streamCtx.Done():
+				return false
+			}
+		}
+
+		// A panic here would otherwise escape this goroutine and take the
+		// whole server process down, since it belongs to no request's
+		// handler. Report it to the consumer as an ordinary stream error.
+		defer func() {
+			if rec := recover(); rec != nil {
+				send(StreamChunk{Err: fmt.Errorf("provider: panic in polza stream reader: %v", rec)})
+			}
+		}()
+
+		var text strings.Builder
+		var inputTokens, outputTokens int
+
+		scanner := bufio.NewScanner(httpResp.Body)
+		scanner.Buffer(make([]byte, 0, 64*1024), 1024*1024)
+		for scanner.Scan() {
+			line := scanner.Text()
+			data, ok := strings.CutPrefix(line, "data:")
+			if !ok {
+				continue
+			}
+			data = strings.TrimSpace(data)
+			if data == "[DONE]" {
+				break
+			}
+			if data == "" {
+				continue
+			}
+
+			var chunk polzaStreamChunk
+			if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+				send(StreamChunk{Err: fmt.Errorf("provider: parse polza stream chunk: %w (data=%s)", err, data)})
+				return
+			}
+			if chunk.Error != nil {
+				send(StreamChunk{Err: fmt.Errorf("provider: polza stream error (code=%v): %s", chunk.Error.Code, chunk.Error.Message)})
+				return
+			}
+			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
+				delta := chunk.Choices[0].Delta.Content
+				text.WriteString(delta)
+				if !send(StreamChunk{Delta: delta}) {
+					return
+				}
+			}
+			if chunk.Usage != nil {
+				inputTokens = chunk.Usage.PromptTokens
+				outputTokens = chunk.Usage.CompletionTokens
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			send(StreamChunk{Err: fmt.Errorf("provider: read polza stream: %w", err)})
+			return
+		}
+
+		send(StreamChunk{Done: true, Final: GenerateResult{
+			Text:         text.String(),
+			InputTokens:  inputTokens,
+			OutputTokens: outputTokens,
+		}})
+	}()
+
+	return ch, nil
+}
+
+// VendorMessage extracts the human-readable message from a Polza error
+// body ({"error":{"message":...}}), or "" if the body isn't one.
+func VendorMessage(body string) string {
+	var parsed struct {
+		Error *polzaError `json:"error"`
+	}
+	if json.Unmarshal([]byte(body), &parsed) != nil || parsed.Error == nil {
+		return ""
+	}
+	return strings.TrimSpace(parsed.Error.Message)
+}

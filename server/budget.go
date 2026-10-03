@@ -13,6 +13,7 @@ import (
 	"neochat/limits"
 	"neochat/provider"
 	"neochat/router"
+	"neochat/tokenizer"
 )
 
 const defaultOutputLimit = 16000
@@ -64,13 +65,24 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 	// Only a known refusal is safe to refund without usage.
 	var circuitErr *provider.CircuitOpenError
 	var statusErr *provider.StatusError
-	refused := errors.As(callErr, &circuitErr) || (errors.As(callErr, &statusErr) && (statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode == http.StatusBadRequest || statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusForbidden))
-	if callErr != nil && !refused {
+	refused := errors.As(callErr, &circuitErr) || (errors.As(callErr, &statusErr) && (statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode == http.StatusBadRequest || statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusPaymentRequired || statusErr.StatusCode == http.StatusForbidden || statusErr.StatusCode == http.StatusNotFound)) || errors.Is(callErr, provider.ErrMissingAPIKey)
+	// The user pressed Stop (the request context was canceled): the vendor
+	// stops generating when the connection drops, so settle on an estimate
+	// of what was actually produced instead of holding the full upper
+	// reservation -- otherwise every Stop on an expensive model would eat a
+	// worst-case chunk of the plan cap. Input is charged at its byte-based
+	// upper bound (the prompt was already processed, so a stop is never
+	// free); hidden reasoning tokens can't be seen here, so the visible
+	// output is doubled.
+	stopped := callErr != nil && !refused && errors.Is(ctx.Err(), context.Canceled)
+	if callErr != nil && !refused && !stopped {
 		log.Printf("server: retained reservation %s user_id=%s model=%s for uncertain vendor usage", reservation.ID, req.UserID, modelID)
 		return result, callErr
 	}
 	actual := 0.0
-	if !refused {
+	if stopped {
+		actual = math.Min(amount, router.ComputeCostUSDRates(inputRate, outputRate, inputBound, 2*tokenizer.EstimateText(result.Text)))
+	} else if !refused {
 		if result.InputTokens < 0 || result.OutputTokens < 0 || (amount > 0 && (result.InputTokens == 0 || (result.Text != "" && result.OutputTokens == 0))) {
 			return result, fmt.Errorf("provider returned missing or invalid usage; reservation retained")
 		}
@@ -99,6 +111,23 @@ func (c auxiliaryClient) Generate(ctx context.Context, modelID string, messages 
 }
 
 func (s *Server) validateRequest(req chatRequest) error {
+	if s.RouterDisabled {
+		if req.RequestedMode != "manual" {
+			return errRouterDisabled
+		}
+		if req.providerKey == "" {
+			return errMissingProviderKey
+		}
+	}
+	if len(req.providerKey) > 512 || strings.ContainsAny(req.providerKey, " \t\r\n") {
+		return fmt.Errorf("%w: malformed provider API key", errInvalidRequest)
+	}
+	if req.ReasoningEffort != "" && !reasoningEfforts[req.ReasoningEffort] {
+		return fmt.Errorf("%w: unknown reasoning effort", errInvalidRequest)
+	}
+	if len([]rune(req.Instructions)) > maxInstructionsRunes {
+		return fmt.Errorf("%w: custom instructions exceed %d characters", errInvalidRequest, maxInstructionsRunes)
+	}
 	switch req.RequestedMode {
 	case "auto", "instant", "thinking", "max":
 	case "manual":
@@ -132,3 +161,32 @@ func (s *Server) validateRequest(req chatRequest) error {
 }
 
 var errInvalidRequest = errors.New("invalid request")
+
+// errRouterDisabled rejects every non-Manual request while the auto-router
+// is switched off (Server.RouterDisabled). Its text is shown to the user.
+var errRouterDisabled = errors.New("Router disabled: switch to Manual mode and pick a model")
+
+// errMissingProviderKey means the user hasn't added their Polza AI key in
+// Settings yet. Its text is shown to the user.
+var errMissingProviderKey = errors.New("Add your Polza AI API key in Settings → Account to start chatting")
+
+// reasoningFor maps the UI's effort slider onto what model accepts.
+// Models with no reasoning control get nothing (the setting would be
+// silently dropped anyway). Adaptive Claude models only know
+// low/medium/high/max, so xhigh rounds up to max -- the user asked for
+// more than high.
+func reasoningFor(model router.Model, effort string) (provider.Reasoning, bool) {
+	if effort == "" {
+		return provider.Reasoning{}, false
+	}
+	switch model.Reasoning {
+	case "effort":
+		return provider.Reasoning{Effort: effort}, true
+	case "adaptive":
+		if effort == "xhigh" {
+			effort = "max"
+		}
+		return provider.Reasoning{Effort: effort, Adaptive: true}, true
+	}
+	return provider.Reasoning{}, false
+}

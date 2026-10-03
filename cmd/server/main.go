@@ -83,33 +83,30 @@ func main() {
 	// until its real prompt text is written.
 	chatSystemPrompts := server.LoadSystemPrompts("prompts")
 
-	openRouterKey := os.Getenv("OPENROUTER_API_KEY")
-	if openRouterKey == "" {
-		log.Fatal("OPENROUTER_API_KEY is required (no key, no real vendor calls -- see provider.OpenRouterClient)")
-	}
-	openRouterClient := provider.NewOpenRouterClient(openRouterKey)
+	// Every vendor call goes through Polza AI. Each user brings their own
+	// Polza key (Settings -> Account, sent per request as X-Provider-Key
+	// and attached via provider.WithAPIKey), so POLZA_API_KEY is only an
+	// optional server-side fallback for calls made without one -- it is
+	// not required to start.
+	polzaClient := provider.NewPolzaClient(os.Getenv("POLZA_API_KEY"))
 
 	// Hard ceiling on output tokens for every generation call, regardless
 	// of which catalog model gets selected -- see
-	// provider.OpenRouterClient.MaxTokens's doc comment and audit.md
-	// finding #4. 16000 is comfortably above any real chat reply while
-	// staying well under the priciest catalog models' own
-	// max_output_tokens (128000+, see configs/models.json), which is what
-	// every call was implicitly allowed to run up to before this existed.
-	// Override with OPENROUTER_MAX_TOKENS in the range 1..16000. The
-	// reservation layer also enforces a per-model cap on every vendor call.
-	openRouterClient.MaxTokens = getenvIntDefault("OPENROUTER_MAX_TOKENS", 16000)
-	if openRouterClient.MaxTokens <= 0 || openRouterClient.MaxTokens > 16000 {
-		log.Fatal("OPENROUTER_MAX_TOKENS must be between 1 and 16000")
+	// provider.PolzaClient.MaxTokens's doc comment and audit.md finding #4.
+	// 16000 is comfortably above any real chat reply while staying well
+	// under the catalog models' own max_output_tokens. Override with
+	// MAX_OUTPUT_TOKENS in the range 1..16000. The reservation layer also
+	// enforces a per-model cap on every vendor call.
+	polzaClient.MaxTokens = getenvIntDefault("MAX_OUTPUT_TOKENS", 16000)
+	if polzaClient.MaxTokens <= 0 || polzaClient.MaxTokens > 16000 {
+		log.Fatal("MAX_OUTPUT_TOKENS must be between 1 and 16000")
 	}
 
 	// Every vendor call -- generation, classify, moderate, summarize --
-	// goes through the retry wrapper: OpenRouter really does hand out 429s
-	// (README's Status section records hitting them during live testing),
-	// and before this a single one failed the user's request outright. The
-	// policy is deliberately narrow about what it resends, since a chat
-	// completion is not idempotent -- see provider.StatusError.Retryable.
-	retryingClient := provider.NewRetryClient(openRouterClient)
+	// goes through the retry wrapper, which only resends refusals that are
+	// safe to resend (429s), since a chat completion is not idempotent --
+	// see provider.StatusError.Retryable.
+	retryingClient := provider.NewRetryClient(polzaClient)
 
 	// Generation additionally goes through a circuit breaker so a model
 	// that starts failing en masse (README pre-launch checklist) gets
@@ -129,7 +126,7 @@ func main() {
 	// google/gemini-3.5-flash-lite is the default: it's the model
 	// prompts/classifier_system_prompt.md was validated against (see
 	// docs/unit-economics.md's assumptions table). Override with
-	// CLASSIFIER_API_MODEL_ID for a different OpenRouter slug.
+	// CLASSIFIER_API_MODEL_ID for a different Polza model slug.
 	classifierModelID := os.Getenv("CLASSIFIER_API_MODEL_ID")
 	if classifierModelID == "" {
 		classifierModelID = "google/gemini-3.5-flash-lite"
@@ -137,7 +134,7 @@ func main() {
 
 	// openai/gpt-oss-120b is the default: it's the model
 	// docs/unit-economics.md assumed for both moderation layers. Override
-	// with MODERATION_API_MODEL_ID for a different OpenRouter slug.
+	// with MODERATION_API_MODEL_ID for a different Polza model slug.
 	moderationModelID := os.Getenv("MODERATION_API_MODEL_ID")
 	if moderationModelID == "" {
 		moderationModelID = "openai/gpt-oss-120b"
@@ -282,19 +279,22 @@ func main() {
 		Summarizer:           summaryClient,
 		SummaryTriggerTokens: summaryTriggerTokens,
 		SummaryTailMessages:  summaryTailMessages,
-		// Every catalog provider tag routes through the same
-		// OpenRouterClient -- OpenRouter serves all of them, so there's no
-		// need for a second provider.Client implementation (see README
-		// "OpenRouter as a single point of failure" and "Next steps").
-		// Each catalog entry's api_model_id (configs/models.json) now
-		// carries a real OpenRouter slug for its provider.
+		// Every catalog provider tag routes through the same PolzaClient
+		// -- Polza serves all of them. Each catalog entry's api_model_id
+		// (configs/models.json) is a Polza model slug.
 		Generators: map[string]provider.Client{
 			"anthropic": generationClient,
 			"openai":    generationClient,
 			"google":    generationClient,
 			"moonshot":  generationClient,
 			"deepseek":  generationClient,
+			"spacexai":  generationClient,
 		},
+		// The auto-router (classify -> moderate -> route) is switched off
+		// by default: only Manual requests are served, straight to the
+		// chosen model on the user's own key. ROUTER_ENABLED=true restores
+		// the full pipeline once the router is ready to come back.
+		RouterDisabled:  os.Getenv("ROUTER_ENABLED") != "true",
 		IPRateLimiter:   ipRateLimiter,
 		UserRateLimiter: userRateLimiter,
 		// Postgres-backed -- see auth.Store's doc comment and audit.md

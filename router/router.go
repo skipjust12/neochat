@@ -249,7 +249,7 @@ func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens 
 
 	var kept []Model
 	for _, m := range r.Catalog.Models {
-		if excludedModelIDs[m.ID] {
+		if excludedModelIDs[m.ID] || m.ManualOnly {
 			continue
 		}
 		if m.ContextWindow < estimatedContextTokens {

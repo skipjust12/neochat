@@ -251,8 +251,9 @@ Known, not all resolved:
 - Go router: implemented — feature-based scoring, hard filters, manual-mode passthrough, deterministic cost-tie breaking, spend-lock override, circuit-breaker-aware failover.
 - Spend limits: implemented, Redis-backed, 30-day rolling cap per plan.
 - Classifier: prompt written and validated against live model calls, wired into every request.
-- Chat personas: server-side mechanism implemented; prompt text and UI still pending.
-- OpenRouter integration: implemented and confirmed live end-to-end, including one fully successful generation through the containerized server, persisted to conversation and cost logs.
+- Chat personas: implemented end to end (tone picker in Settings → server persona prompts in `prompts/<Name>.md`); prompt text still to be written.
+- Model provider: Polza AI (OpenAI-compatible, `provider.PolzaClient`) replaced OpenRouter. Users bring their own Polza key (Settings → Account), sent per request and never stored server-side.
+- Router: switched off for now (`ROUTER_ENABLED` unset). Only Manual mode works — the chosen model is called directly with the selected reasoning effort, tone and custom instructions; other modes answer "Router disabled". The routing code stays intact for when it comes back.
 - Moderation: Layer 1 implemented and wired in; Layer 2 deliberately deprioritized.
 - Streaming: implemented (`POST /chat/stream`), sharing the full pipeline with the non-streaming path.
 - Circuit breaker: implemented and wired into failover.

@@ -1,9 +1,8 @@
-// Package provider calls model vendors directly (not through OpenRouter).
-// This is the "Provider abstraction layer" item from README's pre-launch
-// checklist: Client is the seam a hybrid-sourcing setup (OpenRouter for
-// most models, direct contracts for a few) sits behind, so adding a
-// vendor later means writing a new Client implementation, not touching
-// callers.
+// Package provider calls model vendors. Today every catalog model goes
+// through Polza AI (PolzaClient); Client is the seam a hybrid-sourcing
+// setup (an aggregator for most models, direct contracts for a few) sits
+// behind, so adding a vendor later means writing a new Client
+// implementation, not touching callers.
 package provider
 
 import "context"

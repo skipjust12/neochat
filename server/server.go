@@ -192,7 +192,27 @@ type Server struct {
 	// spoofing, IDOR on stored conversations), not an optional hardening
 	// layer to be skippable by a nil field.
 	Auth auth.Authenticator
+
+	// RouterDisabled switches the pipeline to direct mode: only Manual
+	// requests are accepted (anything else fails with errRouterDisabled),
+	// classify/moderate are skipped entirely, and the chosen model is
+	// called straight away with the user's own provider key. This is how
+	// the product runs while the auto-router is switched off; the zero
+	// value keeps the full classify -> moderate -> route pipeline.
+	RouterDisabled bool
 }
+
+// providerKeyHeader carries the user's own Polza AI key on chat requests.
+// It is used for that one request and never stored server-side.
+const providerKeyHeader = "X-Provider-Key"
+
+// maxInstructionsRunes bounds the free-form custom instructions a user can
+// attach from Settings, so one request can't smuggle an enormous system
+// prompt past the context estimate.
+const maxInstructionsRunes = 4000
+
+// reasoningEfforts are the effort levels the UI's slider can send.
+var reasoningEfforts = map[string]bool{"low": true, "medium": true, "high": true, "xhigh": true, "max": true}
 
 // chatRequest is the wire format for POST /chat.
 type chatRequest struct {
@@ -255,6 +275,20 @@ type chatRequest struct {
 	// picker once it exists. Empty means "Default". A non-empty value not
 	// in SystemPromptNames is a 400, same as an unknown plan_id.
 	Persona string `json:"persona,omitempty"`
+
+	// ReasoningEffort is the Manual-mode effort slider: "low", "medium",
+	// "high", "xhigh" or "max". Empty sends no reasoning setting at all
+	// (the model's own default). See reasoningFor for how it maps onto a
+	// given model.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+
+	// Instructions is the user's custom prompt from Settings ("Instructions
+	// for NeoChat"), sent as a system message after the persona prompt.
+	Instructions string `json:"instructions,omitempty"`
+
+	// providerKey is the user's own vendor key, read from the
+	// X-Provider-Key header (never from the body, never persisted).
+	providerKey string
 }
 
 type incognitoMessage struct {
@@ -743,6 +777,7 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 	}
 	req.UserID = identity.UserID
 	req.PlanID = identity.PlanID
+	req.providerKey = strings.TrimSpace(r.Header.Get(providerKeyHeader))
 
 	if req.Message == "" {
 		http.Error(w, "message is required", http.StatusBadRequest)
@@ -781,10 +816,46 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 // finding). Add a new case here, not a bare error string at the call
 // site, for any future error that's genuinely meant to reach the client.
 func clientErrorMessage(err error) string {
+	if errors.Is(err, errRouterDisabled) || errors.Is(err, errMissingProviderKey) || errors.Is(err, provider.ErrMissingAPIKey) {
+		if errors.Is(err, errRouterDisabled) {
+			return errRouterDisabled.Error()
+		}
+		return errMissingProviderKey.Error()
+	}
 	if errors.Is(err, ErrInstantCapExceeded) || errors.Is(err, idempotency.ErrInFlight) || errors.Is(err, limits.ErrBudgetExceeded) || errors.Is(err, errInvalidRequest) {
 		return err.Error()
 	}
+	if msg := vendorErrorMessage(err); msg != "" {
+		return msg
+	}
 	return "an internal error occurred processing this request"
+}
+
+// vendorErrorMessage turns a Polza refusal into something the user can act
+// on. Requests run on the user's own key, so the vendor's own explanation
+// (bad key, empty balance, unknown model) is about their account and is
+// safe -- and necessary -- to show. 5xx bodies stay hidden.
+func vendorErrorMessage(err error) string {
+	var statusErr *provider.StatusError
+	if !errors.As(err, &statusErr) || statusErr.StatusCode >= 500 {
+		return ""
+	}
+	detail := provider.VendorMessage(statusErr.Body)
+	switch statusErr.StatusCode {
+	case http.StatusUnauthorized, http.StatusForbidden:
+		return "Polza AI rejected your API key. Check it in Settings → Account."
+	case http.StatusPaymentRequired:
+		return "Your Polza AI balance is too low for this request. Top it up on polza.ai."
+	case http.StatusTooManyRequests:
+		return "Polza AI is rate limiting this key. Wait a moment and try again."
+	}
+	if detail == "" {
+		detail = http.StatusText(statusErr.StatusCode)
+	}
+	if len([]rune(detail)) > 300 {
+		detail = string([]rune(detail)[:300]) + "…"
+	}
+	return fmt.Sprintf("Polza AI: %s (HTTP %d)", detail, statusErr.StatusCode)
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
@@ -800,7 +871,7 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, identity aut
 		if errors.Is(err, ErrInstantCapExceeded) || errors.Is(err, limits.ErrBudgetExceeded) || errors.Is(err, idempotency.ErrInFlight) {
 			status = http.StatusTooManyRequests
 		}
-		if errors.Is(err, errInvalidRequest) {
+		if errors.Is(err, errInvalidRequest) || errors.Is(err, errRouterDisabled) || errors.Is(err, errMissingProviderKey) {
 			status = http.StatusBadRequest
 		}
 		http.Error(w, clientErrorMessage(err), status)
@@ -845,6 +916,9 @@ type regenerateRequest struct {
 	IdempotencyKey string `json:"idempotency_key,omitempty"`
 	Persona        string `json:"persona,omitempty"`
 	ProjectID      string `json:"project_id,omitempty"`
+
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
+	Instructions    string `json:"instructions,omitempty"`
 }
 
 func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
@@ -893,6 +967,9 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		RequestedMode: input.RequestedMode, ManualModelID: input.ManualModelID,
 		IdempotencyKey: input.IdempotencyKey, Persona: input.Persona,
 		ProjectID:           input.ProjectID,
+		ReasoningEffort:     input.ReasoningEffort,
+		Instructions:        input.Instructions,
+		providerKey:         strings.TrimSpace(r.Header.Get(providerKeyHeader)),
 		regenerateMessageID: target.ID, regenerationHistoryDrop: 2,
 	}
 	if req.Persona != "" && !isValidPersona(req.Persona) {
@@ -1042,6 +1119,13 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 		modUsage      *provider.GenerateResult
 		modErr        error
 	)
+	if s.RouterDisabled {
+		// Direct mode: no classifier, no moderation -- the user picked the
+		// model themselves and pays for it on their own key. Manual routing
+		// never reads the classifier output, so the zero value is enough.
+		return s.prepareHistory(ctx, req, plan, project, conversationID, requestID, router.ClassifierOutput{})
+	}
+
 	var wg sync.WaitGroup
 	wg.Add(2)
 	// Both goroutines recover their own panics into their err variable
@@ -1091,7 +1175,13 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	if classifyErr != nil {
 		return preparedRequest{}, nil, fmt.Errorf("classify: %w", classifyErr)
 	}
+	return s.prepareHistory(ctx, req, plan, project, conversationID, requestID, classified)
+}
 
+// prepareHistory is the second half of prepare, shared by the routed and
+// direct (RouterDisabled) paths: spend lock, history/summary, and the final
+// message list with persona, custom instructions and project context.
+func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limits.PlanLimits, project conversation.Project, conversationID, requestID string, classified router.ClassifierOutput) (preparedRequest, *chatResponse, error) {
 	locked, err := limits.CheckThinkingMaxLock(ctx, s.Store, plan, req.UserID)
 	if err != nil {
 		return preparedRequest{}, nil, fmt.Errorf("check thinking_max lock: %w", err)
@@ -1128,9 +1218,12 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	}
 	systemPrompt := s.SystemPrompts[persona] // "" for a valid-but-not-yet-written persona -- see LoadSystemPrompts
 
-	messages := make([]provider.Message, 0, len(tail)+3)
+	messages := make([]provider.Message, 0, len(tail)+4)
 	if systemPrompt != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: systemPrompt})
+	}
+	if instructions := strings.TrimSpace(req.Instructions); instructions != "" {
+		messages = append(messages, provider.Message{Role: "system", Content: "The user's custom instructions (from their settings) -- follow them unless they conflict with the rules above:\n" + instructions})
 	}
 	if project.ID != "" && project.Description != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: "Project " + project.Name + " instructions:\n" + project.Description})
@@ -1318,18 +1411,25 @@ func streamingGenerate(onDelta func(delta string)) generateCaller {
 		if err != nil {
 			return provider.GenerateResult{}, err
 		}
+		// On failure the result carries the text streamed so far (no usage):
+		// billedCall prices a user-stopped generation from it.
+		var partial strings.Builder
 		for chunk := range ch {
 			if chunk.Err != nil {
-				return provider.GenerateResult{}, chunk.Err
+				return provider.GenerateResult{Text: partial.String()}, chunk.Err
 			}
 			if chunk.Delta != "" {
+				partial.WriteString(chunk.Delta)
 				onDelta(chunk.Delta)
 			}
 			if chunk.Done {
 				return chunk.Final, nil
 			}
 		}
-		return provider.GenerateResult{}, fmt.Errorf("provider: stream closed without a final chunk")
+		if err := ctx.Err(); err != nil {
+			return provider.GenerateResult{Text: partial.String()}, err
+		}
+		return provider.GenerateResult{Text: partial.String()}, fmt.Errorf("provider: stream closed without a final chunk")
 	}
 }
 
@@ -1368,7 +1468,11 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
 		}
 
-		genResult, err := s.billedCall(ctx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), prepared.messages, call)
+		callCtx := ctx
+		if r, ok := reasoningFor(model, req.ReasoningEffort); ok {
+			callCtx = provider.WithReasoning(ctx, r)
+		}
+		genResult, err := s.billedCall(callCtx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), prepared.messages, call)
 		if err == nil {
 			return result, model, genResult, nil
 		}
@@ -1397,33 +1501,9 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
 	now := time.Now()
-	var regenerated conversation.Message
-	if req.Incognito {
-		// Incognito turns intentionally never reach Conversations. Usage and
-		// cost accounting below still run so private mode cannot bypass limits.
-	} else if req.regenerateMessageID > 0 {
-		var err error
-		regenerated, err = s.Conversations.AddResponseVersion(ctx, req.UserID, prepared.conversationID, req.regenerateMessageID, conversation.ResponseVersion{Content: genResult.Text, ModelID: model.ID, CreatedAt: now})
-		if err != nil {
-			return chatResponse{}, fmt.Errorf("persist regenerated response: %w", err)
-		}
-	} else {
-		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, CreatedAt: now}); err != nil {
-			log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
-		}
-		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: genResult.Text, ModelID: model.ID, CreatedAt: now}); err != nil {
-			log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
-		}
-	}
-	if !req.Incognito && req.ProjectID != "" {
-		if err := s.Conversations.UpdateMetadata(ctx, req.UserID, prepared.conversationID, conversation.MetadataUpdate{ProjectID: &req.ProjectID}); err != nil {
-			log.Printf("server: assign conversation_id=%s to project_id=%s: %v", prepared.conversationID, req.ProjectID, err)
-			if req.ConversationID == "" {
-				if cleanupErr := s.Conversations.Delete(ctx, req.UserID, prepared.conversationID); cleanupErr != nil && !errors.Is(cleanupErr, conversation.ErrConversationNotFound) {
-					log.Printf("server: clean up unassigned project conversation_id=%s: %v", prepared.conversationID, cleanupErr)
-				}
-			}
-		}
+	regenerated, err := s.persistTurn(ctx, req, prepared, model, genResult.Text, now)
+	if err != nil {
+		return chatResponse{}, err
 	}
 
 	actualCost := router.ComputeCostUSD(model, genResult.InputTokens, genResult.OutputTokens)
@@ -1451,6 +1531,61 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		response.MessageID = regenerated.ID
 	}
 	return response, nil
+}
+
+// persistTurn stores one finished (or user-stopped) turn: a new response
+// version when regenerating, otherwise the user message plus the reply.
+// Incognito turns are never stored. ctx must already be detached from the
+// request (finalize and persistStopped both pass a WithoutCancel context).
+func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, text string, now time.Time) (conversation.Message, error) {
+	var regenerated conversation.Message
+	if req.Incognito {
+		// Incognito turns intentionally never reach Conversations. Usage and
+		// cost accounting still run so private mode cannot bypass limits.
+		return regenerated, nil
+	} else if req.regenerateMessageID > 0 {
+		var err error
+		regenerated, err = s.Conversations.AddResponseVersion(ctx, req.UserID, prepared.conversationID, req.regenerateMessageID, conversation.ResponseVersion{Content: text, ModelID: model.ID, CreatedAt: now})
+		if err != nil {
+			return regenerated, fmt.Errorf("persist regenerated response: %w", err)
+		}
+	} else {
+		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, CreatedAt: now}); err != nil {
+			log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
+		}
+		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: text, ModelID: model.ID, CreatedAt: now}); err != nil {
+			log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
+		}
+	}
+	if req.ProjectID != "" {
+		if err := s.Conversations.UpdateMetadata(ctx, req.UserID, prepared.conversationID, conversation.MetadataUpdate{ProjectID: &req.ProjectID}); err != nil {
+			log.Printf("server: assign conversation_id=%s to project_id=%s: %v", prepared.conversationID, req.ProjectID, err)
+			if req.ConversationID == "" {
+				if cleanupErr := s.Conversations.Delete(ctx, req.UserID, prepared.conversationID); cleanupErr != nil && !errors.Is(cleanupErr, conversation.ErrConversationNotFound) {
+					log.Printf("server: clean up unassigned project conversation_id=%s: %v", prepared.conversationID, cleanupErr)
+				}
+			}
+		}
+	}
+	return regenerated, nil
+}
+
+// persistStopped keeps what the user already saw when they pressed Stop:
+// the partial reply is stored like a normal turn, so the conversation the
+// server remembers matches the one on screen. Nothing is stored when the
+// stop came before any text arrived.
+func (s *Server) persistStopped(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, partial string) (conversation.Message, bool) {
+	if model.ID == "" || strings.TrimSpace(partial) == "" {
+		return conversation.Message{}, false
+	}
+	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+	defer cancel()
+	msg, err := s.persistTurn(persistCtx, req, prepared, model, partial, time.Now())
+	if err != nil {
+		log.Printf("server: persist stopped response for conversation_id=%s: %v", prepared.conversationID, err)
+		return conversation.Message{}, false
+	}
+	return msg, true
 }
 
 // abortedSpendTimeout bounds the accounting writes recordAbortedSpend
@@ -1578,6 +1713,9 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	if err := s.validateRequest(req); err != nil {
 		return chatResponse{}, err
 	}
+	if req.providerKey != "" {
+		ctx = provider.WithAPIKey(ctx, req.providerKey)
+	}
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
 	if cached, found, err := s.reserveIdempotent(ctx, &req); err != nil {
@@ -1634,6 +1772,9 @@ func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.Pl
 func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.PlanLimits, send func(event string, payload any)) error {
 	if err := s.validateRequest(req); err != nil {
 		return err
+	}
+	if req.providerKey != "" {
+		ctx = provider.WithAPIKey(ctx, req.providerKey)
 	}
 	ctx, cancel := context.WithTimeout(ctx, requestTimeout)
 	defer cancel()
@@ -1693,6 +1834,11 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 	result, model, genResult, err := s.routeAndCall(ctx, req, prepared, onRoute, call)
 	if err != nil {
 		s.recordAbortedSpend(ctx, req, prepared, result, model, streamed.String(), err)
+		// The client went away mid-generation -- almost always the Stop
+		// button aborting the request. Keep the partial reply the user saw.
+		if errors.Is(ctx.Err(), context.Canceled) {
+			s.persistStopped(ctx, req, prepared, model, streamed.String())
+		}
 		return chatResponse{}, err
 	}
 

@@ -6519,3 +6519,62 @@ html[data-theme="dark"] .brand-shimmer {
   width: 28px;
   height: 28px;
 }
+
+/* Send button doubles as Stop while a response is generating. */
+.send .send-stop {
+  display: none;
+}
+
+.send.is-stop .send-arrow {
+  display: none;
+}
+
+.send.is-stop .send-stop {
+  display: block;
+  width: 14px;
+  height: 14px;
+}
+
+.send.is-stop:disabled {
+  opacity: 1;
+  cursor: pointer;
+}
+
+/* Settings -> Account -> API key */
+.provider-key-row .val {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-left: auto;
+}
+
+.provider-key-row .api-key-input {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+#providerKeySec .set-note code {
+  font-size: 12px;
+}
+
+@media (max-width: 560px) {
+  .provider-key-row {
+    flex-wrap: wrap;
+  }
+
+  .provider-key-row .val {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .provider-key-row .api-key-input {
+    flex: 1;
+    min-width: 0;
+    width: auto;
+  }
+}
+
+.chat-text .stopped-note {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 6px;
+}

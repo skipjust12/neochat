@@ -61,6 +61,25 @@ type Model struct {
 	// Empty means "same as ID" -- see ResolveAPIModelID.
 	APIModelID string `json:"api_model_id,omitempty"`
 
+	// DisplayName is the human-facing name the Manual model picker shows
+	// (e.g. "Claude Opus 5.5"). Purely cosmetic -- never sent to a vendor.
+	DisplayName string `json:"display_name,omitempty"`
+
+	// Reasoning says how this model takes a reasoning-effort setting:
+	// "effort" (reasoning.effort), "adaptive" (Claude Opus 4.7+'s
+	// type=adaptive + effort_level), or "" when the vendor exposes no
+	// reasoning control and the setting is simply not sent.
+	Reasoning string `json:"reasoning,omitempty"`
+
+	// Legacy marks an older model kept selectable under "Show legacy
+	// models" in the Manual picker. No effect on routing.
+	Legacy bool `json:"legacy,omitempty"`
+
+	// ManualOnly keeps a model out of automatic routing (applyHardFilters)
+	// while still letting Manual mode select it directly -- used for
+	// models the router's task scores were never calibrated against.
+	ManualOnly bool `json:"manual_only,omitempty"`
+
 	Provider          string   `json:"provider"`
 	Modes             []string `json:"modes"`
 	CostInputPerMTok  float64  `json:"cost_input_per_mtok"`

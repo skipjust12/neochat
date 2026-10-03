@@ -96,7 +96,8 @@ func parseRetryAfter(h http.Header) time.Duration {
 // and take the model out for everyone -- turning a recoverable blip into
 // an outage, which is the opposite of what both wrappers are for.
 //
-// README records real 429s from OpenRouter during live testing, and
+// README records real 429s from OpenRouter (the provider at the time)
+// during live testing, and
 // before this a single one of those failed the user's request outright.
 type RetryClient struct {
 	Client Client

@@ -28,8 +28,8 @@ func TestBudgetOutputLimitReachesVendor(t *testing.T) {
 		}
 	}))
 	defer upstream.Close()
-	client := NewOpenRouterClient("test")
-	client.baseURL = upstream.URL
+	client := NewPolzaClient("test")
+	client.BaseURL = upstream.URL
 	client.MaxTokens = 16000
 	ctx := WithOutputLimit(context.Background(), 123)
 	if _, err := client.Generate(ctx, "model", nil); err != nil {

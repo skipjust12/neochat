@@ -239,16 +239,16 @@ func TestParseRetryAfter(t *testing.T) {
 	}
 }
 
-// TestOpenRouterClient_Generate_ReturnsStatusError checks the real client
+// TestPolzaClient_Generate_ReturnsStatusError checks the real client
 // produces the typed error RetryClient depends on, including the
 // Retry-After the vendor sent -- without this wiring, every retry
 // decision above would silently fall through to "not retryable".
-func TestOpenRouterClient_Generate_ReturnsStatusError(t *testing.T) {
+func TestPolzaClient_Generate_ReturnsStatusError(t *testing.T) {
 	srv := newRateLimitedServer(t)
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 
 	_, err := c.Generate(context.Background(), "m", []Message{{Role: "user", Content: "hi"}})
 	var statusErr *StatusError
@@ -266,12 +266,12 @@ func TestOpenRouterClient_Generate_ReturnsStatusError(t *testing.T) {
 	}
 }
 
-func TestOpenRouterClient_GenerateStream_ReturnsStatusError(t *testing.T) {
+func TestPolzaClient_GenerateStream_ReturnsStatusError(t *testing.T) {
 	srv := newRateLimitedServer(t)
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 
 	_, err := c.GenerateStream(context.Background(), "m", []Message{{Role: "user", Content: "hi"}})
 	var statusErr *StatusError

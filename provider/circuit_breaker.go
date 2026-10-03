@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"time"
@@ -14,7 +15,7 @@ import (
 // per-model health tracking" item from README's pre-launch checklist.
 //
 // State is tracked per apiModelID, not per Client instance. That matters
-// here because every catalog provider shares one OpenRouterClient (see
+// here because every catalog provider shares one PolzaClient (see
 // cmd/server/main.go's Generators map) -- wrapping that single client in
 // one CircuitBreakerClient still isolates a failing model's circuit from
 // every other model going through the same underlying client.
@@ -112,7 +113,7 @@ func (c *CircuitBreakerClient) GenerateStream(ctx context.Context, apiModelID st
 	out := make(chan StreamChunk)
 	go func() {
 		defer close(out)
-		// Same reasoning as OpenRouterClient.GenerateStream's recover: a
+		// Same reasoning as PolzaClient.GenerateStream's recover: a
 		// panic in a goroutine nobody is recovering for takes the process
 		// down, so it becomes a stream error for this one request instead.
 		// Counted as a failure against the model's circuit, like any other
@@ -167,6 +168,10 @@ func (c *CircuitBreakerClient) recordResult(apiModelID string, err error) {
 		state = &circuitState{}
 		c.states[apiModelID] = state
 	}
+	if err != nil && !countsAgainstModel(err) {
+		// Neither a success nor a model failure: leave the state alone.
+		return
+	}
 	if err != nil {
 		state.consecutiveFailures++
 		if state.consecutiveFailures >= c.FailureThreshold {
@@ -176,4 +181,21 @@ func (c *CircuitBreakerClient) recordResult(apiModelID string, err error) {
 		state.consecutiveFailures = 0
 		state.openUntil = time.Time{}
 	}
+}
+
+// countsAgainstModel reports whether err says something about the model's
+// health. With per-user API keys every 4xx describes the caller -- bad
+// key, empty balance, malformed request, or that one key's own rate limit
+// (429) -- and a canceled context is the user pressing Stop. None of those
+// may open the circuit for every other user of the same model; 5xx,
+// timeouts and broken streams still do.
+func countsAgainstModel(err error) bool {
+	if errors.Is(err, context.Canceled) || errors.Is(err, ErrMissingAPIKey) {
+		return false
+	}
+	var statusErr *StatusError
+	if errors.As(err, &statusErr) && statusErr.StatusCode >= 400 && statusErr.StatusCode < 500 {
+		return false
+	}
+	return true
 }

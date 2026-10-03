@@ -4,7 +4,9 @@
 
 **Confirmed working (2026-08-09):** a local run reached `handleChat` → `handle` → `classify` → OpenRouter and got real HTTP responses back (429 rate-limit, 401 on a stale key in a second terminal) — proof the whole wiring (auth header, request format, routing) is correct. No successful generated response has been captured yet; that's still open.
 
-The server calls vendors through **OpenRouter** (`provider.OpenRouterClient`, `https://openrouter.ai/api/v1`), matching the product's original "Model access: OpenRouter at launch" decision (see README). OpenRouter model IDs are `vendor/model-name` (e.g. `google/gemini-3.5-flash-lite`), not a vendor's own bare model name — get this string wrong and every call 404s.
+**Provider: Polza AI (since 2026-10).** OpenRouter is gone. The server calls every model through **Polza AI** (`provider.PolzaClient`, `https://polza.ai/api/v1`, OpenAI-compatible). Each user pastes their own Polza key (`pza_...`) in Settings → Account; the browser sends it with every chat request as `X-Provider-Key`, the server attaches it to that one vendor call and never stores it. Polza model IDs are `vendor/model-name` (e.g. `anthropic/claude-opus-5.5`); `configs/models.json` was generated from Polza's public catalog (`GET https://polza.ai/api/v1/models`, no auth needed), prices converted from RUB at Polza's own rate (1170.68 ₽ = $10 for Fable 5.1).
+
+**Router disabled.** By default (`ROUTER_ENABLED` unset) only Manual mode works: Auto/Instant/Thinking/Max requests are rejected with "Router disabled", and classify/moderate are skipped entirely — the request goes straight to the chosen model with the chosen reasoning effort, the selected tone (persona prompt from `prompts/<Name>.md`) and the user's custom instructions. `ROUTER_ENABLED=true` brings the full classify → moderate → route pipeline back.
 
 ## 1. Start everything
 
@@ -15,7 +17,7 @@ Prereqs, once per machine:
 - Docker + the `docker compose` plugin (`docker compose version` should print something; if it doesn't, install the plugin — see Docker's docs).
 
 ```bash
-cp .env.example .env    # fill in real POSTGRES_*/REDIS_* values (anything works locally) and OPENROUTER_API_KEY
+cp .env.example .env    # fill in real POSTGRES_*/REDIS_* values (anything works locally); POLZA_API_KEY is optional
 docker compose up -d --build
 docker compose ps        # wait until all three services show "healthy"
 ```
@@ -37,9 +39,11 @@ All of these go in `.env` (gitignored) — `cmd/server` loads it automatically o
 
 | Variable | Meaning |
 |---|---|
-| `OPENROUTER_API_KEY` | Required. No key, no real vendor calls — `cmd/server` refuses to start without it. |
-| `CLASSIFIER_API_MODEL_ID` | Optional, defaults to `google/gemini-3.5-flash-lite` (the model `prompts/classifier_system_prompt.md` was validated against). Override for a different OpenRouter slug. |
-| `MODERATION_API_MODEL_ID` | Optional, defaults to `openai/gpt-oss-120b` (the model `docs/unit-economics.md` assumed for moderation). Override for a different OpenRouter slug. |
+| `POLZA_API_KEY` | Optional server-side fallback key, used only for calls that arrive without a user key. Leave empty to require every user to bring their own (Settings → Account). |
+| `ROUTER_ENABLED` | Optional. Unset/anything but `true` = router disabled, Manual-only direct mode (see above). |
+| `MAX_OUTPUT_TOKENS` | Optional, defaults to `16000` (range 1..16000). Hard ceiling on output tokens per generation call. |
+| `CLASSIFIER_API_MODEL_ID` | Optional, defaults to `google/gemini-3.5-flash-lite` (the model `prompts/classifier_system_prompt.md` was validated against). Only used with the router enabled, and as the summarizer default. |
+| `MODERATION_API_MODEL_ID` | Optional, defaults to `openai/gpt-oss-120b`. Only used with the router enabled. |
 | `CLASSIFIER_COST_INPUT_PER_MTOK` / `CLASSIFIER_COST_OUTPUT_PER_MTOK` | Optional, default `0.3` / `2.5` (matches the `CLASSIFIER_API_MODEL_ID` default). Prices the classifier's `cost_log` entries -- override alongside `CLASSIFIER_API_MODEL_ID` if you change it, or logged cost keeps pricing the old model. |
 | `MODERATION_COST_INPUT_PER_MTOK` / `MODERATION_COST_OUTPUT_PER_MTOK` | Optional, default `0.03` / `0.17` (matches the `MODERATION_API_MODEL_ID` default). Same caveat as the classifier rates above. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Required. Must match what `docker-compose.yml` started Postgres with. |
@@ -49,7 +53,7 @@ All of these go in `.env` (gitignored) — `cmd/server` loads it automatically o
 | `IDEMPOTENCY_TTL` | Optional, defaults to `24h` (Go duration syntax). How long a completed `/chat` response stays replayable by `idempotency_key` in Redis. |
 | `ADDR` | Optional, defaults to `:8080`. |
 
-**Never commit a real key.** `.env` is gitignored specifically so `OPENROUTER_API_KEY` and the Postgres/Redis credentials never end up in git — don't paste real values into `.env.example` or any other tracked file.
+**Never commit a real key.** `.env` is gitignored specifically so `POLZA_API_KEY` and the Postgres/Redis credentials never end up in git — don't paste real values into `.env.example` or any other tracked file.
 
 ## 3. It's already running
 
@@ -94,14 +98,21 @@ export NEOCHAT_API_KEY=nc_...   # paste what issuekey printed
 ## 5. Send a test request
 
 ```bash
+export POLZA_KEY=pza_...   # your own Polza AI key
 curl -s localhost:8080/chat -X POST \
   -H "Authorization: Bearer $NEOCHAT_API_KEY" \
+  -H "X-Provider-Key: $POLZA_KEY" \
   -d '{
   "message": "привет",
-  "requested_mode": "auto",
-  "estimated_context_tokens": 200
+  "requested_mode": "manual",
+  "manual_model_id": "deepseek-v4.1-flash",
+  "reasoning_effort": "low",
+  "persona": "Default",
+  "instructions": "Answer briefly."
 }' | python3 -m json.tool
 ```
+
+With the router disabled (the default), `requested_mode` must be `manual` with a `manual_model_id` from `configs/models.json` (`deepseek-v4.1-flash` is the cheapest sensible test model); anything else gets `400 Router disabled`. `reasoning_effort` is one of `low|medium|high|xhigh|max` (mapped to Polza's `reasoning.effort`, or `reasoning.type=adaptive` + `effort_level` for Claude Opus 4.7+, where `xhigh` rounds up to `max`).
 
 Expected response shape:
 
@@ -117,7 +128,7 @@ Expected response shape:
 }
 ```
 
-Every request now also runs through Layer 1 moderation (`moderation/`, see README "Moderation") concurrently with classification. If it flags the message, the response instead looks like this — no model is ever selected or called:
+With `ROUTER_ENABLED=true`, every request also runs through Layer 1 moderation (`moderation/`, see README "Moderation") concurrently with classification. If it flags the message, the response instead looks like this — no model is ever selected or called:
 
 ```json
 {
@@ -137,11 +148,12 @@ To continue the same thread instead of starting a new one each time, pass the `c
 ```bash
 curl -s localhost:8080/chat -X POST \
   -H "Authorization: Bearer $NEOCHAT_API_KEY" \
+  -H "X-Provider-Key: $POLZA_KEY" \
   -d '{
   "conversation_id": "PASTE_THE_ONE_FROM_THE_LAST_RESPONSE",
   "message": "а теперь объясни то же самое проще",
-  "requested_mode": "auto",
-  "estimated_context_tokens": 200
+  "requested_mode": "manual",
+  "manual_model_id": "deepseek-v4.1-flash"
 }' | python3 -m json.tool
 ```
 
@@ -153,12 +165,13 @@ A request with no `Authorization` header, or a token `issuekey` never printed, g
 
 - **`dial tcp 127.0.0.1:5432: connect: connection refused`** (or `:6379` for Redis) — Postgres/Redis containers aren't up yet, or aren't healthy yet. Run `docker compose ps` and wait for both to show `healthy`; if either is missing entirely, `docker compose up -d` from the repo root first.
 - **`db: POSTGRES_USER is required` / `db: REDIS_PASSWORD is required`** — `.env` is missing, in the wrong directory (must be repo root, next to `docker-compose.yml`), or a real exported env var is empty-stringed and shadowing what `.env` would have set. Check `cp .env.example .env` was actually done and filled in.
-- **`no provider.Client configured for provider "..."`** — the router selected a model from a catalog provider with no wired-up client. Shouldn't happen anymore: `cmd/server/main.go`'s `Generators` map now covers all five catalog providers (`anthropic`, `openai`, `google`, `moonshot`, `deepseek`) through the same `OpenRouterClient`. If you see this, either a new catalog entry added a provider tag not yet in that map, or there's a typo between the two.
-- **A 404 / "No endpoints found" error from OpenRouter** — `api_model_id` doesn't match a real OpenRouter slug; double-check the exact string on openrouter.ai's model page (copy-paste, don't retype). Every `configs/models.json` entry now sets `api_model_id` explicitly, sourced via search (this session can't reach `openrouter.ai` directly to fetch pages itself — see README "Status") rather than a live confirmed call per model, so a 404 here likely means one of those looked-up slugs is stale or wrong and needs a real check.
-- **429** — rate limit or exhausted free-tier quota on the OpenRouter key, not a bug here.
+- **`no provider.Client configured for provider "..."`** — the router selected a model from a catalog provider with no wired-up client. Shouldn't happen anymore: `cmd/server/main.go`'s `Generators` map now covers all five catalog providers (`anthropic`, `openai`, `google`, `moonshot`, `deepseek`) (plus `spacexai`) through the same `PolzaClient`. If you see this, either a new catalog entry added a provider tag not yet in that map, or there's a typo between the two.
+- **"Polza AI: ... (HTTP 404)"** — `api_model_id` doesn't match a live Polza slug (models get retired). Check `curl https://polza.ai/api/v1/models/<slug>`.
+- **"Polza AI rejected your API key"** (401/403) or **"balance is too low"** (402) — the user's own key/balance; shown to them verbatim since it's their account.
+- **429** — rate limit on the user's Polza key, not a bug here.
 - **401 straight back from `curl localhost:8080/chat`, instant, no server-side classify/moderate log line** — this is neochat's own auth check (step 4 above), not OpenRouter: missing `Authorization` header, or a token `cmd/issuekey` never printed for this database. Re-run `issuekey` and re-export `NEOCHAT_API_KEY` if in doubt -- a stale value from an earlier `.env`/database reset looks identical to a typo.
-- **401 while testing against OpenRouter directly** (not through `/chat`) — bad/expired `OPENROUTER_API_KEY`; double check the exact value in your shell, not a leftover from an earlier export.
-- **The classifier reply fails to parse as JSON** — `classifier.Classify` already strips a wrapping ` ```json ` fence, but a genuinely different failure (the model refusing, adding prose, etc.) will surface as a clear parse error with the raw reply included — that's real signal about how the model behaves with this prompt through OpenRouter specifically, not necessarily a bug.
+- **"Add your Polza AI API key"** — the request had no `X-Provider-Key` header (key not saved in Settings → Account) and no `POLZA_API_KEY` fallback.
+- **The classifier reply fails to parse as JSON** — `classifier.Classify` already strips a wrapping ` ```json ` fence, but a genuinely different failure (the model refusing, adding prose, etc.) will surface as a clear parse error with the raw reply included — that's real signal about how the model behaves with this prompt through Polza specifically, not necessarily a bug.
 - **`moderate: ...` error, every request fails** — the moderation model call itself failed (bad `MODERATION_API_MODEL_ID`, rate limit, JSON parse failure — same failure modes as the classifier, just in `moderation.Moderate`). Moderation fails closed on purpose (see README "Moderation"), so this takes down `/chat` entirely rather than letting requests through unmoderated — check the error for which of those it actually is.
 - **Every request comes back `"blocked": true`** — either genuinely correct (you're testing with a phrase that should trip a policy category) or the moderation model is being overly aggressive; check `docs/unit-economics.md`'s cost assumption still matches whichever model `MODERATION_API_MODEL_ID` resolves to, and see the flagged reason in the server log (`server: /chat blocked by moderation ...`) — it's logged server-side even though the client only sees the generic ToS message.
 

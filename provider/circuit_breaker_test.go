@@ -221,3 +221,24 @@ func TestCircuitBreakerClient_PerModelIsolated(t *testing.T) {
 		t.Fatalf("expected model-b to succeed independently of model-a's open circuit, got: %v", err)
 	}
 }
+
+func TestCircuitBreakerClient_IgnoresCallerSideErrors(t *testing.T) {
+	ctx := context.Background()
+	for _, err := range []error{
+		context.Canceled,
+		ErrMissingAPIKey,
+		&StatusError{StatusCode: 401},
+		&StatusError{StatusCode: 402},
+		&StatusError{StatusCode: 429},
+	} {
+		fake := &FakeClient{Err: err}
+		cb := NewCircuitBreakerClient(fake, 1, time.Minute)
+		for i := 0; i < 3; i++ {
+			_, got := cb.Generate(ctx, "model-a", nil)
+			var circuitErr *CircuitOpenError
+			if errors.As(got, &circuitErr) {
+				t.Fatalf("%v opened the circuit; caller-side errors must not count against the model", err)
+			}
+		}
+	}
+}

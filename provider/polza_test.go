@@ -13,8 +13,8 @@ import (
 	"time"
 )
 
-func TestOpenRouterClient_Generate(t *testing.T) {
-	var gotReq openRouterChatRequest
+func TestPolzaClient_Generate(t *testing.T) {
+	var gotReq polzaChatRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.Header.Get("Authorization"); got != "Bearer test-key" {
 			t.Errorf("Authorization header = %q, want %q", got, "Bearer test-key")
@@ -30,8 +30,8 @@ func TestOpenRouterClient_Generate(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 
 	result, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{
 		{Role: "system", Content: "you are helpful"},
@@ -56,8 +56,8 @@ func TestOpenRouterClient_Generate(t *testing.T) {
 	}
 }
 
-func TestOpenRouterClient_Generate_MaxTokens(t *testing.T) {
-	var gotReq openRouterChatRequest
+func TestPolzaClient_Generate_MaxTokens(t *testing.T) {
+	var gotReq polzaChatRequest
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotReq); err != nil {
 			t.Fatalf("decode request: %v", err)
@@ -67,8 +67,8 @@ func TestOpenRouterClient_Generate_MaxTokens(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 	c.MaxTokens = 4096
 
 	if _, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}}); err != nil {
@@ -79,57 +79,103 @@ func TestOpenRouterClient_Generate_MaxTokens(t *testing.T) {
 	}
 }
 
-func TestOpenRouterClient_Generate_MaxTokensOmittedWhenUnset(t *testing.T) {
+func TestPolzaClient_Generate_MaxTokensOmittedWhenUnset(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
 		if strings.Contains(string(body), "max_tokens") {
-			t.Errorf("request body contains max_tokens when OpenRouterClient.MaxTokens was never set: %s", body)
+			t.Errorf("request body contains max_tokens when PolzaClient.MaxTokens was never set: %s", body)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices": [{"message": {"role": "assistant", "content": "ok"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}`))
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 
 	if _, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestOpenRouterClient_Generate_OptionalHeaders(t *testing.T) {
+func TestPolzaClient_UsesPerRequestKeyAndReasoning(t *testing.T) {
+	var gotAuth string
+	var gotBody map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if got := r.Header.Get("HTTP-Referer"); got != "https://example.com" {
-			t.Errorf("HTTP-Referer = %q, want https://example.com", got)
-		}
-		if got := r.Header.Get("X-Title"); got != "NeoChat" {
-			t.Errorf("X-Title = %q, want NeoChat", got)
+		gotAuth = r.Header.Get("Authorization")
+		gotBody = nil
+		if err := json.NewDecoder(r.Body).Decode(&gotBody); err != nil {
+			t.Fatalf("decode request: %v", err)
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"choices": [{"message": {"role": "assistant", "content": "ok"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}`))
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
-	c.Referer = "https://example.com"
-	c.Title = "NeoChat"
+	c := NewPolzaClient("")
+	c.BaseURL = srv.URL
 
-	if _, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}}); err != nil {
+	ctx := WithReasoning(WithAPIKey(context.Background(), "pza_user"), Reasoning{Effort: "high"})
+	if _, err := c.Generate(ctx, "openai/gpt-6-luna", []Message{{Role: "user", Content: "hi"}}); err != nil {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if gotAuth != "Bearer pza_user" {
+		t.Errorf("Authorization = %q, want the per-request key", gotAuth)
+	}
+	reasoning, _ := gotBody["reasoning"].(map[string]any)
+	if reasoning["effort"] != "high" || reasoning["type"] != nil {
+		t.Errorf("reasoning = %v, want {effort: high}", gotBody["reasoning"])
+	}
+	if _, ok := gotBody["reasoning_effort"]; ok {
+		t.Error("top-level reasoning_effort is ignored by Polza and must not be sent")
+	}
+
+	ctx = WithReasoning(WithAPIKey(context.Background(), "pza_user"), Reasoning{Effort: "max", Adaptive: true})
+	if _, err := c.Generate(ctx, "anthropic/claude-opus-5.5", []Message{{Role: "user", Content: "hi"}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reasoning, _ = gotBody["reasoning"].(map[string]any)
+	if reasoning["type"] != "adaptive" || reasoning["effort_level"] != "max" || reasoning["effort"] != nil {
+		t.Errorf("adaptive reasoning = %v, want {type: adaptive, effort_level: max}", gotBody["reasoning"])
+	}
+
+	if _, err := c.Generate(WithAPIKey(context.Background(), "pza_user"), "m", []Message{{Role: "user", Content: "hi"}}); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if _, ok := gotBody["reasoning"]; ok {
+		t.Errorf("no reasoning requested, but body carried %v", gotBody["reasoning"])
 	}
 }
 
-func TestOpenRouterClient_Generate_APIError(t *testing.T) {
+func TestPolzaClient_MissingKey(t *testing.T) {
+	c := NewPolzaClient("")
+	if _, err := c.Generate(context.Background(), "m", []Message{{Role: "user", Content: "hi"}}); !errors.Is(err, ErrMissingAPIKey) {
+		t.Fatalf("Generate err = %v, want ErrMissingAPIKey", err)
+	}
+	if _, err := c.GenerateStream(context.Background(), "m", []Message{{Role: "user", Content: "hi"}}); !errors.Is(err, ErrMissingAPIKey) {
+		t.Fatalf("GenerateStream err = %v, want ErrMissingAPIKey", err)
+	}
+}
+
+func TestVendorMessage(t *testing.T) {
+	body := `{"error":{"code":"UNAUTHORIZED","message":"Неверные учётные данные авторизации","trace_id":"x"}}`
+	if got := VendorMessage(body); got != "Неверные учётные данные авторизации" {
+		t.Errorf("VendorMessage = %q", got)
+	}
+	if got := VendorMessage("not json"); got != "" {
+		t.Errorf("VendorMessage(non-json) = %q, want empty", got)
+	}
+}
+
+func TestPolzaClient_Generate_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusNotFound)
 		_, _ = w.Write([]byte(`{"error": {"message": "No endpoints found for test-vendor/test-model", "code": 404}}`))
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 
 	_, err := c.Generate(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
 	if err == nil {
@@ -137,7 +183,7 @@ func TestOpenRouterClient_Generate_APIError(t *testing.T) {
 	}
 }
 
-// TestOpenRouterClient_Generate_RespectsContextCancellation verifies the
+// TestPolzaClient_Generate_RespectsContextCancellation verifies the
 // README pre-launch checklist's "request-level cancellation" item at the
 // one place it actually has to be real: the outbound HTTP call. Generate
 // already builds its request with http.NewRequestWithContext, which
@@ -146,7 +192,7 @@ func TestOpenRouterClient_Generate_APIError(t *testing.T) {
 // far longer than the test's timeout, so a regression (e.g. someone
 // swapping in http.NewRequest by mistake) would make this test time out
 // instead of silently passing.
-func TestOpenRouterClient_Generate_RespectsContextCancellation(t *testing.T) {
+func TestPolzaClient_Generate_RespectsContextCancellation(t *testing.T) {
 	block := make(chan struct{}) // never closed -- the handler hangs until the client gives up
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		<-block
@@ -154,8 +200,8 @@ func TestOpenRouterClient_Generate_RespectsContextCancellation(t *testing.T) {
 	defer srv.Close()
 	defer close(block) // let the handler goroutine exit after the test finishes
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 
 	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
 	defer cancel()
@@ -175,11 +221,11 @@ func TestOpenRouterClient_Generate_RespectsContextCancellation(t *testing.T) {
 	}
 }
 
-// TestOpenRouterClient_GenerateStream parses a real OpenAI-compatible SSE
+// TestPolzaClient_GenerateStream parses a real OpenAI-compatible SSE
 // stream (multiple delta chunks, a trailing usage-only chunk, then
-// [DONE]) the same way a real OpenRouter response is shaped, and checks
+// [DONE]) the same way a real Polza response is shaped, and checks
 // the deltas and final GenerateResult come out right.
-func TestOpenRouterClient_GenerateStream(t *testing.T) {
+func TestPolzaClient_GenerateStream(t *testing.T) {
 	var gotReq map[string]any
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if err := json.NewDecoder(r.Body).Decode(&gotReq); err != nil {
@@ -200,8 +246,8 @@ func TestOpenRouterClient_GenerateStream(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 
 	ch, err := c.GenerateStream(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
 	if err != nil {
@@ -241,10 +287,10 @@ func TestOpenRouterClient_GenerateStream(t *testing.T) {
 	}
 }
 
-// TestOpenRouterClient_GenerateStream_APIError checks a mid-stream error
-// chunk (OpenRouter reports moderation/vendor failures this way even after
+// TestPolzaClient_GenerateStream_APIError checks a mid-stream error
+// chunk (Polza reports moderation/vendor failures this way even after
 // a 200 has already started streaming) surfaces as a StreamChunk.Err.
-// TestOpenRouterClient_GenerateStream_OutlivesRequestTimeout is the
+// TestPolzaClient_GenerateStream_OutlivesRequestTimeout is the
 // regression test for audit.md's stream-timeout finding. A streamed
 // generation legitimately runs far longer than a single non-streaming
 // call, and the http.Client.Timeout this replaced applied to reading the
@@ -252,7 +298,7 @@ func TestOpenRouterClient_GenerateStream(t *testing.T) {
 // regardless of how healthy it was. RequestTimeout is set well below the
 // time this stream takes: it must not apply here, while StreamTimeout
 // (generous) must.
-func TestOpenRouterClient_GenerateStream_OutlivesRequestTimeout(t *testing.T) {
+func TestPolzaClient_GenerateStream_OutlivesRequestTimeout(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
@@ -274,8 +320,8 @@ func TestOpenRouterClient_GenerateStream_OutlivesRequestTimeout(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 	c.RequestTimeout = 50 * time.Millisecond
 	c.StreamTimeout = 30 * time.Second
 
@@ -303,10 +349,10 @@ func TestOpenRouterClient_GenerateStream_OutlivesRequestTimeout(t *testing.T) {
 	}
 }
 
-// TestOpenRouterClient_GenerateStream_StreamTimeoutStillApplies checks the
+// TestPolzaClient_GenerateStream_StreamTimeoutStillApplies checks the
 // replacement bound is real: a stream that never finishes is cut off by
 // StreamTimeout rather than hanging forever.
-func TestOpenRouterClient_GenerateStream_StreamTimeoutStillApplies(t *testing.T) {
+func TestPolzaClient_GenerateStream_StreamTimeoutStillApplies(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
@@ -315,8 +361,8 @@ func TestOpenRouterClient_GenerateStream_StreamTimeoutStillApplies(t *testing.T)
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 	c.StreamTimeout = 150 * time.Millisecond
 
 	ch, err := c.GenerateStream(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
@@ -337,7 +383,7 @@ func TestOpenRouterClient_GenerateStream_StreamTimeoutStillApplies(t *testing.T)
 	}
 }
 
-func TestOpenRouterClient_GenerateStream_APIError(t *testing.T) {
+func TestPolzaClient_GenerateStream_APIError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
@@ -347,8 +393,8 @@ func TestOpenRouterClient_GenerateStream_APIError(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	c := NewOpenRouterClient("test-key")
-	c.baseURL = srv.URL
+	c := NewPolzaClient("test-key")
+	c.BaseURL = srv.URL
 
 	ch, err := c.GenerateStream(context.Background(), "test-vendor/test-model", []Message{{Role: "user", Content: "hi"}})
 	if err != nil {
