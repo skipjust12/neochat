@@ -436,8 +436,15 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 		var inputTokens, outputTokens int
 		var final GenerateResult
 		toolCalls := map[int]*streamedToolCall{}
+		// toolSinceText marks a tool step after some answer text: the model
+		// said something like "let me check", searched, and is now going on.
+		// The two pieces get a paragraph break instead of running together.
+		toolSinceText := false
 		emitTool := func(event ToolEvent) bool {
 			final.ToolEvents = append(final.ToolEvents, event)
+			if text.Len() > 0 {
+				toolSinceText = true
+			}
 			return send(StreamChunk{Tool: &event})
 		}
 
@@ -503,6 +510,10 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 			}
 			if len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 				delta := chunk.Choices[0].Delta.Content
+				if toolSinceText {
+					delta = "\n\n" + strings.TrimLeft(delta, " ")
+					toolSinceText = false
+				}
 				text.WriteString(delta)
 				if !send(StreamChunk{Delta: delta}) {
 					return

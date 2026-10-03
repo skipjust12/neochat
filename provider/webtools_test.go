@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -134,5 +135,41 @@ func TestPolzaClient_StreamCollectsToolActivity(t *testing.T) {
 	}
 	if final.Text != "Answer" || len(final.ToolEvents) != 2 || len(final.Citations) != 1 || final.WebSearches != 1 {
 		t.Fatalf("final = %+v", final)
+	}
+}
+
+func TestPolzaClient_StreamBreaksParagraphAfterToolStep(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, line := range []string{
+			`{"choices":[{"delta":{"content":"Let me check."}}]}`,
+			`{"choices":[],"polza":{"type":"tool_call","id":"s1","tool":"polza:web_search","arguments":{"query":"x"}}}`,
+			`{"choices":[],"polza":{"type":"tool_result","id":"s1","tool":"polza:web_search","result":[]}}`,
+			`{"choices":[{"delta":{"content":" It costs $4."}}]}`,
+			`{"choices":[{"delta":{"content":" Done."}}]}`,
+		} {
+			fmt.Fprintf(w, "data: %s\n\n", line)
+		}
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	c := NewPolzaClient("k")
+	c.BaseURL = srv.URL
+
+	ch, err := c.GenerateStream(WithWebTools(context.Background(), WebTools{Tools: true}), "m", []Message{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var streamed strings.Builder
+	var final GenerateResult
+	for chunk := range ch {
+		streamed.WriteString(chunk.Delta)
+		if chunk.Done {
+			final = chunk.Final
+		}
+	}
+	const want = "Let me check.\n\nIt costs $4. Done."
+	if streamed.String() != want || final.Text != want {
+		t.Fatalf("streamed %q, final %q, want %q", streamed.String(), final.Text, want)
 	}
 }

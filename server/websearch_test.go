@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -106,6 +107,45 @@ func TestWebSearchFeesAreCharged(t *testing.T) {
 	spent, _ := s.Store.Sum(context.Background(), "u1", limits.PoolInstant, time.Hour)
 	if spent < 3*webSearchFeeUSD {
 		t.Fatalf("spent %.6f, want at least the three searches (%.6f)", spent, 3*webSearchFeeUSD)
+	}
+}
+
+func TestWebSearchRejectedByVendorFallsBackToPlainAnswer(t *testing.T) {
+	standIn := &polzaStandIn{reply: "plain answer", rejectWeb: true}
+	s := newDirectServer(t, standIn)
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "news?", RequestedMode: "manual", ManualModelID: "gpt-6-luna", providerKey: "pza_user", WebSearch: "on"}
+	events, err := collectStream(s, context.Background(), req)
+	if err != nil {
+		t.Fatalf("a vendor refusing web tools broke the chat: %v", err)
+	}
+	if got := events["done"][0].(chatResponse).ResponseText; got != "plain answer" {
+		t.Fatalf("response = %q", got)
+	}
+	if len(standIn.bodies) != 2 {
+		t.Fatalf("vendor calls = %d, want the refused one and one retry", len(standIn.bodies))
+	}
+	retry := standIn.lastBody(t)
+	if retry["tools"] != nil || retry["web_search_options"] != nil {
+		t.Fatalf("retry still asked for web access: %v", retry)
+	}
+	for _, m := range retry["messages"].([]any) {
+		if content, _ := m.(map[string]any)["content"].(string); content == webSearchInstruction {
+			t.Fatal("retry without tools still tells the model to search")
+		}
+	}
+	if spent, _ := s.Store.Sum(context.Background(), "u1", limits.PoolInstant, time.Hour); spent <= 0 || spent >= webSearchFeeUSD {
+		t.Fatalf("spent %.6f: want the plain answer billed, the refused call free", spent)
+	}
+
+	// A refusal that has nothing to do with web tools isn't retried.
+	plain := &polzaStandIn{status: http.StatusBadRequest, errBody: `{"error":{"message":"bad"}}`}
+	s = newDirectServer(t, plain)
+	req.WebSearch = "off"
+	if _, err := collectStream(s, context.Background(), req); err == nil {
+		t.Fatal("a 400 without web tools succeeded")
+	}
+	if len(plain.bodies) != 1 {
+		t.Fatalf("vendor calls = %d, want 1", len(plain.bodies))
 	}
 }
 

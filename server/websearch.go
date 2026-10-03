@@ -1,6 +1,9 @@
 package server
 
 import (
+	"errors"
+	"net/http"
+
 	"neochat/conversation"
 	"neochat/provider"
 	"neochat/router"
@@ -109,6 +112,27 @@ func webLinks(results []provider.WebResult) []conversation.WebLink {
 	out := make([]conversation.WebLink, len(results))
 	for i, r := range results {
 		out[i] = conversation.WebLink{Title: r.Title, URL: r.URL, Snippet: r.Snippet}
+	}
+	return out
+}
+
+// rejectedRequest reports a vendor refusal of the request itself (bad
+// parameters), as opposed to auth, balance or availability problems.
+func rejectedRequest(err error) bool {
+	var statusErr *provider.StatusError
+	return errors.As(err, &statusErr) && (statusErr.StatusCode == http.StatusBadRequest || statusErr.StatusCode == http.StatusUnprocessableEntity)
+}
+
+// withoutWebInstruction drops the "search the web" system message, for a
+// call that ends up without web access: told to search with no tools, a
+// model tends to pretend it did.
+func withoutWebInstruction(messages []provider.Message) []provider.Message {
+	out := make([]provider.Message, 0, len(messages))
+	for _, m := range messages {
+		if m.Role == "system" && m.Content == webSearchInstruction {
+			continue
+		}
+		out = append(out, m)
 	}
 	return out
 }

@@ -1548,6 +1548,16 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 			callCtx = provider.WithReasoning(callCtx, r)
 		}
 		genResult, err := s.billedCall(callCtx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), messages, call)
+		if web := provider.WebToolsFromContext(callCtx); (web.Tools || web.SearchFirst) && rejectedRequest(err) {
+			// Web tools are on by default (Auto), so a vendor that rejects
+			// the tool settings must not take every chat down with it: a
+			// 400 is refused before any generation (billedCall already
+			// released the reservation), so ask once more without them.
+			log.Printf("server: vendor rejected web tools for model_id=%s, retrying without them: %v", model.ID, err)
+			callCtx = provider.WithWebTools(callCtx, provider.WebTools{})
+			messages = withoutWebInstruction(messages)
+			genResult, err = s.billedCall(callCtx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), messages, call)
+		}
 		if err == nil {
 			return result, model, genResult, nil
 		}
