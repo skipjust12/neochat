@@ -41,6 +41,19 @@ type Message struct {
 	// input, or flagging it in a transcript export).
 	IsSummary bool              `json:"is_summary,omitempty"`
 	Versions  []ResponseVersion `json:"versions,omitempty"`
+
+	// Attachments lists the files sent with a user message. Only metadata
+	// lives here; the bytes are in the attachment store, keyed by ID.
+	Attachments []Attachment `json:"attachments,omitempty"`
+}
+
+// Attachment is the stored reference to one file sent with a message.
+type Attachment struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	MIME string `json:"mime"`
+	Kind string `json:"kind"` // "image" | "document" | "text"
+	Size int64  `json:"size"`
 }
 
 const MaxRegenerationAttempts = 10

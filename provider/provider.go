@@ -8,9 +8,32 @@ package provider
 import "context"
 
 // Message is one turn in a chat-style completion request.
+//
+// Content is always the turn's plain text. Parts, when set, is the full
+// multimodal body (text, images, documents) and replaces Content on the
+// wire; Content then stays the text-only view used for estimates, logs and
+// summaries.
 type Message struct {
 	Role    string // "system" | "user" | "assistant"
 	Content string
+	Parts   []Part
+}
+
+// Part kinds.
+const (
+	PartText  = "text"
+	PartImage = "image"
+	PartFile  = "file"
+)
+
+// Part is one piece of a multimodal message. Text parts carry Text; image
+// and file parts carry the raw bytes plus their MIME type and file name.
+type Part struct {
+	Type string
+	Text string
+	MIME string
+	Name string
+	Data []byte
 }
 
 // GenerateResult is a completed generation: the text plus the real token

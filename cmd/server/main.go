@@ -19,6 +19,7 @@ import (
 	"syscall"
 	"time"
 
+	"neochat/attachment"
 	"neochat/auth"
 	"neochat/classifier"
 	"neochat/conversation"
@@ -294,7 +295,10 @@ func main() {
 		// by default: only Manual requests are served, straight to the
 		// chosen model on the user's own key. ROUTER_ENABLED=true restores
 		// the full pipeline once the router is ready to come back.
-		RouterDisabled:  os.Getenv("ROUTER_ENABLED") != "true",
+		RouterDisabled: os.Getenv("ROUTER_ENABLED") != "true",
+		// Postgres-backed file uploads (POST /files) -- see package
+		// attachment and db/migrations/0008_attachments.sql.
+		Attachments:     attachment.NewPostgresStore(pgDB),
 		IPRateLimiter:   ipRateLimiter,
 		UserRateLimiter: userRateLimiter,
 		// Postgres-backed -- see auth.Store's doc comment and audit.md

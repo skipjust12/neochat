@@ -163,3 +163,29 @@ func TestPostgresStore_SummaryIsolatesByUserAndConversation(t *testing.T) {
 		t.Errorf("GetSummary(u1, c1) = %+v, want Text=%q", got, "u1/c1 summary")
 	}
 }
+
+func TestPostgresStore_AttachmentsRoundTrip(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_summaries")
+	store := NewPostgresStore(pgDB)
+	ctx := context.Background()
+
+	refs := []Attachment{{ID: "f1", Name: "a.png", MIME: "image/png", Kind: "image", Size: 3}}
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "", Attachments: refs, CreatedAt: time.Now().UTC()}))
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: "nice cat", CreatedAt: time.Now().UTC()}))
+
+	history, err := store.History(ctx, "u1", "c1", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(history) != 2 || len(history[0].Attachments) != 1 || history[0].Attachments[0] != refs[0] || history[1].Attachments != nil {
+		t.Fatalf("History attachments = %+v", history)
+	}
+	page, err := store.HistoryPage(ctx, "u1", "c1", 0, 20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(page.Messages) != 2 || len(page.Messages[0].Attachments) != 1 {
+		t.Fatalf("HistoryPage attachments = %+v", page.Messages)
+	}
+}

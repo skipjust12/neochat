@@ -30,10 +30,14 @@ func (s *PostgresStore) Append(ctx context.Context, userID, conversationID strin
 	if err != nil {
 		return err
 	}
+	attachments, err := encodeAttachments(msg.Attachments)
+	if err != nil {
+		return err
+	}
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO conversation_messages (user_id, conversation_id, role, content, model_id, is_summary, created_at, versions)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, userID, conversationID, msg.Role, msg.Content, msg.ModelID, msg.IsSummary, msg.CreatedAt, versions)
+		INSERT INTO conversation_messages (user_id, conversation_id, role, content, model_id, is_summary, created_at, versions, attachments)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+	`, userID, conversationID, msg.Role, msg.Content, msg.ModelID, msg.IsSummary, msg.CreatedAt, versions, attachments)
 	return err
 }
 
@@ -47,7 +51,7 @@ func (s *PostgresStore) AddResponseVersion(ctx context.Context, userID, conversa
 	var message Message
 	var encoded []byte
 	err = tx.QueryRowContext(ctx, `
-		SELECT id, role, content, model_id, is_summary, created_at, versions
+		SELECT id, role, content, model_id, is_summary, created_at, versions, attachments
 		FROM conversation_messages
 		WHERE user_id = $1 AND conversation_id = $2 AND id = $3 AND role = $4
 		FOR UPDATE
@@ -102,7 +106,7 @@ func (s *PostgresStore) History(ctx context.Context, userID, conversationID stri
 	// stay meaningful. The (user_id, conversation_id, id) index in
 	// db/migrations/0002_conversation.sql covers this scan.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, role, content, model_id, is_summary, created_at, versions
+		SELECT id, role, content, model_id, is_summary, created_at, versions, attachments
 		FROM conversation_messages
 		WHERE user_id = $1 AND conversation_id = $2
 		ORDER BY id
@@ -119,14 +123,17 @@ func (s *PostgresStore) History(ctx context.Context, userID, conversationID stri
 	out := []Message{}
 	for rows.Next() {
 		var m Message
-		var encoded []byte
-		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.ModelID, &m.IsSummary, &m.CreatedAt, &encoded); err != nil {
+		var encoded, encodedAttachments []byte
+		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.ModelID, &m.IsSummary, &m.CreatedAt, &encoded, &encodedAttachments); err != nil {
 			return nil, err
 		}
 		if len(encoded) > 0 {
 			if err := json.Unmarshal(encoded, &m.Versions); err != nil {
 				return nil, err
 			}
+		}
+		if err := decodeAttachments(encodedAttachments, &m); err != nil {
+			return nil, err
 		}
 		out = append(out, m)
 	}
@@ -337,4 +344,26 @@ func (s *PostgresStore) SetSummary(ctx context.Context, userID, conversationID s
 		DO UPDATE SET text = $3, covers_through = $4, updated_at = $5
 	`, userID, conversationID, summary.Text, summary.CoversThrough, summary.UpdatedAt)
 	return err
+}
+
+// encodeAttachments stores an empty array rather than NULL so the column's
+// NOT NULL default and the zero value agree.
+func encodeAttachments(attachments []Attachment) ([]byte, error) {
+	if len(attachments) == 0 {
+		return []byte("[]"), nil
+	}
+	return json.Marshal(attachments)
+}
+
+func decodeAttachments(encoded []byte, m *Message) error {
+	if len(encoded) == 0 {
+		return nil
+	}
+	if err := json.Unmarshal(encoded, &m.Attachments); err != nil {
+		return err
+	}
+	if len(m.Attachments) == 0 {
+		m.Attachments = nil
+	}
+	return nil
 }

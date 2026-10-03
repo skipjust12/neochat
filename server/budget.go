@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"neochat/attachment"
 	"neochat/limits"
 	"neochat/provider"
 	"neochat/router"
@@ -48,6 +49,11 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 	inputBound := 256
 	for _, m := range messages {
 		inputBound += len(m.Role) + len(m.Content) + 64
+		// Images and documents have no byte-per-token relation; their
+		// estimates are doubled to stay an upper bound.
+		for _, p := range m.Parts {
+			inputBound += 2 * tokenizer.EstimateAttachment(p)
+		}
 	}
 	if maxOutput <= 0 || maxOutput > defaultOutputLimit {
 		maxOutput = defaultOutputLimit
@@ -121,6 +127,19 @@ func (s *Server) validateRequest(req chatRequest) error {
 	}
 	if len(req.providerKey) > 512 || strings.ContainsAny(req.providerKey, " \t\r\n") {
 		return fmt.Errorf("%w: malformed provider API key", errInvalidRequest)
+	}
+	if len(req.Attachments) > attachment.MaxPerMessage {
+		return userErrorf("You can attach up to %d files to one message.", attachment.MaxPerMessage)
+	}
+	if len(req.Attachments) > 0 && req.Incognito {
+		return userErrorf("Files can't be attached in incognito chats yet.")
+	}
+	seen := map[string]bool{}
+	for _, id := range req.Attachments {
+		if id == "" || len(id) > 64 || seen[id] {
+			return fmt.Errorf("%w: invalid attachment id", errInvalidRequest)
+		}
+		seen[id] = true
 	}
 	if req.ReasoningEffort != "" && !reasoningEfforts[req.ReasoningEffort] {
 		return fmt.Errorf("%w: unknown reasoning effort", errInvalidRequest)

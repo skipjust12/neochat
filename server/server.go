@@ -20,6 +20,7 @@ import (
 	"sync"
 	"time"
 
+	"neochat/attachment"
 	"neochat/auth"
 	"neochat/classifier"
 	"neochat/conversation"
@@ -200,6 +201,11 @@ type Server struct {
 	// the product runs while the auto-router is switched off; the zero
 	// value keeps the full classify -> moderate -> route pipeline.
 	RouterDisabled bool
+
+	// Attachments stores files uploaded through POST /files and referenced
+	// by chat requests. Nil disables uploads: the endpoint answers 503 and a
+	// request carrying attachments gets a user-facing error.
+	Attachments attachment.Store
 }
 
 // providerKeyHeader carries the user's own Polza AI key on chat requests.
@@ -286,6 +292,11 @@ type chatRequest struct {
 	// for NeoChat"), sent as a system message after the persona prompt.
 	Instructions string `json:"instructions,omitempty"`
 
+	// Attachments are ids returned by POST /files. Images and PDF/DOCX
+	// files go to the model as native parts, text files are inlined. With
+	// attachments, Message may be empty.
+	Attachments []string `json:"attachments,omitempty"`
+
 	// providerKey is the user's own vendor key, read from the
 	// X-Provider-Key header (never from the body, never persisted).
 	providerKey string
@@ -364,6 +375,10 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /projects", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectList))))))
 	mux.HandleFunc("POST /projects", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectCreate))))))
 	mux.HandleFunc("GET /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectGet))))))
+	// No request slot on uploads: several files upload in parallel, and
+	// while a reply streams the user may already be attaching the next one.
+	mux.HandleFunc("POST /files", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleFileUpload)))))
+	mux.HandleFunc("GET /files/{file_id}", recovered(s.rateLimited(s.authenticated(s.handleFileDownload))))
 	mux.HandleFunc("GET /health", recovered(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	}))
@@ -533,6 +548,11 @@ func (s *Server) handleConversationDelete(w http.ResponseWriter, r *http.Request
 		log.Printf("server: delete conversation_id=%s for user_id=%s: %v", conversationID, identity.UserID, err)
 		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
 		return
+	}
+	if s.Attachments != nil {
+		if err := s.Attachments.DeleteConversation(r.Context(), identity.UserID, conversationID); err != nil {
+			log.Printf("server: delete attachments of conversation_id=%s for user_id=%s: %v", conversationID, identity.UserID, err)
+		}
 	}
 	w.WriteHeader(http.StatusNoContent)
 }
@@ -792,7 +812,7 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 	req.PlanID = identity.PlanID
 	req.providerKey = strings.TrimSpace(r.Header.Get(providerKeyHeader))
 
-	if req.Message == "" {
+	if req.Message == "" && len(req.Attachments) == 0 {
 		http.Error(w, "message is required", http.StatusBadRequest)
 		return chatRequest{}, limits.PlanLimits{}, false
 	}
@@ -829,6 +849,10 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 // finding). Add a new case here, not a bare error string at the call
 // site, for any future error that's genuinely meant to reach the client.
 func clientErrorMessage(err error) string {
+	var friendly userError
+	if errors.As(err, &friendly) {
+		return friendly.text
+	}
 	if errors.Is(err, errRouterDisabled) || errors.Is(err, errMissingProviderKey) || errors.Is(err, provider.ErrMissingAPIKey) {
 		if errors.Is(err, errRouterDisabled) {
 			return errRouterDisabled.Error()
@@ -884,7 +908,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, identity aut
 		if errors.Is(err, ErrInstantCapExceeded) || errors.Is(err, limits.ErrBudgetExceeded) || errors.Is(err, idempotency.ErrInFlight) {
 			status = http.StatusTooManyRequests
 		}
-		if errors.Is(err, errInvalidRequest) || errors.Is(err, errRouterDisabled) || errors.Is(err, errMissingProviderKey) {
+		var friendly userError
+		if errors.Is(err, errInvalidRequest) || errors.Is(err, errRouterDisabled) || errors.Is(err, errMissingProviderKey) || errors.As(err, &friendly) {
 			status = http.StatusBadRequest
 		}
 		http.Error(w, clientErrorMessage(err), status)
@@ -977,6 +1002,7 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 	req := chatRequest{
 		UserID: identity.UserID, PlanID: identity.PlanID,
 		ConversationID: input.ConversationID, Message: history[len(history)-2].Content,
+		Attachments:   attachmentIDs(history[len(history)-2].Attachments),
 		RequestedMode: input.RequestedMode, ManualModelID: input.ManualModelID,
 		IdempotencyKey: input.IdempotencyKey, Persona: input.Persona,
 		ProjectID:           input.ProjectID,
@@ -1037,6 +1063,10 @@ type preparedRequest struct {
 	// taken from chatRequest.EstimatedContextTokens (see that field's doc
 	// comment for why the client-supplied number is no longer trusted).
 	estimatedContextTokens int
+
+	// attachments are the files sent with this turn's user message, stored
+	// on it by persistTurn.
+	attachments []conversation.Attachment
 
 	// requestID identifies this one /chat call's costlog.Store.Record
 	// entries -- shared by the classify/moderate entries recordAuxCostLog
@@ -1199,6 +1229,10 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 	if err != nil {
 		return preparedRequest{}, nil, fmt.Errorf("check thinking_max lock: %w", err)
 	}
+	files, err := s.loadRequestAttachments(ctx, req, conversationID)
+	if err != nil {
+		return preparedRequest{}, nil, err
+	}
 
 	var tail []conversation.Message
 	var summaryText string
@@ -1244,10 +1278,15 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 	if summaryText != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: "Earlier in this conversation:\n" + summaryText})
 	}
-	for _, m := range tail {
-		messages = append(messages, provider.Message{Role: string(m.Role), Content: m.Content})
+	// Earlier files are re-attached newest first, so when the history byte
+	// budget runs out it's the oldest ones that turn into notes.
+	historyBudget := int64(maxHistoryAttachmentBytes)
+	history := make([]provider.Message, len(tail))
+	for i := len(tail) - 1; i >= 0; i-- {
+		history[i] = s.historyMessage(ctx, req.UserID, tail[i], &historyBudget)
 	}
-	messages = append(messages, provider.Message{Role: "user", Content: req.Message})
+	messages = append(messages, history...)
+	messages = append(messages, userMessage(req.Message, files, nil))
 
 	// tokenizer.EstimateMessages replaces chatRequest.EstimatedContextTokens
 	// as the number Route actually filters/prices against -- computed from
@@ -1266,6 +1305,7 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 		estimatedContextTokens: tokenizer.EstimateMessages(messages),
 		requestID:              requestID,
 		plan:                   plan,
+		attachments:            attachmentRefs(files),
 	}, nil, nil
 }
 
@@ -1379,7 +1419,7 @@ func (s *Server) maybeSummarize(ctx context.Context, userID, conversationID stri
 	// state.CoversThrough needed the way there was when this received the
 	// full history.
 	tailStart := len(window) - s.SummaryTailMessages
-	toFold := window[:tailStart]
+	toFold := withAttachmentNotes(window[:tailStart])
 
 	newSummary, err := s.Summarizer.Summarize(ctx, state.Text, toFold)
 	if err != nil {
@@ -1481,11 +1521,15 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
 		}
 
+		messages, err := adaptForModel(prepared.messages, model)
+		if err != nil {
+			return router.RouteResult{}, router.Model{}, provider.GenerateResult{}, err
+		}
 		callCtx := ctx
 		if r, ok := reasoningFor(model, req.ReasoningEffort); ok {
 			callCtx = provider.WithReasoning(ctx, r)
 		}
-		genResult, err := s.billedCall(callCtx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), prepared.messages, call)
+		genResult, err := s.billedCall(callCtx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), messages, call)
 		if err == nil {
 			return result, model, genResult, nil
 		}
@@ -1563,8 +1607,17 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 			return regenerated, fmt.Errorf("persist regenerated response: %w", err)
 		}
 	} else {
-		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, CreatedAt: now}); err != nil {
+		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, Attachments: prepared.attachments, CreatedAt: now}); err != nil {
 			log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
+		}
+		if len(prepared.attachments) > 0 && s.Attachments != nil {
+			ids := make([]string, len(prepared.attachments))
+			for i, a := range prepared.attachments {
+				ids[i] = a.ID
+			}
+			if err := s.Attachments.Claim(ctx, req.UserID, prepared.conversationID, ids); err != nil {
+				log.Printf("server: claim attachments for conversation_id=%s: %v", prepared.conversationID, err)
+			}
 		}
 		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: text, ModelID: model.ID, CreatedAt: now}); err != nil {
 			log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)

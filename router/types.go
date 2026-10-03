@@ -75,6 +75,11 @@ type Model struct {
 	// models" in the Manual picker. No effect on routing.
 	Legacy bool `json:"legacy,omitempty"`
 
+	// InputModalities is what the model can read, from the vendor catalog:
+	// "text", plus "image" and/or "file" (PDF/DOCX). Empty means text only.
+	// server checks attachments against it before calling the model.
+	InputModalities []string `json:"input_modalities,omitempty"`
+
 	// ManualOnly keeps a model out of automatic routing (applyHardFilters)
 	// while still letting Manual mode select it directly -- used for
 	// models the router's task scores were never calibrated against.

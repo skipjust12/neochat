@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"neochat/attachment"
 	"neochat/auth"
 	"neochat/classifier"
 	"neochat/conversation"
@@ -82,7 +83,8 @@ func newDirectServer(t *testing.T, standIn *polzaStandIn) *Server {
 	client.BaseURL = vendor.URL
 
 	catalog := router.Catalog{Models: []router.Model{
-		{ID: "gpt-6-luna", APIModelID: "openai/gpt-6-luna", Provider: "openai", Modes: []string{"instant"}, Reasoning: "effort", CostInputPerMTok: 0.05, CostOutputPerMTok: 0.25, ContextWindow: 1_000_000, MaxOutputTokens: 16000},
+		{ID: "gpt-6-luna", DisplayName: "GPT-6 Luna", APIModelID: "openai/gpt-6-luna", Provider: "openai", Modes: []string{"instant"}, Reasoning: "effort", InputModalities: []string{"text", "image", "file"}, CostInputPerMTok: 0.05, CostOutputPerMTok: 0.25, ContextWindow: 1_000_000, MaxOutputTokens: 16000},
+		{ID: "deepseek-text", DisplayName: "DeepSeek Text", APIModelID: "deepseek/text", Provider: "deepseek", Modes: []string{"instant"}, InputModalities: []string{"text"}, CostInputPerMTok: 0.1, CostOutputPerMTok: 0.2, ContextWindow: 1_000_000, MaxOutputTokens: 16000},
 		{ID: "claude-opus-5.5", APIModelID: "anthropic/claude-opus-5.5", Provider: "anthropic", Modes: []string{"max"}, Reasoning: "adaptive", CostInputPerMTok: 4, CostOutputPerMTok: 20, ContextWindow: 1_000_000, MaxOutputTokens: 16000},
 		{ID: "claude-haiku-4-5", APIModelID: "anthropic/claude-haiku-4.5", Provider: "anthropic", Modes: []string{"instant"}, CostInputPerMTok: 0.4, CostOutputPerMTok: 0.4, ContextWindow: 200_000, MaxOutputTokens: 16000},
 	}}
@@ -100,8 +102,9 @@ func newDirectServer(t *testing.T, standIn *polzaStandIn) *Server {
 		CostLog:        costlog.NewInMemoryStore(),
 		Plans:          map[string]limits.PlanLimits{"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10, InstantExtraCapUSD: 3}},
 		SystemPrompts:  map[string]string{"Expert": "expert persona prompt"},
-		Generators:     map[string]provider.Client{"openai": client, "anthropic": client},
+		Generators:     map[string]provider.Client{"openai": client, "anthropic": client, "deepseek": client},
 		Auth:           auth.NewInMemoryStore(),
+		Attachments:    attachment.NewInMemoryStore(),
 	}
 }
 

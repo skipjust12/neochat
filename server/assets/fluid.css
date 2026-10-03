@@ -6591,3 +6591,111 @@ html[data-theme="dark"] .brand-shimmer {
   margin-right: -4px;
   padding-right: 4px;
 }
+
+/* Composer attachment chips: thumbnail, upload and error states. */
+.chip img {
+  width: 20px;
+  height: 20px;
+  flex: none;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+.chip.is-uploading img,
+.chip.is-uploading > svg:first-child {
+  animation: chip-uploading .8s ease-in-out infinite alternate;
+}
+
+@keyframes chip-uploading {
+  from { opacity: .35; }
+  to { opacity: 1; }
+}
+
+.chip.is-error {
+  box-shadow: inset 0 0 0 1px #e5484d, var(--shadow-2);
+}
+
+.chip.is-error span {
+  color: #e5484d;
+}
+
+.composer.is-dragover {
+  outline: 2px dashed var(--focus);
+  outline-offset: 3px;
+}
+
+/* Files shown above a sent user message. */
+.message-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 85%;
+  margin-bottom: 6px;
+}
+
+.message-attachment {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 260px;
+  padding: 9px 12px;
+  border: 0;
+  border-radius: 12px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+  transition: filter .16s ease;
+}
+
+.message-attachment:hover {
+  filter: brightness(.97);
+}
+
+.message-attachment svg {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  color: var(--muted);
+}
+
+.message-attachment-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.message-attachment small {
+  flex: none;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.message-attachment.is-image {
+  padding: 0;
+  overflow: hidden;
+  background: var(--soft);
+}
+
+.message-attachment.is-image img {
+  display: block;
+  max-width: min(240px, 60vw);
+  max-height: 200px;
+  min-width: 48px;
+  min-height: 48px;
+  object-fit: cover;
+}
+
+.message-attachment.is-missing {
+  width: 120px;
+  height: 80px;
+}
+
+.chat-message.user.is-attachment-only .chat-copy {
+  display: none;
+}

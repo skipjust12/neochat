@@ -411,3 +411,43 @@ func TestPolzaClient_GenerateStream_APIError(t *testing.T) {
 		t.Fatal("expected the stream to end with an error")
 	}
 }
+
+func TestPolzaClient_EncodesMultimodalParts(t *testing.T) {
+	var gotBody map[string]any
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		_, _ = w.Write([]byte(`{"choices": [{"message": {"role": "assistant", "content": "ok"}}], "usage": {"prompt_tokens": 1, "completion_tokens": 1}}`))
+	}))
+	defer srv.Close()
+	c := NewPolzaClient("k")
+	c.BaseURL = srv.URL
+
+	_, err := c.Generate(context.Background(), "m", []Message{
+		{Role: "system", Content: "be nice"},
+		{Role: "user", Content: "what is in these?", Parts: []Part{
+			{Type: PartImage, MIME: "image/png", Name: "a.png", Data: []byte{1, 2}},
+			{Type: PartFile, MIME: "application/pdf", Name: "r.pdf", Data: []byte("%PDF")},
+			{Type: PartText, Text: "what is in these?"},
+		}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages := gotBody["messages"].([]any)
+	if messages[0].(map[string]any)["content"] != "be nice" {
+		t.Errorf("plain message must stay a string, got %v", messages[0])
+	}
+	parts := messages[1].(map[string]any)["content"].([]any)
+	image := parts[0].(map[string]any)
+	file := parts[1].(map[string]any)
+	text := parts[2].(map[string]any)
+	if image["type"] != "image_url" || image["image_url"].(map[string]any)["url"] != "data:image/png;base64,AQI=" {
+		t.Errorf("image part = %v", image)
+	}
+	if file["type"] != "file" || file["file"].(map[string]any)["filename"] != "r.pdf" || file["file"].(map[string]any)["file_data"] != "data:application/pdf;base64,JVBERg==" {
+		t.Errorf("file part = %v", file)
+	}
+	if text["type"] != "text" || text["text"] != "what is in these?" {
+		t.Errorf("text part = %v", text)
+	}
+}

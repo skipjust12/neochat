@@ -8,6 +8,8 @@
 
 **Router disabled.** By default (`ROUTER_ENABLED` unset) only Manual mode works: Auto/Instant/Thinking/Max requests are rejected with "Router disabled", and classify/moderate are skipped entirely — the request goes straight to the chosen model with the chosen reasoning effort, the selected tone (persona prompt from `prompts/<Name>.md`) and the user's custom instructions. `ROUTER_ENABLED=true` brings the full classify → moderate → route pipeline back.
 
+**File attachments.** The composer's + menu (or paste / drag-and-drop) uploads each file to `POST /files` (multipart, field `file`, bearer auth) as soon as it's picked; the chat request then lists the returned ids in `"attachments"`. The server decides the type from the bytes, not the name: images (PNG/JPEG/GIF/WebP, max 5 MB; the browser shrinks big photos to 2048 px first), documents (PDF/DOCX, max 20 MB) and UTF-8 text/code (max 512 KB). Images and documents go to Polza as `image_url` / `file` parts, so the chosen model has to support them (`input_modalities` in `configs/models.json`); text files are inlined and work everywhere. Files live in the `attachments` table, are re-sent on later turns (up to 30 MB of history), and are deleted with their chat; picked-but-never-sent files are pruned after 24 hours. Files are not available in incognito chats.
+
 ## 1. Start everything
 
 `cmd/server` requires a real Postgres and Redis (see README's "Current task: local dev infrastructure") — the `InMemory*` stand-ins are gone. All three — Postgres, Redis, and the server itself — run in Docker via `docker-compose.yml` at the repo root; there's no separate `go run` step for normal use.

@@ -547,7 +547,7 @@ func TestHandle_IncognitoUsesRequestHistoryWithoutPersisting(t *testing.T) {
 		t.Fatalf("generated messages = %+v, want %+v", got, want)
 	}
 	for index := range want {
-		if got[index] != want[index] {
+		if got[index].Role != want[index].Role || got[index].Content != want[index].Content || len(got[index].Parts) != 0 {
 			t.Errorf("message %d = %+v, want %+v", index, got[index], want[index])
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -108,9 +109,48 @@ func (c *PolzaClient) resolveKey(ctx context.Context) (string, error) {
 	return "", ErrMissingAPIKey
 }
 
+// polzaChatMessage.Content is a plain string, or an array of content parts
+// for a multimodal message (see encodeParts).
 type polzaChatMessage struct {
 	Role    string `json:"role"`
-	Content string `json:"content"`
+	Content any    `json:"content"`
+}
+
+type polzaContentPart struct {
+	Type     string             `json:"type"`
+	Text     string             `json:"text,omitempty"`
+	ImageURL *polzaImageURL     `json:"image_url,omitempty"`
+	File     *polzaFileContents `json:"file,omitempty"`
+}
+
+type polzaImageURL struct {
+	URL string `json:"url"`
+}
+
+type polzaFileContents struct {
+	Filename string `json:"filename"`
+	FileData string `json:"file_data"`
+}
+
+// encodeParts turns Parts into Polza's OpenAI-style content array: images
+// as image_url with a base64 data URL, documents as file with file_data.
+func encodeParts(parts []Part) []polzaContentPart {
+	out := make([]polzaContentPart, 0, len(parts))
+	for _, p := range parts {
+		switch p.Type {
+		case PartImage:
+			out = append(out, polzaContentPart{Type: "image_url", ImageURL: &polzaImageURL{URL: dataURL(p.MIME, p.Data)}})
+		case PartFile:
+			out = append(out, polzaContentPart{Type: "file", File: &polzaFileContents{Filename: p.Name, FileData: dataURL(p.MIME, p.Data)}})
+		default:
+			out = append(out, polzaContentPart{Type: "text", Text: p.Text})
+		}
+	}
+	return out
+}
+
+func dataURL(mime string, data []byte) string {
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(data)
 }
 
 // polzaReasoning is the body-level "reasoning" object. Polza ignores a
@@ -151,7 +191,9 @@ type polzaError struct {
 
 type polzaChatResponse struct {
 	Choices []struct {
-		Message polzaChatMessage `json:"message"`
+		Message struct {
+			Content string `json:"content"`
+		} `json:"message"`
 	} `json:"choices"`
 	Usage polzaUsage  `json:"usage"`
 	Error *polzaError `json:"error"`
@@ -183,7 +225,11 @@ func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messa
 		}
 	}
 	for _, m := range messages {
-		req.Messages = append(req.Messages, polzaChatMessage{Role: m.Role, Content: m.Content})
+		msg := polzaChatMessage{Role: m.Role, Content: m.Content}
+		if len(m.Parts) > 0 {
+			msg.Content = encodeParts(m.Parts)
+		}
+		req.Messages = append(req.Messages, msg)
 	}
 	return req
 }

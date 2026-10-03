@@ -253,6 +253,7 @@ Known, not all resolved:
 - Classifier: prompt written and validated against live model calls, wired into every request.
 - Chat personas: implemented end to end (tone picker in Settings → server persona prompts in `prompts/<Name>.md`); prompt text still to be written.
 - Model provider: Polza AI (OpenAI-compatible, `provider.PolzaClient`) replaced OpenRouter. Users bring their own Polza key (Settings → Account), sent per request and never stored server-side.
+- File attachments: images (PNG/JPEG/GIF/WebP), PDF/DOCX and text/code files. Uploaded via `POST /files` into Postgres, sent to the model as native image/file parts (text files inlined, so any model reads them), re-sent on later turns, deleted with the chat. Models that can't read a file type say so before anything is sent.
 - Router: switched off for now (`ROUTER_ENABLED` unset). Only Manual mode works — the chosen model is called directly with the selected reasoning effort, tone and custom instructions; other modes answer "Router disabled". The routing code stays intact for when it comes back.
 - Moderation: Layer 1 implemented and wired in; Layer 2 deliberately deprioritized.
 - Streaming: implemented (`POST /chat/stream`), sharing the full pipeline with the non-streaming path.

@@ -15,6 +15,7 @@ package tokenizer
 
 import (
 	"math"
+	"regexp"
 	"strings"
 
 	"neochat/provider"
@@ -73,6 +74,43 @@ func EstimateMessages(messages []provider.Message) int {
 	total := 0
 	for _, m := range messages {
 		total += EstimateText(m.Content) + perMessageOverhead
+		for _, p := range m.Parts {
+			total += EstimateAttachment(p)
+		}
 	}
 	return total
+}
+
+// Attachment estimates. Vendors bill images by resolution after their own
+// downscaling, which tops out around 1,600 tokens for Claude and a little
+// less for GPT; documents by extracted text plus, for PDFs, a rendered
+// image of every page -- roughly 1,500-3,000 tokens a page.
+const (
+	tokensPerImage  = 1600
+	tokensPerPage   = 2500
+	bytesPerPDFPage = 50 << 10 // fallback when pages can't be counted
+)
+
+var pdfPageMarker = regexp.MustCompile(`/Type\s*/Page[^s]`)
+
+// EstimateAttachment returns the extra tokens an image or document part
+// costs beyond its text. Text parts return 0: their text is already part
+// of Message.Content, which EstimateMessages counts.
+func EstimateAttachment(p provider.Part) int {
+	switch p.Type {
+	case provider.PartImage:
+		return tokensPerImage
+	case provider.PartFile:
+		if p.MIME == "application/pdf" {
+			pages := len(pdfPageMarker.FindAllIndex(p.Data, -1))
+			// Compressed object streams hide page objects; fall back to size.
+			if bySize := len(p.Data) / bytesPerPDFPage; pages == 0 || bySize > pages*4 {
+				pages = max(pages, bySize, 1)
+			}
+			return pages * tokensPerPage
+		}
+		// DOCX is zipped XML: compressed size is a fair proxy for text.
+		return max(len(p.Data)/4, 500)
+	}
+	return 0
 }
