@@ -119,6 +119,9 @@ type webAnswer struct {
 	// Continued: a model call after the first one ran, so text may already
 	// be on screen and the answer must not be retried on another model.
 	Continued bool
+	// Questionnaire: the model ended the answer by asking the user
+	// questions (ask_user).
+	Questionnaire *conversation.Questionnaire
 }
 
 // webRun answers one message, running web tools as the model asks.
@@ -136,28 +139,37 @@ type webRun struct {
 	fetches  int
 }
 
-// answer is routeAndCall's call for one model: plain, or with web access
-// as req.WebSearch and the model allow.
+// answer is routeAndCall's call for one model. Function-calling models go
+// through the tool loop with ask_user, plus the web tools when the Web
+// search toggle allows; the rest answer plainly, or after a search in
+// "on" mode.
 func (s *Server) answer(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, messages []provider.Message, generate func(context.Context, []provider.Message) (provider.GenerateResult, error), onActivity func([]conversation.ToolActivity)) (webAnswer, error) {
 	r := &webRun{s: s, req: req, prepared: prepared, model: model, generate: generate, onActivity: onActivity}
+	web := req.WebSearch == webSearchAuto || req.WebSearch == webSearchOn
 	switch {
-	case req.WebSearch != webSearchAuto && req.WebSearch != webSearchOn:
-		res, err := generate(ctx, messages)
-		return webAnswer{GenerateResult: res}, err
-	case !model.ToolCalling && req.WebSearch == webSearchAuto:
+	case model.ToolCalling:
+		return r.loop(ctx, messages, web)
+	case req.WebSearch == webSearchAuto:
 		res, err := generate(ctx, withSystemNote(messages, noWebToolsNote))
 		return webAnswer{GenerateResult: res}, err
-	case !model.ToolCalling:
+	case req.WebSearch == webSearchOn:
 		return r.searchFirst(ctx, messages)
 	}
-	return r.loop(ctx, messages)
+	res, err := generate(ctx, messages)
+	return webAnswer{GenerateResult: res}, err
 }
 
-// loop is the tool loop for a function-calling model.
-func (r *webRun) loop(ctx context.Context, base []provider.Message) (webAnswer, error) {
-	messages := withSystemNote(base, fmt.Sprintf(webToolsNote, time.Now().UTC().Format("Monday, 2 January 2006")))
-	if r.req.WebSearch == webSearchOn {
-		messages = withSystemNote(messages, webSearchInstruction)
+// loop is the tool loop for a function-calling model: ask_user always, the
+// web tools when web is on.
+func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (webAnswer, error) {
+	tools := []provider.FunctionTool{askUserTool}
+	messages := base
+	if web {
+		tools = append(append([]provider.FunctionTool(nil), webFunctionTools...), askUserTool)
+		messages = withSystemNote(messages, fmt.Sprintf(webToolsNote, time.Now().UTC().Format("Monday, 2 January 2006")))
+		if r.req.WebSearch == webSearchOn {
+			messages = withSystemNote(messages, webSearchInstruction)
+		}
 	}
 	var out webAnswer
 	reasoningOff := false
@@ -165,7 +177,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message) (webAnswer, 
 		last := round == webMaxRounds-1
 		callCtx := ctx
 		if !last {
-			callCtx = provider.WithFunctionTools(callCtx, webFunctionTools)
+			callCtx = provider.WithFunctionTools(callCtx, tools)
 		}
 		if out.Text != "" {
 			callCtx = provider.WithParagraphBreak(callCtx)
@@ -176,7 +188,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message) (webAnswer, 
 		res, err := r.generate(callCtx, messages)
 		if err != nil && rejectedRequest(err) {
 			if round == 0 {
-				return r.withoutWeb(ctx, base, err)
+				return r.withoutTools(ctx, base, err, web)
 			}
 			if !reasoningOff {
 				// Some routes can't take a model's reasoning back with its
@@ -215,12 +227,32 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message) (webAnswer, 
 				calls[i].ID = fmt.Sprintf("call_%d_%d", round, i)
 			}
 		}
+		// A questionnaire ends the turn: the user answers it, in their own
+		// time, as their next message. Other calls of the same step are
+		// dropped; the model can make them again after the answers.
+		var askErrors map[int]string
+		for i, call := range calls {
+			if call.Name != askUserTool.Name {
+				continue
+			}
+			questionnaire, err := parseQuestionnaire(call.Arguments)
+			if err != nil {
+				if askErrors == nil {
+					askErrors = map[int]string{}
+				}
+				askErrors[i] = "Error: " + err.Error() + ". Fix it and call ask_user again."
+				continue
+			}
+			out.Questionnaire = questionnaire
+			out.Activity = r.snapshot()
+			return out, nil
+		}
 		assistant := provider.Message{Role: "assistant", Content: res.Text, ToolCalls: calls}
 		if !reasoningOff {
 			assistant.Reasoning, assistant.ReasoningDetails = res.Reasoning, res.ReasoningDetails
 		}
 		messages = append(messages, assistant)
-		for i, result := range r.runTools(ctx, calls) {
+		for i, result := range r.runTools(ctx, calls, askErrors) {
 			messages = append(messages, provider.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result})
 		}
 		if err := ctx.Err(); err != nil {
@@ -251,11 +283,16 @@ func (r *webRun) searchFirst(ctx context.Context, messages []provider.Message) (
 	return webAnswer{GenerateResult: res, Activity: r.snapshot()}, err
 }
 
-// withoutWeb answers after the vendor refused the web settings: no tools,
-// a note so the model says why, and the refusal shown as a failed step.
-// messages are the request's own, without the web notes.
-func (r *webRun) withoutWeb(ctx context.Context, messages []provider.Message, refused error) (webAnswer, error) {
-	log.Printf("server: vendor rejected web tools for model_id=%s, answering without them: %v", r.model.ID, refused)
+// withoutTools answers after the vendor refused the request with tools:
+// no tools; with web on, also a note so the model says why and the
+// refusal shown as a failed step. messages are the request's own, without
+// the web notes.
+func (r *webRun) withoutTools(ctx context.Context, messages []provider.Message, refused error, web bool) (webAnswer, error) {
+	log.Printf("server: vendor rejected tools for model_id=%s, answering without them: %v", r.model.ID, refused)
+	if !web {
+		res, err := r.generate(ctx, messages)
+		return webAnswer{GenerateResult: res}, err
+	}
 	step := r.start(conversation.ToolActivity{Tool: "web_search"})
 	r.finish(step, func(a *conversation.ToolActivity) { a.Error = webRefusal(refused) })
 	res, err := r.generate(ctx, withSystemNote(withoutWebInstruction(messages), webUnavailableNote))
@@ -265,10 +302,14 @@ func (r *webRun) withoutWeb(ctx context.Context, messages []provider.Message, re
 // runTools runs one step's tool calls and returns their results in call
 // order. The calls are checked and their steps shown in order first, then
 // run a few at a time.
-func (r *webRun) runTools(ctx context.Context, calls []provider.ToolCall) []string {
+func (r *webRun) runTools(ctx context.Context, calls []provider.ToolCall, preset map[int]string) []string {
 	results := make([]string, len(calls))
 	jobs := make([]func(context.Context) string, len(calls))
 	for i, call := range calls {
+		if result, ok := preset[i]; ok {
+			results[i] = result
+			continue
+		}
 		results[i], jobs[i] = r.planTool(call)
 	}
 	slots := make(chan struct{}, webToolWorkers)

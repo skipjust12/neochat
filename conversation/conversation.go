@@ -71,6 +71,36 @@ type ResponseVersion struct {
 	// ThoughtMS is how long the answer took before its text started (the
 	// last time, if web steps came in between): "Thought for N seconds".
 	ThoughtMS int64 `json:"thought_ms,omitempty"`
+	// Questionnaire is set when the model ended this answer by asking the
+	// user questions (the ask_user tool); the answers come back as the
+	// user's next message.
+	Questionnaire *Questionnaire `json:"questionnaire,omitempty"`
+}
+
+// Questionnaire is a set of questions the model put to the user, shown as
+// a panel by the client: a title, the questions, and a closing note.
+type Questionnaire struct {
+	Title     string     `json:"title"`
+	Footer    string     `json:"footer,omitempty"`
+	Questions []Question `json:"questions"`
+}
+
+// Question is one question of a questionnaire. Besides its options the
+// user can always write an answer of their own (the client's last row);
+// a question without options takes only that.
+type Question struct {
+	ID          string           `json:"id"`
+	Text        string           `json:"text"`
+	Description string           `json:"description,omitempty"`
+	MultiSelect bool             `json:"multi_select,omitempty"`
+	Options     []QuestionOption `json:"options,omitempty"`
+}
+
+// QuestionOption is one answer to pick.
+type QuestionOption struct {
+	ID          string `json:"id"`
+	Label       string `json:"label"`
+	Description string `json:"description,omitempty"`
 }
 
 // ToolActivity is one web step: a search ("web_search", with the query and

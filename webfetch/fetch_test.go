@@ -200,7 +200,9 @@ func TestFetchFailuresAreExplained(t *testing.T) {
 	if hops > maxRedirects+1 {
 		t.Errorf("followed %d redirects", hops)
 	}
-	if _, err := f.Fetch(context.Background(), "http://does-not-exist.invalid/"); err == nil || !strings.Contains(err.Error(), "could not be found") {
+	// Not with f: its 100ms timeout is for /slow, and a DNS lookup can take
+	// longer than that.
+	if _, err := (&Fetcher{AllowPrivate: true}).Fetch(context.Background(), "http://does-not-exist.invalid/"); err == nil || !strings.Contains(err.Error(), "could not be found") {
 		t.Errorf("unknown host: err = %v", err)
 	}
 }

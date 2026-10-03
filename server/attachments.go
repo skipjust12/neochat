@@ -261,6 +261,9 @@ func userMessage(text string, files []attachment.File, notes []string) provider.
 // the shared history byte budget lasts. Files that are gone or over budget
 // become a short note so the model still knows something was attached.
 func (s *Server) historyMessage(ctx context.Context, userID string, m conversation.Message, budget *int64) provider.Message {
+	if m.Role == conversation.RoleAssistant {
+		return provider.Message{Role: string(m.Role), Content: assistantHistoryContent(m)}
+	}
 	if m.Role != conversation.RoleUser || len(m.Attachments) == 0 {
 		return provider.Message{Role: string(m.Role), Content: m.Content}
 	}

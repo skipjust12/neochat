@@ -6906,3 +6906,482 @@ html[data-theme="dark"] .brand-shimmer {
 .web-step-error.is-muted {
   color: var(--muted);
 }
+
+/* Questionnaire (ask_user): a panel above the composer -- in its place on
+   phones -- that asks one question at a time, and a card on the answer
+   that asked it. */
+.ask-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 8px;
+  padding: 14px 14px 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-3);
+  color: var(--text);
+  text-align: left;
+  max-height: min(62vh,560px);
+  animation: askIn .22s var(--ease-out);
+}
+
+.ask-panel[hidden] {
+  display: none;
+}
+
+.ask-panel:focus {
+  outline: none;
+}
+
+@keyframes askIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.ask-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.ask-icon,
+.ask-card-icon {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  color: var(--muted);
+}
+
+.ask-icon svg,
+.ask-close svg,
+.ask-card-icon svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ask-title {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  overflow: hidden;
+  font: 600 14px/1.3 Inter,ui-sans-serif,system-ui,sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-progress {
+  color: var(--muted);
+  font: 450 12px Inter,ui-sans-serif,system-ui,sans-serif;
+  white-space: nowrap;
+}
+
+.ask-close {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 6px;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.ask-close:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.ask-steps {
+  display: flex;
+  gap: 4px;
+}
+
+.ask-steps[hidden] {
+  display: none;
+}
+
+.ask-step {
+  flex: 1;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--line-strong);
+  transition: background .2s;
+}
+
+.ask-step.is-done {
+  background: var(--muted);
+}
+
+.ask-step.is-current {
+  background: var(--text);
+}
+
+.ask-body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  padding: 2px;
+  margin: -2px;
+}
+
+.ask-question {
+  display: grid;
+  gap: 4px;
+}
+
+.ask-q-title {
+  margin: 0;
+  font: 560 15px/1.4 Inter,ui-sans-serif,system-ui,sans-serif;
+}
+
+.ask-q-desc,
+.ask-q-hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.ask-q-hint {
+  font-size: 12px;
+}
+
+.ask-options {
+  display: grid;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.ask-option {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 44px;
+  padding: 9px 10px 9px 12px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line);
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: background .15s,box-shadow .15s;
+}
+
+.ask-option:hover {
+  background: var(--surface-4);
+}
+
+.ask-option:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
+}
+
+.ask-option.is-selected {
+  box-shadow: inset 0 0 0 1.5px var(--text);
+}
+
+.ask-mark {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+  transition: background .15s,box-shadow .15s;
+}
+
+.ask-options.is-multi .ask-mark {
+  border-radius: 5px;
+}
+
+.ask-option.is-selected .ask-mark {
+  background: var(--text);
+  box-shadow: none;
+}
+
+.ask-option.is-selected .ask-mark::after {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--surface-2);
+}
+
+.ask-options.is-multi .ask-option.is-selected .ask-mark::after {
+  width: 8px;
+  height: 4px;
+  border-radius: 0;
+  background: none;
+  border-left: 2px solid var(--surface-2);
+  border-bottom: 2px solid var(--surface-2);
+  transform: translateY(-1px) rotate(-45deg);
+}
+
+.ask-option-copy {
+  display: grid;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;
+}
+
+.ask-option-copy strong {
+  font: 560 13.5px/1.35 Inter,ui-sans-serif,system-ui,sans-serif;
+  overflow-wrap: anywhere;
+}
+
+.ask-option-copy span {
+  color: var(--muted);
+  font-size: 12.5px;
+  line-height: 1.4;
+}
+
+.ask-chip {
+  flex: none;
+  display: grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--hover);
+  color: var(--muted);
+  font: 500 11px Inter,ui-sans-serif,system-ui,sans-serif;
+}
+
+.ask-custom {
+  cursor: text;
+}
+
+.ask-custom-field {
+  flex: 1;
+  min-width: 0;
+  min-height: 22px;
+  max-height: 140px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: 450 13.5px/1.45 Inter,ui-sans-serif,system-ui,sans-serif;
+  resize: none;
+  outline: none;
+}
+
+.ask-custom-field::placeholder {
+  color: var(--muted);
+}
+
+.ask-custom-field:focus,
+.ask-custom-field:focus-visible {
+  outline: none;
+  box-shadow: none;
+}
+
+.ask-custom:focus-within {
+  box-shadow: inset 0 0 0 1.5px var(--muted);
+}
+
+.ask-custom.is-selected:focus-within {
+  box-shadow: inset 0 0 0 1.5px var(--text);
+}
+
+.ask-custom.is-only {
+  align-items: flex-start;
+  min-height: 84px;
+  padding: 12px;
+}
+
+.ask-custom.is-only .ask-custom-field {
+  min-height: 56px;
+}
+
+.ask-foot {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+}
+
+.ask-note {
+  flex: 1 1 220px;
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.ask-note[hidden] {
+  display: none;
+}
+
+.ask-actions {
+  display: flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.ask-actions button {
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  font: 500 13px Inter,ui-sans-serif,system-ui,sans-serif;
+  cursor: pointer;
+}
+
+.ask-actions button[hidden] {
+  display: none;
+}
+
+.ask-back,
+.ask-skip {
+  background: none;
+  color: var(--muted);
+}
+
+.ask-back:hover,
+.ask-skip:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.ask-next {
+  min-width: 72px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.ask-next:disabled {
+  opacity: .35;
+  cursor: default;
+}
+
+.ask-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: 440px;
+  margin-top: 10px;
+  padding: 10px 10px 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-2);
+}
+
+.ask-card-copy {
+  display: grid;
+  flex: 1;
+  gap: 1px;
+  min-width: 0;
+}
+
+.ask-card-copy strong {
+  overflow: hidden;
+  font: 560 13.5px/1.35 Inter,ui-sans-serif,system-ui,sans-serif;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ask-card-copy span,
+.ask-card-state {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ask-card-action {
+  display: none;
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: 500 12.5px Inter,ui-sans-serif,system-ui,sans-serif;
+  cursor: pointer;
+}
+
+.ask-card.is-pending .ask-card-action {
+  display: inline-block;
+}
+
+html.is-asking .ask-card.is-pending .ask-card-action {
+  display: none;
+}
+
+.ask-card.is-pending .ask-card-state {
+  display: none;
+}
+
+.chat-message.assistant.has-questions .chat-text:empty {
+  display: none;
+}
+
+/* The answers message: questions muted, answers plain. */
+.qa-list {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  text-align: left;
+}
+
+.qa-pair {
+  display: grid;
+  gap: 2px;
+}
+
+.qa-list dt {
+  color: var(--muted);
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.qa-list dd {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.qa-list dd.is-skipped {
+  color: var(--muted);
+  font-style: italic;
+}
+
+/* Phones: the panel takes the composer's place. */
+@media (max-width:680px) {
+  .composer-wrap.is-asking .composer {
+    display: none;
+  }
+  .ask-panel {
+    margin-bottom: 0;
+    max-height: min(74dvh,640px);
+    padding: 14px;
+    border-radius: 20px;
+  }
+  .ask-option {
+    min-height: 48px;
+  }
+  .ask-chip {
+    display: none;
+  }
+}

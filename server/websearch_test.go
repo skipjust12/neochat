@@ -125,6 +125,15 @@ func toolMessages(body map[string]any) []map[string]any {
 	return out
 }
 
+func toolNames(body map[string]any) []string {
+	var names []string
+	tools, _ := body["tools"].([]any)
+	for _, tool := range tools {
+		names = append(names, tool.(map[string]any)["function"].(map[string]any)["name"].(string))
+	}
+	return names
+}
+
 func hasSystemMessage(body map[string]any, content string) bool {
 	for _, m := range body["messages"].([]any) {
 		msg := m.(map[string]any)
@@ -220,7 +229,7 @@ func TestWebLoopSearchesReadsAndAnswers(t *testing.T) {
 	if len(main) != 2 {
 		t.Fatalf("main calls = %d, want the tool call and the answer", len(main))
 	}
-	if tools, _ := main[0]["tools"].([]any); len(tools) != 2 || !hasSystemPrefix(main[0], "You can search the web") {
+	if tools, _ := main[0]["tools"].([]any); len(tools) != 3 || !hasSystemPrefix(main[0], "You can search the web") {
 		t.Errorf("first call: tools %v, web note %v", main[0]["tools"], hasSystemPrefix(main[0], "You can search the web"))
 	}
 	results := toolMessages(main[1])
@@ -370,9 +379,13 @@ func TestWebModesShapeTheRequest(t *testing.T) {
 		t.Errorf("auto with a tool model: tools %v, instruction %v", body["tools"], hasSystemMessage(body, webSearchInstruction))
 	}
 	for _, mode := range []string{"off", ""} {
-		if body, _ := ask("gpt-6-luna", mode); body["tools"] != nil || body["plugins"] != nil || hasSystemPrefix(body, "You can search the web") {
-			t.Errorf("mode %q sent web settings: %v", mode, body)
+		body, _ := ask("gpt-6-luna", mode)
+		if names := toolNames(body); len(names) != 1 || names[0] != "ask_user" || body["plugins"] != nil || hasSystemPrefix(body, "You can search the web") {
+			t.Errorf("mode %q: tools %v, plugins %v (want only ask_user, no web)", mode, names, body["plugins"])
 		}
+	}
+	if names := toolNames(func() map[string]any { b, _ := ask("gpt-6-luna", "auto"); return b }()); strings.Join(names, ",") != "web_search,web_fetch,ask_user" {
+		t.Errorf("auto tools = %v", names)
 	}
 	if body, _ := ask("deepseek-text", "auto"); body["tools"] != nil || body["plugins"] != nil || !hasSystemMessage(body, noWebToolsNote) {
 		t.Errorf("auto without tool calling: %v", body)

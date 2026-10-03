@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=12" />
+<link rel="stylesheet" href="/assets/fluid.css?v=13" />
 <link rel="stylesheet" href="/assets/landing/landing.css?v=1" />
 <script>try{if(!sessionStorage.getItem('neochat-api-key'))document.documentElement.classList.add('is-guest')}catch(error){document.documentElement.classList.add('is-guest')}</script>
 </head>
@@ -123,6 +123,24 @@
         <div class="hero incognito-hero" id="incognitoHero"><div class="incognito-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></div><h1>Incognito mode.</h1><p>The chat will not be saved. For security reasons, we may retain a copy of it for up to 30 days.</p></div>
       </div>
       <div class="composer-wrap">
+        <section class="ask-panel" id="askPanel" aria-labelledby="askTitle" tabindex="-1" hidden>
+          <div class="ask-head">
+            <span class="ask-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg></span>
+            <h2 class="ask-title" id="askTitle"></h2>
+            <span class="ask-progress" id="askProgress"></span>
+            <button type="button" class="ask-close" id="askClose" aria-label="Hide questions"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></button>
+          </div>
+          <div class="ask-steps" id="askSteps" aria-hidden="true"></div>
+          <div class="ask-body" id="askBody"></div>
+          <div class="ask-foot">
+            <p class="ask-note" id="askNote"></p>
+            <div class="ask-actions">
+              <button type="button" class="ask-back" id="askBack">Back</button>
+              <button type="button" class="ask-skip" id="askSkip">Skip</button>
+              <button type="button" class="ask-next" id="askNext">Next</button>
+            </div>
+          </div>
+        </section>
         <div class="composer">
           <div class="attachments" id="attachments"><div class="attachments-inner" id="attachmentsInner"></div></div>
           <div class="prompt-entry" id="promptEntry"><div class="connector-highlights" id="connectorHighlights" aria-hidden="true"></div><textarea id="message" rows="2" aria-label="Message" placeholder="Ask anything…"></textarea></div><div class="composer-bottom">
@@ -2125,6 +2143,376 @@
       };
     }
 
+    /* ---------- questionnaires (ask_user) ---------- */
+    // A model can end its answer with questions for the user. They open as a
+    // panel above the composer (in its place on phones), one question at a
+    // time: a title, the question with its hint, numbered options (several
+    // for multi-select), and always, last, a field for an answer of one's
+    // own; a note from the model under it. Finish sends the answers as the
+    // user's next message, one "Q: … / A: …" pair per question. Until then
+    // the answer carries a card that reopens the panel.
+    const askPanel=document.getElementById('askPanel');
+    const askComposerWrap=document.querySelector('.composer-wrap');
+    const askTitle=document.getElementById('askTitle');
+    const askProgress=document.getElementById('askProgress');
+    const askSteps=document.getElementById('askSteps');
+    const askBody=document.getElementById('askBody');
+    const askNote=document.getElementById('askNote');
+    const askBack=document.getElementById('askBack');
+    const askSkip=document.getElementById('askSkip');
+    const askNext=document.getElementById('askNext');
+    let activeAsk=null; // {message, questionnaire, index, answers:{id:{selected:[],other:'',skipped:false}}}
+
+    function versionQuestionnaire(message){
+      const versions=message&&message.responseVersions;
+      if(!versions||!versions.length)return null;
+      const version=versions[message.responseVersionIndex];
+      return version&&version.questionnaire&&Array.isArray(version.questionnaire.questions)&&version.questionnaire.questions.length?version.questionnaire:null;
+    }
+    function isLatestVersion(message){
+      return message.responseVersionIndex===(message.responseVersions||[]).length-1;
+    }
+    function askAnswer(question){
+      if(!activeAsk.answers[question.id])activeAsk.answers[question.id]={selected:[],other:'',skipped:false};
+      return activeAsk.answers[question.id];
+    }
+    function isAnswered(answer){
+      return Boolean(answer&&!answer.skipped&&(answer.selected.length||answer.other.trim()));
+    }
+    function askIcon(){
+      const icon=document.createElement('span');
+      icon.className='ask-card-icon';
+      icon.setAttribute('aria-hidden','true');
+      icon.innerHTML='<svg viewBox="0 0 24 24"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>';
+      return icon;
+    }
+
+    function renderAskStep(){
+      const questionnaire=activeAsk.questionnaire;
+      const questions=questionnaire.questions;
+      const index=activeAsk.index;
+      const question=questions[index];
+      const answer=askAnswer(question);
+      const last=index===questions.length-1;
+      askTitle.textContent=questionnaire.title||'A few questions';
+      askProgress.textContent=questions.length>1?'Question '+(index+1)+' of '+questions.length:'';
+      askSteps.replaceChildren();
+      askSteps.hidden=questions.length<2;
+      questions.forEach(function(item,i){
+        const dot=document.createElement('span');
+        dot.className='ask-step'+(i===index?' is-current':'')+(isAnswered(activeAsk.answers[item.id])?' is-done':'');
+        askSteps.append(dot);
+      });
+      askNote.textContent=questionnaire.footer||'';
+      askNote.hidden=!questionnaire.footer;
+
+      const wrap=document.createElement('div');
+      wrap.className='ask-question';
+      const title=document.createElement('h3');
+      title.className='ask-q-title';
+      title.id='askQuestionTitle';
+      title.textContent=question.text;
+      wrap.append(title);
+      if(question.description){
+        const desc=document.createElement('p');
+        desc.className='ask-q-desc';
+        desc.textContent=question.description;
+        wrap.append(desc);
+      }
+      const options=Array.isArray(question.options)?question.options:[];
+      if(question.multi_select&&options.length){
+        const hint=document.createElement('p');
+        hint.className='ask-q-hint';
+        hint.textContent='Choose all that apply';
+        wrap.append(hint);
+      }
+      const list=document.createElement('div');
+      list.className='ask-options'+(question.multi_select?' is-multi':'');
+      list.setAttribute('role',question.multi_select?'group':'radiogroup');
+      list.setAttribute('aria-labelledby','askQuestionTitle');
+      options.forEach(function(option,i){
+        const row=document.createElement('button');
+        row.type='button';
+        row.className='ask-option';
+        row.dataset.optionId=option.id;
+        row.setAttribute('role',question.multi_select?'checkbox':'radio');
+        const checked=answer.selected.indexOf(option.id)>-1;
+        row.setAttribute('aria-checked',String(checked));
+        row.classList.toggle('is-selected',checked);
+        const mark=document.createElement('span');
+        mark.className='ask-mark';
+        const copy=document.createElement('span');
+        copy.className='ask-option-copy';
+        const label=document.createElement('strong');
+        label.textContent=option.label;
+        copy.append(label);
+        if(option.description){
+          const desc=document.createElement('span');
+          desc.textContent=option.description;
+          copy.append(desc);
+        }
+        const chip=document.createElement('kbd');
+        chip.className='ask-chip';
+        chip.textContent=String(i+1);
+        row.append(mark,copy,chip);
+        row.addEventListener('click',function(){pickAskOption(option.id)});
+        list.append(row);
+      });
+      // The last row is always the user's own answer.
+      const custom=document.createElement('label');
+      custom.className='ask-option ask-custom'+(options.length?'':' is-only');
+      custom.classList.toggle('is-selected',Boolean(answer.other.trim()));
+      const mark=document.createElement('span');
+      mark.className='ask-mark';
+      const field=document.createElement('textarea');
+      field.rows=1;
+      field.className='ask-custom-field';
+      field.placeholder=options.length?'Your own answer…':'Type your answer…';
+      field.setAttribute('aria-label',options.length?'Your own answer':'Your answer');
+      field.value=answer.other;
+      field.addEventListener('input',function(){
+        answer.other=field.value;
+        answer.skipped=false;
+        if(field.value.trim()&&!question.multi_select){
+          answer.selected=[];
+          list.querySelectorAll('.ask-option[data-option-id]').forEach(function(row){row.classList.remove('is-selected');row.setAttribute('aria-checked','false')});
+        }
+        custom.classList.toggle('is-selected',Boolean(field.value.trim()));
+        sizeAskField(field);
+        updateAskButtons();
+      });
+      field.addEventListener('keydown',function(event){
+        if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){
+          event.preventDefault();
+          if(isAnswered(answer))advanceAsk();
+        }
+      });
+      if(options.length){
+        const chip=document.createElement('kbd');
+        chip.className='ask-chip';
+        chip.textContent=String(options.length+1);
+        custom.append(mark,field,chip);
+      }else custom.append(field);
+      list.append(custom);
+      wrap.append(list);
+      askBody.replaceChildren(wrap);
+      requestAnimationFrame(function(){sizeAskField(field)});
+
+      askBack.hidden=index===0;
+      askNext.textContent=last?'Finish':'Next';
+      updateAskButtons();
+    }
+    function sizeAskField(field){
+      field.style.height='auto';
+      field.style.height=Math.min(field.scrollHeight,140)+'px';
+    }
+    function updateAskButtons(){
+      if(!activeAsk)return;
+      const question=activeAsk.questionnaire.questions[activeAsk.index];
+      askNext.disabled=!isAnswered(askAnswer(question));
+      const dots=askSteps.children;
+      activeAsk.questionnaire.questions.forEach(function(item,i){
+        if(dots[i])dots[i].classList.toggle('is-done',isAnswered(activeAsk.answers[item.id]));
+      });
+    }
+    function pickAskOption(optionId){
+      const question=activeAsk.questionnaire.questions[activeAsk.index];
+      const answer=askAnswer(question);
+      answer.skipped=false;
+      if(question.multi_select){
+        const at=answer.selected.indexOf(optionId);
+        if(at>-1)answer.selected.splice(at,1);else answer.selected.push(optionId);
+        askBody.querySelectorAll('.ask-option[data-option-id]').forEach(function(row){
+          const on=answer.selected.indexOf(row.dataset.optionId)>-1;
+          row.classList.toggle('is-selected',on);
+          row.setAttribute('aria-checked',String(on));
+        });
+        updateAskButtons();
+        return;
+      }
+      answer.selected=[optionId];
+      answer.other='';
+      askBody.querySelectorAll('.ask-option[data-option-id]').forEach(function(row){
+        const on=row.dataset.optionId===optionId;
+        row.classList.toggle('is-selected',on);
+        row.setAttribute('aria-checked',String(on));
+      });
+      const field=askBody.querySelector('.ask-custom-field');
+      if(field){field.value='';field.closest('.ask-custom').classList.remove('is-selected');sizeAskField(field)}
+      updateAskButtons();
+      // One choice moves on by itself, except on the last question, where
+      // Finish sends the answers.
+      if(activeAsk.index<activeAsk.questionnaire.questions.length-1){
+        const step=activeAsk.index;
+        setTimeout(function(){if(activeAsk&&activeAsk.index===step)advanceAsk()},180);
+      }
+    }
+    function advanceAsk(){
+      if(!activeAsk)return;
+      const questions=activeAsk.questionnaire.questions;
+      if(activeAsk.index<questions.length-1){
+        activeAsk.index++;
+        renderAskStep();
+        focusAskStep();
+        return;
+      }
+      finishAsk();
+    }
+    function focusAskStep(){
+      if(window.innerWidth<=680){askPanel.focus({preventScroll:true});return}
+      const first=askBody.querySelector('.ask-option[data-option-id]')||askBody.querySelector('.ask-custom-field');
+      if(first)first.focus({preventScroll:true});
+    }
+    function askAnswersText(questionnaire,answers){
+      return questionnaire.questions.map(function(question){
+        const answer=answers[question.id]||{selected:[],other:'',skipped:true};
+        const parts=[];
+        if(!answer.skipped){
+          (question.options||[]).forEach(function(option){if(answer.selected.indexOf(option.id)>-1)parts.push(option.label)});
+          if(answer.other.trim())parts.push(answer.other.trim());
+        }
+        return 'Q: '+question.text+'\nA: '+(parts.length?parts.join(', '):'(skipped)');
+      }).join('\n\n');
+    }
+    function finishAsk(){
+      if(!activeAsk||sending)return;
+      const text=askAnswersText(activeAsk.questionnaire,activeAsk.answers);
+      hideAskPanel();
+      sendMessage({text:text});
+    }
+    function openAskPanel(message,questionnaire){
+      if(!activeAsk||activeAsk.message!==message||activeAsk.questionnaire!==questionnaire){
+        activeAsk={message:message,questionnaire:questionnaire,index:0,answers:{}};
+      }
+      askPanel.hidden=false;
+      askComposerWrap.classList.add('is-asking');
+      document.documentElement.classList.add('is-asking');
+      renderAskStep();
+      focusAskStep();
+    }
+    function hideAskPanel(){
+      askPanel.hidden=true;
+      askComposerWrap.classList.remove('is-asking');
+      document.documentElement.classList.remove('is-asking');
+    }
+    function closeAsk(){
+      hideAskPanel();
+      activeAsk=null;
+    }
+    askBack.addEventListener('click',function(){
+      if(!activeAsk||activeAsk.index===0)return;
+      activeAsk.index--;
+      renderAskStep();
+      focusAskStep();
+    });
+    askSkip.addEventListener('click',function(){
+      if(!activeAsk)return;
+      const answer=askAnswer(activeAsk.questionnaire.questions[activeAsk.index]);
+      answer.skipped=true;
+      advanceAsk();
+    });
+    askNext.addEventListener('click',function(){
+      if(activeAsk&&isAnswered(askAnswer(activeAsk.questionnaire.questions[activeAsk.index])))advanceAsk();
+    });
+    document.getElementById('askClose').addEventListener('click',function(){
+      hideAskPanel();
+      if(window.innerWidth>680)textarea.focus();
+    });
+    askPanel.addEventListener('keydown',function(event){
+      if(!activeAsk)return;
+      if(event.key==='Escape'){event.preventDefault();hideAskPanel();textarea.focus();return}
+      if(event.target.tagName==='TEXTAREA'||event.metaKey||event.ctrlKey||event.altKey)return;
+      const question=activeAsk.questionnaire.questions[activeAsk.index];
+      const options=question.options||[];
+      if(/^[1-9]$/.test(event.key)){
+        const number=Number(event.key);
+        if(number<=options.length){event.preventDefault();pickAskOption(options[number-1].id)}
+        else if(number===options.length+1){event.preventDefault();const field=askBody.querySelector('.ask-custom-field');if(field)field.focus()}
+        return;
+      }
+      if(event.key==='Enter'&&!event.target.closest('button')){
+        event.preventDefault();
+        if(isAnswered(askAnswer(question)))advanceAsk();
+      }
+    });
+
+    // The card a questionnaire answer carries in the thread.
+    function renderAskCard(message){
+      const copy=message.querySelector('.chat-copy');
+      const old=copy.querySelector(':scope > .ask-card');
+      if(old)old.remove();
+      const questionnaire=versionQuestionnaire(message);
+      message.classList.toggle('has-questions',Boolean(questionnaire));
+      if(!questionnaire)return;
+      const card=document.createElement('div');
+      card.className='ask-card';
+      const body=document.createElement('span');
+      body.className='ask-card-copy';
+      const title=document.createElement('strong');
+      title.textContent=questionnaire.title||'A few questions';
+      const meta=document.createElement('span');
+      const count=questionnaire.questions.length;
+      meta.textContent=count+(count===1?' question':' questions');
+      body.append(title,meta);
+      const action=document.createElement('button');
+      action.type='button';
+      action.className='ask-card-action';
+      action.textContent='Answer';
+      action.addEventListener('click',function(){openAskPanel(message,questionnaire)});
+      const state=document.createElement('span');
+      state.className='ask-card-state';
+      card.append(askIcon(),body,action,state);
+      copy.querySelector('.chat-text').after(card);
+    }
+    // Which questionnaire is open for answers: the one asked by the last
+    // message in the thread, if nothing came after it. autoOpen shows its
+    // panel; anything else closes the panel.
+    function updateAskState(autoOpen){
+      const messages=chatLog.querySelectorAll('.chat-message');
+      const last=messages[messages.length-1];
+      chatLog.querySelectorAll('.ask-card').forEach(function(card){
+        const message=card.closest('.chat-message');
+        const pending=message===last&&isLatestVersion(message);
+        card.classList.toggle('is-pending',pending);
+        const next=message.nextElementSibling;
+        const answered=next&&next.classList.contains('user')&&/^Q: /.test(next.dataset.messageText||'');
+        card.querySelector('.ask-card-state').textContent=pending?'':answered?'Answered':isLatestVersion(message)?'Not answered':'';
+      });
+      const questionnaire=last&&last.classList.contains('assistant')&&isLatestVersion(last)?versionQuestionnaire(last):null;
+      if(!questionnaire){closeAsk();return}
+      if(activeAsk&&activeAsk.message!==last)closeAsk();
+      if(autoOpen)openAskPanel(last,questionnaire);
+    }
+
+    // A "Q: … / A: …" message reads as a list of questions and answers.
+    function parseAnswersText(text){
+      const blocks=String(text||'').replace(/\r\n?/g,'\n').trim().split(/\n\n(?=Q: )/);
+      const pairs=[];
+      for(const block of blocks){
+        const match=block.match(/^Q: ([^\n]*)\nA: ([\s\S]*)$/);
+        if(!match)return null;
+        pairs.push({q:match[1],a:match[2]});
+      }
+      return pairs.length?pairs:null;
+    }
+    function renderAnswers(container,pairs){
+      container.replaceChildren();
+      const list=document.createElement('dl');
+      list.className='qa-list';
+      pairs.forEach(function(pair){
+        const item=document.createElement('div');
+        item.className='qa-pair';
+        const q=document.createElement('dt');
+        q.textContent=pair.q;
+        const a=document.createElement('dd');
+        a.textContent=pair.a;
+        if(pair.a==='(skipped)')a.className='is-skipped';
+        item.append(q,a);
+        list.append(item);
+      });
+      container.append(list);
+    }
+
     function messageActionButton(label,iconName,paths){
       const button=document.createElement('button');
       button.type='button';
@@ -2196,6 +2584,7 @@
       message.dataset.messageText=version.content;
       renderMarkdown(message.querySelector('.chat-text'),version.content);
       renderThought(message,{live:false,seconds:version.thought_ms?version.thought_ms/1000:0,activity:version.activity,sources:version.sources});
+      renderAskCard(message);
       const navigation=message.querySelector('.response-versions');
       if(!navigation)return;
       navigation.hidden=versions.length<2;
@@ -2242,10 +2631,10 @@
       navigation.hidden=true;
       const previous=document.createElement('button');
       previous.type='button';previous.className='version-nav version-prev';previous.innerHTML='<svg class="lucide lucide-chevron-left" data-lucide-icon="chevron-left" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 18-6-6 6-6" /></svg><span>Prev</span>';
-      previous.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex-1)});
+      previous.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex-1);updateAskState(false)});
       const next=document.createElement('button');
       next.type='button';next.className='version-nav version-next';next.innerHTML='<span>Next</span><svg class="lucide lucide-chevron-right" data-lucide-icon="chevron-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>';
-      next.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex+1)});
+      next.addEventListener('click',function(){renderResponseVersion(message,message.responseVersionIndex+1);updateAskState(false)});
       navigation.append(previous,next);
 
       actions.append(copy,retry,like,dislike,navigation);
@@ -2348,8 +2737,10 @@
         if(messageDetails&&messageDetails.id)message.dataset.messageId=String(messageDetails.id);
         appendMessageActions(message);
         renderResponseVersion(message,message.responseVersionIndex);
-        if(text)message.classList.add('is-complete');
+        if(text||versionQuestionnaire(message))message.classList.add('is-complete');
       }else if(role==='user'){
+        const pairs=parseAnswersText(text);
+        if(pairs)renderAnswers(body,pairs);
         renderMessageAttachments(message,messageDetails&&messageDetails.attachments);
         if(!String(text||'').trim()&&message.querySelector('.message-attachments'))message.classList.add('is-attachment-only');
         appendUserMessageMeta(message,String(text||''),messageDetails);
@@ -2361,6 +2752,7 @@
     }
 
     function resetConversation(){
+      closeAsk();
       conversationID='';
       currentConversationTitle='New chat';
       currentConversationPinned=false;
@@ -2536,12 +2928,13 @@
         });
         showOlderMessagesButton(id,data.next_cursor,token);
         if(!chatLog.children.length)chatContent.classList.remove('has-chat');
+        updateAskState(true);
         updateChatModeControls();
         conversationList.querySelectorAll('.conversation-item').forEach(function(item){
           item.classList.toggle('is-active',item.dataset.conversationId===conversationID);
         });
         if(window.innerWidth<900)sidebarState.checked=false;
-        textarea.focus();
+        if(askPanel.hidden)textarea.focus();
       }catch(error){
         toast('Could not load that chat.');
       }
@@ -2792,6 +3185,7 @@
       const previousIndex=message.responseVersionIndex;
       message.classList.remove('is-complete');
       message.classList.add('is-pending');
+      closeAsk();
       setThinkingState(message,'Regenerating');
       setSending(true);
       const thinkingStartedAt=performance.now();
@@ -2843,14 +3237,14 @@
             terminalData=data;
             message.classList.remove('is-pending');
             thought.done(data);
-            stream.replace(data.response_text||'The server returned an empty response.');
+            stream.replace(data.response_text||(data.questionnaire?'':'The server returned an empty response.'));
           }
         });
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
         if(isIncognito){
-          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0}]);
-          incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||''};
+          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null}]);
+          incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||'',questionnaire:terminalData.questionnaire||undefined};
         }else{
           message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
         }
@@ -2858,6 +3252,7 @@
         if(versionsData&&versionsData.message_id)message.dataset.messageId=String(versionsData.message_id);
         renderResponseVersion(message,message.responseVersionIndex);
         message.classList.add('is-complete');
+        updateAskState(true);
         if(!isIncognito){if(activeProject)refreshActiveProject();else loadConversations(false)}
       }catch(error){
         stream.cancel();
@@ -2875,18 +3270,24 @@
           message.classList.add('is-complete');
           toast(controller.signal.aborted?'Stopped.':'Could not regenerate: '+error.message);
         }
+        updateAskState(false);
       }finally{
         setSending(false);
-        textarea.focus();
+        // An open questionnaire keeps the focus it took.
+        if(askPanel.hidden)textarea.focus();
       }
     }
 
-    async function sendMessage(){
+    // options.text sends that text (a questionnaire's answers) instead of the
+    // composer's; the composer's draft and files then stay where they are.
+    async function sendMessage(options){
+      const answers=options&&typeof options.text==='string'?options.text:null;
       const request=selectedRequest();
+      if(answers!==null)request.message=answers;
       const token=apiKeyInput.value.trim();
 
       if(sending)return;
-      const files=window.NeoChatAttachments;
+      const files=answers===null?window.NeoChatAttachments:null;
       if(files&&files.uploading()){toast('Wait for the files to finish uploading.');return}
       if(files&&files.failed().length){toast('Remove the files that failed to upload first.');return}
       const readyFiles=files?files.ready():[];
@@ -2908,14 +3309,18 @@
 
       chatLog.querySelectorAll('.is-latest-response').forEach(function(message){message.classList.remove('is-latest-response')});
       const userMessage=appendMessage('user',request.message,{attachments:sentFiles});
+      // Anything sent after a questionnaire answers or passes over it.
+      updateAskState(false);
       const pending=appendMessage('assistant','');
       pending.classList.add('is-pending','is-latest-response');
       setThinkingState(pending);
       chatLog.scrollTop=Math.max(0,userMessage.offsetTop-12);
       const thinkingStartedAt=performance.now();
-      textarea.value='';
-      document.dispatchEvent(new CustomEvent('plugin:clear'));
-      textarea.style.height='auto';
+      if(answers===null){
+        textarea.value='';
+        document.dispatchEvent(new CustomEvent('plugin:clear'));
+        textarea.style.height='auto';
+      }
       setSending(true);
 
       const stream=createSmoothMessageStream(pending);
@@ -2979,17 +3384,19 @@
             }
             pending.classList.remove('is-pending');
             thought.done(data);
-            stream.replace(data.response_text||'The server returned an empty response.');
+            stream.replace(data.response_text||(data.questionnaire?'':'The server returned an empty response.'));
           }
         });
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(apiKeyInput.value.trim()!==token){stream.cancel();return}
         await stream.finish();
-        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0}];
+        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null}];
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
+        renderAskCard(pending);
+        updateAskState(true);
         if(activeChatIncognito&&!terminalData.blocked){
-          incognitoMessages.push({role:'user',content:request.message},{role:'assistant',content:terminalData.response_text||''});
+          incognitoMessages.push({role:'user',content:request.message},{role:'assistant',content:terminalData.response_text||'',questionnaire:terminalData.questionnaire||undefined});
         }else if(!activeChatIncognito){
           if(activeProject)refreshActiveProject();else loadConversations(false);
         }
@@ -3037,7 +3444,8 @@
         if(String(error.message).toLowerCase().includes('unauthorized'))promptForAPIKey();
       }finally{
         setSending(false);
-        textarea.focus();
+        // An open questionnaire keeps the focus it took.
+        if(askPanel.hidden)textarea.focus();
       }
     }
 

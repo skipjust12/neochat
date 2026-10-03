@@ -320,6 +320,9 @@ type chatRequest struct {
 type incognitoMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	// Questionnaire is what an assistant turn asked (ask_user), so the
+	// model sees it in later turns of a private chat too.
+	Questionnaire *conversation.Questionnaire `json:"questionnaire,omitempty"`
 }
 
 // defaultPersona is the persona used when a request doesn't specify one.
@@ -359,6 +362,9 @@ type chatResponse struct {
 	Sources  []conversation.WebLink      `json:"sources,omitempty"`
 	// ThoughtMS is "Thought for N seconds" (see ResponseVersion.ThoughtMS).
 	ThoughtMS int64 `json:"thought_ms,omitempty"`
+	// Questionnaire: the answer ends with questions for the user (see
+	// ResponseVersion.Questionnaire).
+	Questionnaire *conversation.Questionnaire `json:"questionnaire,omitempty"`
 
 	// Blocked is true when Layer 1 moderation flagged the request before
 	// any generation happened -- ResponseText is then tosViolationMessage,
@@ -1270,7 +1276,11 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 	if req.Incognito {
 		tail = make([]conversation.Message, 0, len(req.IncognitoHistory))
 		for _, message := range req.IncognitoHistory {
-			tail = append(tail, conversation.Message{Role: conversation.Role(message.Role), Content: message.Content})
+			m := conversation.Message{Role: conversation.Role(message.Role), Content: message.Content}
+			if q := boundQuestionnaire(message.Questionnaire); q != nil && m.Role == conversation.RoleAssistant {
+				m.Versions = []conversation.ResponseVersion{{Content: m.Content, Questionnaire: q}}
+			}
+			tail = append(tail, m)
 		}
 	} else {
 		// Only saved chats load and summarize server-side history. Private
@@ -1603,6 +1613,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	version := conversation.ResponseVersion{
 		Content: genResult.Text, ModelID: model.ID, CreatedAt: now,
 		Activity: answer.Activity, Sources: webLinks(genResult.Citations), ThoughtMS: thought.Milliseconds(),
+		Questionnaire: answer.Questionnaire,
 	}
 	regenerated, err := s.persistTurn(ctx, req, prepared, model, version)
 	if err != nil {
@@ -1632,6 +1643,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		Activity:         version.Activity,
 		Sources:          version.Sources,
 		ThoughtMS:        version.ThoughtMS,
+		Questionnaire:    version.Questionnaire,
 	}
 	if req.regenerateMessageID > 0 {
 		response.MessageID = regenerated.ID
