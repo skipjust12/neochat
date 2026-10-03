@@ -53,6 +53,11 @@ func TestPolzaClient_WebToolsRequestShape(t *testing.T) {
 		t.Errorf("provider = %v, want require_parameters so tools can't be dropped silently", body["provider"])
 	}
 
+	drain(WithWebTools(context.Background(), WebTools{Tools: true, AnyProvider: true}))
+	if body["tools"] == nil || body["provider"] != nil {
+		t.Errorf("any-provider body = tools %v provider %v, want tools without provider filtering", body["tools"], body["provider"])
+	}
+
 	drain(WithWebTools(context.Background(), WebTools{SearchFirst: true}))
 	if _, ok := body["web_search_options"].(map[string]any); !ok || body["tools"] != nil || body["provider"] != nil {
 		t.Errorf("search-first body = %v, want web_search_options and no tools", body)

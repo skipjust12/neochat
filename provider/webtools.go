@@ -19,6 +19,10 @@ import (
 type WebTools struct {
 	Tools       bool
 	SearchFirst bool
+	// AnyProvider lets Polza route Tools to a provider that may not
+	// support them (no provider.require_parameters) -- the fallback when
+	// the strict request finds no provider.
+	AnyProvider bool
 }
 
 // Per-call limits for the server tools. 10 results per search is the

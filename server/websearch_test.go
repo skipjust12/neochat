@@ -118,13 +118,21 @@ func TestWebSearchRejectedByVendorFallsBackToPlainAnswer(t *testing.T) {
 	if err != nil {
 		t.Fatalf("a vendor refusing web tools broke the chat: %v", err)
 	}
-	if got := events["done"][0].(chatResponse).ResponseText; got != "plain answer" {
-		t.Fatalf("response = %q", got)
+	done := events["done"][0].(chatResponse)
+	if done.ResponseText != "plain answer" {
+		t.Fatalf("response = %q", done.ResponseText)
 	}
-	if len(standIn.bodies) != 2 {
-		t.Fatalf("vendor calls = %d, want the refused one and one retry", len(standIn.bodies))
+	// strict tools -> tools on any provider -> no web access
+	if len(standIn.bodies) != 3 {
+		t.Fatalf("vendor calls = %d, want strict, any-provider and no-tools attempts", len(standIn.bodies))
 	}
-	retry := standIn.lastBody(t)
+	strict, anyProvider, retry := standIn.bodies[0], standIn.bodies[1], standIn.bodies[2]
+	if prefs, _ := strict["provider"].(map[string]any); prefs["require_parameters"] != true {
+		t.Fatalf("first attempt provider = %v, want require_parameters", strict["provider"])
+	}
+	if anyProvider["tools"] == nil || anyProvider["provider"] != nil {
+		t.Fatalf("second attempt = tools %v provider %v, want tools without provider filtering", anyProvider["tools"], anyProvider["provider"])
+	}
 	if retry["tools"] != nil || retry["web_search_options"] != nil {
 		t.Fatalf("retry still asked for web access: %v", retry)
 	}
@@ -134,16 +142,18 @@ func TestWebSearchRejectedByVendorFallsBackToPlainAnswer(t *testing.T) {
 	if !hasSystemMessage(retry, webUnavailableNote) {
 		t.Fatal("retry without tools doesn't tell the model search failed")
 	}
+	if len(done.Activity) != 1 || !strings.Contains(done.Activity[0].Error, "HTTP 400") || !strings.Contains(done.Activity[0].Error, "tools are not supported") {
+		t.Fatalf("activity = %+v, want the vendor's refusal shown", done.Activity)
+	}
 	if spent, _ := s.Store.Sum(context.Background(), "u1", limits.PoolInstant, time.Hour); spent <= 0 || spent >= webSearchFeeUSD {
-		t.Fatalf("spent %.6f: want the plain answer billed, the refused call free", spent)
+		t.Fatalf("spent %.6f: want the plain answer billed, the refused calls free", spent)
 	}
 
-	// No provider supporting the tools (require_parameters routing) is a
-	// 404, and falls back the same way.
+	// No provider supporting the tools is a 404, and falls back the same way.
 	noRoute := &polzaStandIn{reply: "plain answer", rejectWeb: true, rejectStatus: http.StatusNotFound}
 	s = newDirectServer(t, noRoute)
-	if _, err := collectStream(s, context.Background(), req); err != nil || len(noRoute.bodies) != 2 {
-		t.Fatalf("404 for web tools: err=%v calls=%d, want a retry that succeeds", err, len(noRoute.bodies))
+	if _, err := collectStream(s, context.Background(), req); err != nil || len(noRoute.bodies) != 3 {
+		t.Fatalf("404 for web tools: err=%v calls=%d, want retries that end in an answer", err, len(noRoute.bodies))
 	}
 
 	// A refusal that has nothing to do with web tools isn't retried.
@@ -155,6 +165,27 @@ func TestWebSearchRejectedByVendorFallsBackToPlainAnswer(t *testing.T) {
 	}
 	if len(plain.bodies) != 1 {
 		t.Fatalf("vendor calls = %d, want 1", len(plain.bodies))
+	}
+}
+
+func TestWebSearchSurvivesProviderFilterRefusal(t *testing.T) {
+	standIn := &polzaStandIn{reply: "fresh answer", rejectStrict: true, chunks: searchChunks}
+	s := newDirectServer(t, standIn)
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "news?", RequestedMode: "manual", ManualModelID: "gpt-6-luna", providerKey: "pza_user", WebSearch: "auto"}
+	events, err := collectStream(s, context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(standIn.bodies) != 2 {
+		t.Fatalf("vendor calls = %d, want the strict one and one on any provider", len(standIn.bodies))
+	}
+	second := standIn.lastBody(t)
+	if second["tools"] == nil || second["provider"] != nil || hasSystemMessage(second, webUnavailableNote) {
+		t.Fatalf("second attempt = %v, want tools without provider filtering and no failure note", second)
+	}
+	done := events["done"][0].(chatResponse)
+	if len(done.Activity) != 2 || done.Activity[0].Error != "" || done.Activity[0].Query == "" {
+		t.Fatalf("activity = %+v, want the search that ran", done.Activity)
 	}
 }
 

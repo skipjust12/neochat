@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 
 	"neochat/conversation"
@@ -130,6 +131,20 @@ func rejectedRequest(err error) bool {
 		return true
 	}
 	return false
+}
+
+// webRefusal describes a vendor's refusal of the web settings for the
+// user: the status and Polza's own message.
+func webRefusal(err error) string {
+	var statusErr *provider.StatusError
+	if !errors.As(err, &statusErr) {
+		return "Web search is unavailable for this model right now."
+	}
+	reason := provider.VendorMessage(statusErr.Body)
+	if reason == "" {
+		return fmt.Sprintf("Polza refused web search for this model (HTTP %d).", statusErr.StatusCode)
+	}
+	return fmt.Sprintf("Polza refused web search for this model (HTTP %d): %s", statusErr.StatusCode, reason)
 }
 
 // Notes for a model that ends up without web access, so that a user who

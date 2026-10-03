@@ -41,6 +41,9 @@ type polzaStandIn struct {
 	// that doesn't accept them, with rejectStatus (default 400).
 	rejectWeb    bool
 	rejectStatus int
+	// rejectStrict answers 404 to requests filtering providers by
+	// require_parameters, like Polza finding no provider that qualifies.
+	rejectStrict bool
 }
 
 func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +60,11 @@ func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		}
 		w.WriteHeader(status)
 		_, _ = w.Write([]byte(`{"error":{"code":"BAD_REQUEST","message":"tools are not supported"}}`))
+		return
+	}
+	if p.rejectStrict && body["provider"] != nil {
+		w.WriteHeader(http.StatusNotFound)
+		_, _ = w.Write([]byte(`{"error":{"code":"NOT_FOUND","message":"no provider supports all parameters"}}`))
 		return
 	}
 	if p.status != 0 {

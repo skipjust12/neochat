@@ -190,8 +190,8 @@ type polzaChatRequest struct {
 	// to a provider even if it doesn't support some of its parameters and
 	// drops those -- for tools that means a model that never sees them and
 	// says it has no web access. require_parameters rules such providers
-	// out; if none is left the request fails and is retried without web
-	// tools (see server.routeAndCall).
+	// out; if the request is then refused, it is retried without it, and
+	// then without web tools (see server.routeAndCall).
 	Provider *polzaProviderPrefs `json:"provider,omitempty"`
 }
 
@@ -276,7 +276,9 @@ func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messa
 			{Type: "polza:datetime"},
 		}
 		req.MaxToolCalls = WebMaxToolCalls
-		req.Provider = &polzaProviderPrefs{RequireParameters: true}
+		if !web.AnyProvider {
+			req.Provider = &polzaProviderPrefs{RequireParameters: true}
+		}
 		if req.StreamOptions != nil {
 			req.StreamOptions.IncludeServerToolEvents = true
 		}

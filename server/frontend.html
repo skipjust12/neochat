@@ -1855,12 +1855,19 @@
         }
         return 'Searching the web';
       }
-      const searches=activity.filter(function(step){return step.tool==='web_search'}).length;
-      const reads=activity.filter(function(step){return step.tool==='web_fetch'}).length;
+      const done=activity.filter(function(step){return !webStepFailed(step)});
+      const searches=done.filter(function(step){return step.tool==='web_search'}).length;
+      const reads=done.filter(function(step){return step.tool==='web_fetch'}).length;
       const parts=[];
       if(searches)parts.push(searches+(searches===1?' search':' searches'));
       if(reads)parts.push(reads+(reads===1?' page read':' pages read'));
+      if(!searches&&!reads&&activity.length)return 'Web search unavailable';
       return (searches||reads?'Searched the web':'Sources')+(parts.length?' · '+parts.join(', '):'');
+    }
+    // A step that never ran: the vendor refused web search before the model
+    // could use it (no query, no page, only an error).
+    function webStepFailed(step){
+      return Boolean(step&&step.error&&!step.query&&!step.url&&!(step.results&&step.results.length));
     }
     function webLink(link){
       const href=safeURL(link&&link.url);
@@ -1938,6 +1945,8 @@
           text.append(document.createTextNode(busy?'Reading ':'Read '));
           const anchor=webLink({url:step.url,title:step.title});
           text.append(anchor||document.createTextNode(step.title||'a page'));
+        }else if(webStepFailed(step)){
+          text.textContent='Couldn’t search the web';
         }else{
           text.textContent=(busy?'Searching':'Searched')+(step.query?' “'+step.query+'”':' the web');
         }

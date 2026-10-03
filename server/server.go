@@ -1550,16 +1550,33 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 		if r, ok := reasoningFor(model, req.ReasoningEffort); ok {
 			callCtx = provider.WithReasoning(callCtx, r)
 		}
-		genResult, err := s.billedCall(callCtx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), messages, call)
-		if web := provider.WebToolsFromContext(callCtx); (web.Tools || web.SearchFirst) && rejectedRequest(err) {
-			// Web tools are on by default (Auto), so a vendor that rejects
-			// the tool settings must not take every chat down with it: a
-			// refusal comes before any generation (billedCall already
-			// released the reservation), so ask once more without them.
+		generate := func(ctx context.Context, messages []provider.Message) (provider.GenerateResult, error) {
+			return s.billedCall(ctx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), messages, call)
+		}
+		genResult, err := generate(callCtx, messages)
+		// Web access is on by default (Auto), so a vendor refusing the web
+		// settings must not take every chat down with it. A refusal comes
+		// before any generation (billedCall already released the
+		// reservation), so step down: first let any provider take the
+		// tools, then answer without web access and say why.
+		web := provider.WebToolsFromContext(callCtx)
+		if web.Tools && rejectedRequest(err) {
+			log.Printf("server: vendor rejected web tools with require_parameters for model_id=%s, retrying with any provider: %v", model.ID, err)
+			web.AnyProvider = true
+			callCtx = provider.WithWebTools(callCtx, web)
+			genResult, err = generate(callCtx, messages)
+		}
+		if (web.Tools || web.SearchFirst) && rejectedRequest(err) {
 			log.Printf("server: vendor rejected web tools for model_id=%s, retrying without them: %v", model.ID, err)
+			refusal := webRefusal(err)
 			callCtx = provider.WithWebTools(callCtx, provider.WebTools{})
 			messages = withSystemNote(withoutWebInstruction(messages), webUnavailableNote)
-			genResult, err = s.billedCall(callCtx, req, prepared.plan, generationPool(result, model), model.CostInputPerMTok, model.CostOutputPerMTok, model.MaxOutputTokens, gen, model.ResolveAPIModelID(), messages, call)
+			genResult, err = generate(callCtx, messages)
+			if err == nil {
+				// Shown in the answer's web panel, so the reason is visible
+				// without digging through server logs.
+				genResult.ToolEvents = append([]provider.ToolEvent{{Tool: "web_search", Phase: "call", Error: refusal}}, genResult.ToolEvents...)
+			}
 		}
 		if err == nil {
 			return result, model, genResult, nil
