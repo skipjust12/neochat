@@ -37,9 +37,10 @@ type polzaStandIn struct {
 	// chunks are raw SSE data lines sent before the reply (server-tool
 	// events, annotations, usage) to imitate a web-search answer.
 	chunks []string
-	// rejectWeb answers 400 to any request carrying web settings, like a
-	// vendor that doesn't accept them.
-	rejectWeb bool
+	// rejectWeb refuses any request carrying web settings, like a vendor
+	// that doesn't accept them, with rejectStatus (default 400).
+	rejectWeb    bool
+	rejectStatus int
 }
 
 func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -50,7 +51,11 @@ func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	p.bodies = append(p.bodies, body)
 	p.mu.Unlock()
 	if p.rejectWeb && (body["tools"] != nil || body["web_search_options"] != nil) {
-		w.WriteHeader(http.StatusBadRequest)
+		status := p.rejectStatus
+		if status == 0 {
+			status = http.StatusBadRequest
+		}
+		w.WriteHeader(status)
 		_, _ = w.Write([]byte(`{"error":{"code":"BAD_REQUEST","message":"tools are not supported"}}`))
 		return
 	}

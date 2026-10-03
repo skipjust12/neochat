@@ -1,11 +1,14 @@
 package provider
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
@@ -46,14 +49,17 @@ func TestPolzaClient_WebToolsRequestShape(t *testing.T) {
 	if opts := body["stream_options"].(map[string]any); opts["include_server_tool_events"] != true {
 		t.Errorf("stream_options = %v, want server tool events", opts)
 	}
+	if prefs, _ := body["provider"].(map[string]any); prefs["require_parameters"] != true {
+		t.Errorf("provider = %v, want require_parameters so tools can't be dropped silently", body["provider"])
+	}
 
 	drain(WithWebTools(context.Background(), WebTools{SearchFirst: true}))
-	if _, ok := body["web_search_options"].(map[string]any); !ok || body["tools"] != nil {
+	if _, ok := body["web_search_options"].(map[string]any); !ok || body["tools"] != nil || body["provider"] != nil {
 		t.Errorf("search-first body = %v, want web_search_options and no tools", body)
 	}
 
 	drain(context.Background())
-	if body["tools"] != nil || body["web_search_options"] != nil || body["stream_options"].(map[string]any)["include_server_tool_events"] != nil {
+	if body["tools"] != nil || body["web_search_options"] != nil || body["provider"] != nil || body["stream_options"].(map[string]any)["include_server_tool_events"] != nil {
 		t.Errorf("plain request carried web settings: %v", body)
 	}
 }
@@ -171,5 +177,38 @@ func TestPolzaClient_StreamBreaksParagraphAfterToolStep(t *testing.T) {
 	const want = "Let me check.\n\nIt costs $4. Done."
 	if streamed.String() != want || final.Text != want {
 		t.Fatalf("streamed %q, final %q, want %q", streamed.String(), final.Text, want)
+	}
+}
+
+func TestPolzaClient_LogsWhoServedAWebCall(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"provider\":\"amazon-bedrock\",\"choices\":[{\"delta\":{\"content\":\"ok\"}}]}\n\n")
+		fmt.Fprint(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":1,\"completion_tokens\":1,\"server_tool_use\":{\"web_search_requests\":2}}}\n\ndata: [DONE]\n\n")
+	}))
+	defer srv.Close()
+	c := NewPolzaClient("k")
+	c.BaseURL = srv.URL
+
+	var logged bytes.Buffer
+	log.SetOutput(&logged)
+	defer log.SetOutput(os.Stderr)
+	drain := func(ctx context.Context) {
+		ch, err := c.GenerateStream(ctx, "anthropic/claude-x", []Message{{Role: "user", Content: "hi"}})
+		if err != nil {
+			t.Fatal(err)
+		}
+		for range ch {
+		}
+	}
+
+	drain(WithWebTools(context.Background(), WebTools{Tools: true}))
+	if got := logged.String(); !strings.Contains(got, "model=anthropic/claude-x provider=amazon-bedrock mode=tools") || !strings.Contains(got, "searches=2") {
+		t.Fatalf("log = %q", got)
+	}
+	logged.Reset()
+	drain(context.Background())
+	if logged.Len() != 0 {
+		t.Fatalf("a call without web access logged %q", logged.String())
 	}
 }

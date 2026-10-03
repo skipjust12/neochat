@@ -3,6 +3,7 @@ package provider
 import (
 	"context"
 	"encoding/json"
+	"log"
 	"regexp"
 	"strings"
 )
@@ -33,6 +34,25 @@ const (
 )
 
 type webToolsKey struct{}
+
+// logWebCall leaves one line per answer that had web access: which
+// provider Polza routed it to and what the model actually did with the
+// tools. It is how to tell, from the logs alone, a model that chose not
+// to search from one that never got the tools.
+func logWebCall(ctx context.Context, apiModelID, servedBy string, result GenerateResult) {
+	web := WebToolsFromContext(ctx)
+	if !web.Tools && !web.SearchFirst {
+		return
+	}
+	mode := "tools"
+	if !web.Tools {
+		mode = "search_first"
+	}
+	if servedBy == "" {
+		servedBy = "?"
+	}
+	log.Printf("provider: polza web call model=%s provider=%s mode=%s tool_events=%d searches=%d fetches=%d citations=%d", apiModelID, servedBy, mode, len(result.ToolEvents), result.WebSearches, result.WebFetches, len(result.Citations))
+}
 
 // WithWebTools enables web access for the next generation call.
 func WithWebTools(ctx context.Context, w WebTools) context.Context {

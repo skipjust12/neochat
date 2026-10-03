@@ -186,6 +186,17 @@ type polzaChatRequest struct {
 	Tools            []polzaServerTool `json:"tools,omitempty"`
 	MaxToolCalls     int               `json:"max_tool_calls,omitempty"`
 	WebSearchOptions *struct{}         `json:"web_search_options,omitempty"`
+	// Provider routing. Like OpenRouter, Polza by default sends a request
+	// to a provider even if it doesn't support some of its parameters and
+	// drops those -- for tools that means a model that never sees them and
+	// says it has no web access. require_parameters rules such providers
+	// out; if none is left the request fails and is retried without web
+	// tools (see server.routeAndCall).
+	Provider *polzaProviderPrefs `json:"provider,omitempty"`
+}
+
+type polzaProviderPrefs struct {
+	RequireParameters bool `json:"require_parameters"`
 }
 
 type polzaServerTool struct {
@@ -219,8 +230,9 @@ type polzaChatResponse struct {
 			Annotations json.RawMessage `json:"annotations"`
 		} `json:"message"`
 	} `json:"choices"`
-	Usage polzaUsage  `json:"usage"`
-	Error *polzaError `json:"error"`
+	Usage    polzaUsage  `json:"usage"`
+	Error    *polzaError `json:"error"`
+	Provider string      `json:"provider"`
 }
 
 // polzaStreamChunk is one `data: {...}` line of the SSE stream. Reasoning
@@ -244,8 +256,9 @@ type polzaStreamChunk struct {
 			Annotations json.RawMessage `json:"annotations"`
 		} `json:"message"`
 	} `json:"choices"`
-	Usage *polzaUsage `json:"usage"`
-	Error *polzaError `json:"error"`
+	Usage    *polzaUsage `json:"usage"`
+	Error    *polzaError `json:"error"`
+	Provider string      `json:"provider"`
 	// Polza stores server-tool loop events here when
 	// include_server_tool_events is set; see parseServerToolEvents.
 	Polza json.RawMessage `json:"polza"`
@@ -263,6 +276,7 @@ func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messa
 			{Type: "polza:datetime"},
 		}
 		req.MaxToolCalls = WebMaxToolCalls
+		req.Provider = &polzaProviderPrefs{RequireParameters: true}
 		if req.StreamOptions != nil {
 			req.StreamOptions.IncludeServerToolEvents = true
 		}
@@ -362,6 +376,7 @@ func (c *PolzaClient) Generate(ctx context.Context, apiModelID string, messages 
 	if use := resp.Usage.ServerToolUse; use != nil {
 		result.WebSearches, result.WebFetches = use.WebSearchRequests, use.WebFetchRequests
 	}
+	logWebCall(ctx, apiModelID, resp.Provider, result)
 	return result, nil
 }
 
@@ -435,6 +450,7 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 		var text strings.Builder
 		var inputTokens, outputTokens int
 		var final GenerateResult
+		var servedBy string
 		toolCalls := map[int]*streamedToolCall{}
 		// toolSinceText marks a tool step after some answer text: the model
 		// said something like "let me check", searched, and is now going on.
@@ -472,6 +488,9 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 			if chunk.Error != nil {
 				send(StreamChunk{Err: fmt.Errorf("provider: polza stream error (code=%v): %s", chunk.Error.Code, chunk.Error.Message)})
 				return
+			}
+			if chunk.Provider != "" {
+				servedBy = chunk.Provider
 			}
 			if len(chunk.Polza) > 0 {
 				if c.DebugToolEvents {
@@ -533,6 +552,7 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 		}
 
 		final.Text, final.InputTokens, final.OutputTokens = text.String(), inputTokens, outputTokens
+		logWebCall(ctx, apiModelID, servedBy, final)
 		send(StreamChunk{Done: true, Final: final})
 	}()
 

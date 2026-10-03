@@ -116,11 +116,43 @@ func webLinks(results []provider.WebResult) []conversation.WebLink {
 	return out
 }
 
-// rejectedRequest reports a vendor refusal of the request itself (bad
-// parameters), as opposed to auth, balance or availability problems.
+// rejectedRequest reports a vendor refusal of the request itself, as
+// opposed to auth, balance or availability problems: bad parameters
+// (400/422), or no provider for the model that supports them (404, which
+// is how require_parameters routing fails).
 func rejectedRequest(err error) bool {
 	var statusErr *provider.StatusError
-	return errors.As(err, &statusErr) && (statusErr.StatusCode == http.StatusBadRequest || statusErr.StatusCode == http.StatusUnprocessableEntity)
+	if !errors.As(err, &statusErr) {
+		return false
+	}
+	switch statusErr.StatusCode {
+	case http.StatusBadRequest, http.StatusNotFound, http.StatusUnprocessableEntity:
+		return true
+	}
+	return false
+}
+
+// Notes for a model that ends up without web access, so that a user who
+// asks it to look something up gets told why it can't and what to do,
+// not just "I have no search tool here".
+const (
+	// Auto mode, model without tool calling (Polza can't give it tools).
+	noWebToolsNote = "Web search is on Auto, but this model can't call web tools, so you have no internet access for this answer. If the user asks you to search or check something online, say in one sentence that this model can't search by itself and that switching Web search to On (in the composer's + menu) makes it search before answering; then help with what you know."
+	// Web tools were requested but the vendor refused them for this call.
+	webUnavailableNote = "Web search was requested but isn't available for this model right now, so you have no internet access for this answer. If the user asked you to look something up, say in one sentence that search didn't work with this model this time, then help with what you know."
+)
+
+// withSystemNote adds a system message after the leading system messages
+// (persona, instructions, project), ahead of the conversation itself.
+func withSystemNote(messages []provider.Message, note string) []provider.Message {
+	at := 0
+	for at < len(messages) && messages[at].Role == "system" {
+		at++
+	}
+	out := make([]provider.Message, 0, len(messages)+1)
+	out = append(out, messages[:at]...)
+	out = append(out, provider.Message{Role: "system", Content: note})
+	return append(out, messages[at:]...)
 }
 
 // withoutWebInstruction drops the "search the web" system message, for a
