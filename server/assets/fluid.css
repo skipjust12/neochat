@@ -8293,3 +8293,31 @@ html.artifact-open body {
 @media (prefers-reduced-motion: reduce) {
   #refreshModels.is-busy .lucide { animation: none; }
 }
+
+/* ---------- resumable streams ---------- */
+.stream-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.stream-status::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  animation: stream-status-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes stream-status-pulse {
+  0%, 100% { opacity: .25; }
+  50% { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-status::before { animation: none; opacity: .6; }
+}

@@ -13,7 +13,7 @@ The seven findings in the September 2026 audit are addressed in this source tree
 
 ## Concurrency and retries
 
-One active request per user is enforced through the shared idempotency store. Chat requests have a 12-minute context deadline; leases last 15 minutes. Completion and release compare an unguessable owner token atomically, so an expired worker cannot modify its replacement. Completed responses remain cached according to `IDEMPOTENCY_TTL` (positive, default 24h).
+One active request per user is enforced through the shared idempotency store. A reply streamed under an idempotency key runs detached from its connection and can be rejoined only by the user who started it (`GET /chat/stream/{stream_id}`, `POST /chat/stop`); stream ids are random 128-bit values, streams are kept in memory for 15 minutes after they finish (at most four finished per user), and the resume endpoint does not take the active-request slot. Chat requests have a 12-minute context deadline; leases last 15 minutes. Completion and release compare an unguessable owner token atomically, so an expired worker cannot modify its replacement. Completed responses remain cached according to `IDEMPOTENCY_TTL` (positive, default 24h).
 
 The idempotency key format changed to avoid ambiguous component boundaries and to separate client keys from request slots. Deploy after draining old workers. Cached replies from the previous key format are not replayed by this version; avoid retrying pre-upgrade submissions during the transition. Existing financial spend keys are unchanged.
 

@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=21" />
+<link rel="stylesheet" href="/assets/fluid.css?v=22" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -1658,7 +1658,7 @@
       if(window.NeoChatAttachments)window.NeoChatAttachments.clear();
       clearComposerQuote();
       updateChatModeControls();
-      loadConversations(true);
+      if(!userID||!reattachStream(userID))loadConversations(true);
     }
 
     // Signed-out visitors get the landing page (web/landing, mounted into
@@ -3786,7 +3786,6 @@
         incognitoMessages=[];
         incognitoState.checked=false;
         syncIncognitoGreeting();
-      syncIncognitoGreeting();
         storeValue(localStorage,currentConversationStorageKey,conversationID);
         clearComposerQuote();
         chatLog.replaceChildren();
@@ -3869,14 +3868,25 @@
       return Boolean(textarea.value.trim())||Boolean(files&&files.ready().length);
     }
 
+    // Leaving no longer stops a reply (it can be resumed), so Stop tells
+    // the server, then stops listening.
     function stopGeneration(){
-      if(activeAbort)activeAbort.abort();
+      if(!activeAbort)return;
+      if(activeStream){
+        stopRequest=apiFetch('/chat/stop',{
+          method:'POST',headers:{'Content-Type':'application/json'},keepalive:true,
+          body:JSON.stringify({stream_id:activeStream.id||undefined,idempotency_key:activeStream.key||undefined})
+        }).catch(function(){});
+      }
+      activeAbort.abort();
     }
 
-    // After Stop the server still needs a moment to store the partial reply
-    // and free this user's request slot; refreshing right away races it.
+    // POST /chat/stop answers once the partial reply is stored and the
+    // request slot is free; refresh after that.
     function refreshAfterStop(){
-      setTimeout(function(){if(activeProject)refreshActiveProject();else loadConversations(false)},700);
+      Promise.resolve(stopRequest).then(function(){
+        if(activeProject)refreshActiveProject();else loadConversations(false);
+      });
     }
 
     textarea.addEventListener('input',function(){sendButton.disabled=!sending&&!hasSomethingToSend()});
@@ -3902,20 +3912,23 @@
 
     function parseServerSentEvent(block){
       let event='message';
+      let id=0;
       const data=[];
       String(block||'').split(/\r?\n/).forEach(function(line){
         if(line.startsWith('event:'))event=line.slice(6).trim();
         if(line.startsWith('data:'))data.push(line.slice(5).replace(/^ /,''));
+        if(line.startsWith('id:'))id=Number(line.slice(3).trim())||0;
       });
       if(!data.length)return null;
       try{
-        return {event:event,payload:JSON.parse(data.join('\n'))};
+        return {event:event,id:id,payload:JSON.parse(data.join('\n'))};
       }catch(error){
         throw new Error('The server returned an invalid stream event.');
       }
     }
 
-    async function readServerSentEvents(response,onEvent){
+    // onChunk hears every chunk that arrives, heartbeats included.
+    async function readServerSentEvents(response,onEvent,onChunk){
       if(!response.body||typeof response.body.getReader!=='function'){
         throw new Error('Streaming responses are not supported by this browser.');
       }
@@ -3926,18 +3939,19 @@
       try{
         while(true){
           const part=await reader.read();
+          if(onChunk)onChunk();
           buffer+=decoder.decode(part.value,{stream:!part.done});
           const blocks=buffer.split(/\r?\n\r?\n/);
           buffer=blocks.pop()||'';
           for(const block of blocks){
             const parsed=parseServerSentEvent(block);
-            if(parsed)onEvent(parsed.event,parsed.payload);
+            if(parsed)onEvent(parsed.event,parsed.payload,parsed.id);
           }
           if(part.done)break;
         }
         if(buffer.trim()){
           const parsed=parseServerSentEvent(buffer);
-          if(parsed)onEvent(parsed.event,parsed.payload);
+          if(parsed)onEvent(parsed.event,parsed.payload,parsed.id);
         }
       }catch(error){
         try{await reader.cancel()}catch(cancelError){}
@@ -3945,6 +3959,179 @@
       }finally{
         reader.releaseLock();
       }
+    }
+
+    /* ---------- resumable streams ---------- */
+    // A reply streams from a job on the server that outlives the
+    // connection (server/streamjob.go). When the connection drops -- the
+    // phone put the app away, the network blinked -- the reply picks up
+    // where it left off: up to five tries, "Streaming interrupted, retrying
+    // (n/5)" meanwhile, then the events it missed and the rest live. The
+    // stream is also noted in this browser, so a page the phone threw away
+    // and reloaded comes back to it (reattachStream).
+    const STREAM_RETRIES=5;
+    const STREAM_RETRY_DELAYS=[800,1500,3000,5000,8000];
+    const STREAM_STALL_MS=45000;
+    const STREAM_RECORD_MS=15*60*1000;
+    const activeStreamStorageKey='neochat-active-stream';
+    // The reply streaming now, for Stop: its idempotency key and stream id.
+    let activeStream=null;
+    let stopRequest=null;
+
+    function streamFailure(text,details){
+      return Object.assign(new Error(text),details||{});
+    }
+
+    function setStreamStatus(message,text){
+      let status=message.querySelector('.stream-status');
+      if(!text){if(status)status.remove();return}
+      if(!status){
+        status=document.createElement('p');
+        status.className='stream-status';
+        status.setAttribute('role','status');
+        message.querySelector('.chat-text').after(status);
+      }
+      status.textContent=text;
+    }
+
+    function pause(ms,signal){
+      return new Promise(function(resolve){
+        const timer=setTimeout(finish,ms);
+        function finish(){clearTimeout(timer);signal.removeEventListener('abort',finish);resolve()}
+        signal.addEventListener('abort',finish);
+      });
+    }
+
+    // A hidden page (the app in the background) waits to be seen again
+    // before it tries: the network is often off until then.
+    function whenVisible(signal){
+      if(document.visibilityState!=='hidden')return Promise.resolve();
+      return new Promise(function(resolve){
+        function check(){
+          if(document.visibilityState==='hidden'&&!signal.aborted)return;
+          document.removeEventListener('visibilitychange',check);
+          signal.removeEventListener('abort',check);
+          resolve();
+        }
+        document.addEventListener('visibilitychange',check);
+        signal.addEventListener('abort',check);
+      });
+    }
+
+    // runChatStream posts options.request to options.url -- or, given
+    // options.streamID, rejoins that stream -- and hands each event to
+    // options.onEvent until the reply ends. It resolves with how it ended
+    // ('done' or 'blocked'). It rejects with what onEvent threw (a server
+    // 'error'), with error.stopped for a Stop, error.gone for a stream the
+    // server no longer has (the stored chat has the answer) and error.lost
+    // once five tries to reconnect have failed.
+    async function runChatStream(options){
+      const signal=options.signal;
+      let streamID=options.streamID||'';
+      let lastSeq=0;
+      let ending='';
+      let failures=0;
+      while(true){
+        const local=new AbortController();
+        const forwardAbort=function(){local.abort()};
+        signal.addEventListener('abort',forwardAbort);
+        let lastByte=Date.now();
+        let connectedAt=0;
+        const recovered=function(){
+          if(!failures)return;
+          failures=0;
+          setStreamStatus(options.message,'');
+        };
+        // A connection can die without an error (mobile networks do): the
+        // server sends something at least every 15 seconds.
+        const watchdog=setInterval(function(){if(Date.now()-lastByte>STREAM_STALL_MS)local.abort()},5000);
+        // Back from the background on a connection that went quiet: don't
+        // wait for the watchdog.
+        const onVisible=function(){if(document.visibilityState==='visible'&&Date.now()-lastByte>20000)local.abort()};
+        document.addEventListener('visibilitychange',onVisible);
+        try{
+          let response;
+          if(streamID){
+            response=await apiFetch('/chat/stream/'+encodeURIComponent(streamID)+'?after='+lastSeq,{signal:local.signal});
+          }else{
+            const headers=Object.assign({},options.headers);
+            if(lastSeq)headers['Last-Event-ID']=String(lastSeq);
+            response=await apiFetch(options.url,{method:'POST',headers:headers,body:JSON.stringify(options.request),signal:local.signal});
+          }
+          if(!response.ok){
+            const raw=(await response.text()).trim();
+            if(streamID&&response.status===404)throw streamFailure('This reply is no longer streaming.',{gone:true});
+            throw streamFailure(raw||'HTTP '+response.status,{retry:response.status>=500});
+          }
+          connectedAt=Date.now();
+          // Connected again: the note goes, the count stays till the
+          // connection proves itself.
+          if(failures)setStreamStatus(options.message,'');
+          await readServerSentEvents(response,function(event,data,id){
+            lastByte=Date.now();
+            if(event==='stream'){
+              if(data&&data.stream_id){
+                streamID=String(data.stream_id);
+                if(options.onStream)options.onStream(streamID);
+              }
+              return;
+            }
+            if(id){lastSeq=id;recovered()}
+            if(event==='stopped'){ending='stopped';return}
+            if(event==='done'||event==='blocked')ending=event;
+            try{options.onEvent(event,data)}catch(error){throw Object.assign(error,{fromReply:true})}
+          },function(){
+            lastByte=Date.now();
+            if(Date.now()-connectedAt>10000)recovered();
+          });
+          // Read to the end: the server closes the stream once the reply is
+          // stored and the request slot is free.
+          if(ending==='stopped')throw streamFailure('Stopped.',{stopped:true});
+          if(ending)return ending;
+          throw streamFailure('The response stream ended unexpectedly.',{retry:true});
+        }catch(error){
+          if(signal.aborted||error.fromReply||error.gone||error.stopped)throw error;
+          if(ending==='stopped')throw streamFailure('Stopped.',{stopped:true});
+          // The reply was complete; only the end of the connection was lost.
+          if(ending)return ending;
+          if(!(error.retry||error.name==='AbortError'||error instanceof TypeError))throw error;
+          failures++;
+          if(failures>STREAM_RETRIES){
+            setStreamStatus(options.message,'');
+            throw streamFailure('Lost the connection to NeoChat.',{lost:true});
+          }
+          setStreamStatus(options.message,'Streaming interrupted, retrying ('+failures+'/'+STREAM_RETRIES+')');
+          await pause(STREAM_RETRY_DELAYS[failures-1],signal);
+          await whenVisible(signal);
+          if(signal.aborted)throw error;
+        }finally{
+          clearInterval(watchdog);
+          document.removeEventListener('visibilitychange',onVisible);
+          signal.removeEventListener('abort',forwardAbort);
+        }
+      }
+    }
+
+    // The note that lets a reloaded page rejoin a reply (saved chats only).
+    function saveStreamRecord(record){
+      if(record)storeValue(localStorage,activeStreamStorageKey,JSON.stringify(record));
+    }
+    function clearStreamRecord(record){
+      if(!record)return;
+      const saved=readStreamRecord();
+      if(saved&&saved.key===record.key)storeValue(localStorage,activeStreamStorageKey,'');
+    }
+    function readStreamRecord(){
+      try{
+        const record=JSON.parse(storedValue(localStorage,activeStreamStorageKey)||'null');
+        return record&&typeof record==='object'&&typeof record.key==='string'?record:null;
+      }catch(error){return null}
+    }
+
+    function lostConnectionText(saved){
+      return saved
+        ?'Lost the connection to NeoChat. The answer keeps going on the server — open this chat again in a minute to see it.'
+        :'Lost the connection to NeoChat.';
     }
 
     function createSmoothMessageStream(message){
@@ -4074,22 +4261,25 @@
       let liveActivity=[];
       const controller=new AbortController();
       activeAbort=controller;
+      activeStream={key:request.idempotency_key,id:''};
       // The new version brings its own timing and web activity.
       message.querySelectorAll('.chat-copy > .thought-time').forEach(function(element){element.remove()});
       const thought=imageGen?silentThought:thoughtTracker(message,thinkingStartedAt);
+      const url=isIncognito?'/chat/stream':'/chat/regenerate/stream';
+      let asked=message.previousElementSibling;
+      while(asked&&!asked.matches('.chat-message.user'))asked=asked.previousElementSibling;
+      const record=isIncognito?null:{user:signedInUser(),key:request.idempotency_key,url:url,request:request,shown:asked?asked.dataset.messageText||'':'',quote:null,conversation_id:conversationID,id:'',at:Date.now()};
+      saveStreamRecord(record);
+      let reloadAfter=false;
+      let keepRecord=false;
 
       try{
-        const response=await apiFetch(isIncognito?'/chat/stream':'/chat/regenerate/stream',{
-          method:'POST',
-          headers:chatHeaders(request),
-          body:JSON.stringify(request),
-          signal:controller.signal
-        });
-        if(!response.ok){
-          const raw=await response.text();
-          throw new Error(raw.trim()||'HTTP '+response.status);
-        }
-        await readServerSentEvents(response,function(event,data){
+        await runChatStream({url:url,request:request,headers:chatHeaders(request),signal:controller.signal,message:message,
+          onStream:function(id){
+            activeStream.id=id;
+            if(record){record.id=id;saveStreamRecord(record)}
+          },
+          onEvent:function(event,data){
           if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
           if(event==='blocked')throw new Error(data.response_text||'Regeneration was blocked.');
           if(event==='versions'){versionsData=data;return}
@@ -4118,7 +4308,7 @@
             if(imageGen)imageGen.finish(data.images);
             stream.replace(data.response_text||(data.questionnaire||madeImages?'':'The server returned an empty response.'));
           }
-        });
+        }});
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
         if(isIncognito){
@@ -4138,7 +4328,11 @@
         if(imageGen)imageGen.cancel();
         stream.cancel();
         message.classList.remove('is-pending');
-        if(controller.signal.aborted&&receivedText){
+        const stopped=controller.signal.aborted||Boolean(error.stopped);
+        if(error.gone&&!isIncognito){
+          // The server no longer has the stream: the stored chat has it.
+          reloadAfter=true;
+        }else if(stopped&&receivedText){
           // Stopped mid-regeneration: the server kept what was streamed as
           // a new version, so show it as one.
           message.responseVersions=(message.responseVersions||[]).concat([{content:receivedText,model_id:request.manual_model_id||'',activity:stoppedActivity(liveActivity),thought_ms:thought.ms()}]);
@@ -4149,13 +4343,17 @@
         }else{
           renderResponseVersion(message,previousIndex);
           message.classList.add('is-complete');
-          toast(controller.signal.aborted?'Stopped.':'Could not regenerate: '+error.message);
+          keepRecord=Boolean(error.lost);
+          toast(stopped?'Stopped.':error.lost?lostConnectionText(!isIncognito):'Could not regenerate: '+error.message);
         }
         updateAskState(false);
       }finally{
+        if(!keepRecord)clearStreamRecord(record);
+        activeStream=null;
         setSending(false);
+        if(reloadAfter)reloadCurrentConversation();
         // An open questionnaire keeps the focus it took.
-        if(askPanel.hidden)textarea.focus();
+        else if(askPanel.hidden)textarea.focus();
       }
     }
 
@@ -4216,27 +4414,26 @@
       let liveActivity=[];
       const controller=new AbortController();
       activeAbort=controller;
+      activeStream={key:request.idempotency_key,id:''};
       const thought=imageGen?silentThought:thoughtTracker(pending,thinkingStartedAt);
+      const record=activeChatIncognito?null:{user:session,key:request.idempotency_key,url:'/chat/stream',request:request,shown:request.message||'',quote:request.quote||null,conversation_id:conversationID,id:'',at:Date.now()};
+      saveStreamRecord(record);
+      let reloadAfter=false;
+      let keepRecord=false;
 
       try{
-        const response=await apiFetch('/chat/stream',{
-          method:'POST',
-          headers:chatHeaders(request),
-          body:JSON.stringify(request),
-          signal:controller.signal
-        });
-
-        if(!response.ok){
-          const raw=await response.text();
-          throw new Error(raw.trim()||'HTTP '+response.status);
-        }
-
-        await readServerSentEvents(response,function(event,data){
+        await runChatStream({url:'/chat/stream',request:request,headers:chatHeaders(request),signal:controller.signal,message:pending,
+          onStream:function(id){
+            activeStream.id=id;
+            if(record){record.id=id;saveStreamRecord(record)}
+          },
+          onEvent:function(event,data){
           if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
           if(event==='meta'){
             if(!activeChatIncognito){
               conversationID=data.conversation_id||conversationID;
               storeValue(localStorage,currentConversationStorageKey,conversationID);
+              if(record){record.conversation_id=conversationID;saveStreamRecord(record)}
             }
             return;
           }
@@ -4273,7 +4470,7 @@
             if(imageGen)imageGen.finish(data.images);
             stream.replace(data.response_text||(data.questionnaire||madeImages?'':'The server returned an empty response.'));
           }
-        });
+        }});
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(signedInUser()!==session){stream.cancel();return}
         await stream.finish();
@@ -4290,7 +4487,7 @@
         }
       }catch(error){
         if(imageGen)imageGen.cancel();
-        if(controller.signal.aborted){
+        if(controller.signal.aborted||error.stopped){
           // Stopped by the user: keep everything that arrived. The server
           // stored the same partial reply, so the thread stays in sync.
           stream.cancel();
@@ -4320,21 +4517,115 @@
         stream.cancel();
         thought.stop();
         pending.classList.remove('is-pending');
+        // The server no longer has the stream: the stored chat has the reply.
+        if(error.gone&&!activeChatIncognito&&conversationID){reloadAfter=true;return}
         pending.classList.add('is-error');
         const body=pending.querySelector('.chat-text');
+        const reason=error.lost?lostConnectionText(!activeChatIncognito&&Boolean(conversationID)):error.message;
+        // A reload can still rejoin it (reattachStream).
+        keepRecord=Boolean(error.lost);
         if(partialText){
           renderMarkdown(body,partialText);
           const note=document.createElement('p');
-          note.textContent='Response interrupted: '+error.message;
+          note.textContent=error.lost?reason:'Response interrupted: '+reason;
           body.append(note);
         }else{
-          body.textContent='Could not get a response: '+error.message;
+          body.textContent=error.lost?reason:'Could not get a response: '+reason;
         }
       }finally{
+        if(!keepRecord)clearStreamRecord(record);
+        activeStream=null;
         setSending(false);
+        if(reloadAfter)reloadCurrentConversation();
         // An open questionnaire keeps the focus it took.
-        if(askPanel.hidden)textarea.focus();
+        else if(askPanel.hidden)textarea.focus();
       }
+    }
+
+    function reloadCurrentConversation(){
+      if(conversationID)loadConversation(conversationID,currentConversationTitle,currentConversationPinned);
+    }
+
+    // A page the phone threw away and reloaded comes back here: if this
+    // browser was streaming a reply into a saved chat, it streams again
+    // (from the start of the reply), then the chat loads as usual. The chat
+    // list waits till then: the server serves history only between replies.
+    function reattachStream(userID){
+      const record=readStreamRecord();
+      if(!record)return false;
+      const usable=record.user===userID&&Date.now()-Number(record.at)<STREAM_RECORD_MS&&(record.id||(record.url&&record.request));
+      if(!usable){storeValue(localStorage,activeStreamStorageKey,'');return false}
+      resumeRecordedStream(record);
+      return true;
+    }
+
+    async function resumeRecordedStream(record){
+      if(record.conversation_id){
+        conversationID=record.conversation_id;
+        storeValue(localStorage,currentConversationStorageKey,conversationID);
+      }
+      activeChatIncognito=false;
+      chatLog.replaceChildren();
+      setConversationListMessage('Finishing the last answer…');
+      appendMessage('user',record.shown||'',{quote:record.quote||undefined});
+      const pending=appendMessage('assistant','');
+      pending.classList.add('is-pending','is-latest-response');
+      setThinkingState(pending);
+      setSending(true);
+      const stream=createSmoothMessageStream(pending);
+      const thought=thoughtTracker(pending,performance.now());
+      const controller=new AbortController();
+      activeAbort=controller;
+      activeStream={key:record.key,id:record.id||''};
+      let keepRecord=false;
+      try{
+        await runChatStream({streamID:record.id||'',url:record.url,request:record.request,headers:chatHeaders(record.request),signal:controller.signal,message:pending,
+          onStream:function(id){
+            activeStream.id=id;
+            record.id=id;
+            saveStreamRecord(record);
+          },
+          onEvent:function(event,data){
+            if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
+            if(event==='meta'){
+              if(data&&data.conversation_id){
+                conversationID=data.conversation_id;
+                storeValue(localStorage,currentConversationStorageKey,conversationID);
+              }
+              return;
+            }
+            if(event==='activity'){thought.activity(Array.isArray(data&&data.activity)?data.activity:[]);return}
+            if(event==='delta'){
+              const text=data&&data.text?String(data.text):'';
+              if(text){pending.classList.remove('is-pending');thought.text()}
+              stream.append(text);
+              return;
+            }
+            if(event==='done'||event==='blocked'){
+              pending.classList.remove('is-pending');
+              thought.done(data);
+              stream.replace(data.response_text||'');
+            }
+          }});
+        await stream.finish();
+      }catch(error){
+        stream.cancel();
+        thought.stop();
+        pending.classList.remove('is-pending');
+        if(error.lost){
+          keepRecord=true;
+          pending.classList.add('is-error');
+          pending.querySelector('.chat-text').textContent=lostConnectionText(true);
+        }
+      }finally{
+        if(!keepRecord)clearStreamRecord(record);
+        activeStream=null;
+        setSending(false);
+      }
+      if(keepRecord)return;
+      // The whole chat as stored, this reply included.
+      await Promise.resolve(stopRequest);
+      loadConversations(true);
     }
 
     document.querySelectorAll('.suggestions button').forEach(function(button){

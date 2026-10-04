@@ -243,6 +243,10 @@ type Server struct {
 	// when set, it is the catalog every lookup and route uses, with
 	// Router's weights. Nil: Router's catalog, fixed at startup.
 	Models *modelcatalog.Live
+
+	// streams holds the chat streams a client can come back to
+	// (streamjob.go).
+	streams streamRegistry
 }
 
 // providerKeyHeader carries the user's own Polza AI key on chat requests.
@@ -434,6 +438,8 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("DELETE /auth/session", recovered(s.rateLimited(s.handleSessionDelete)))
 	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
+	mux.HandleFunc("GET /chat/stream/{stream_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleStreamResume)))))
+	mux.HandleFunc("POST /chat/stop", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleStreamStop)))))
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
 	mux.HandleFunc("GET /conversations/search", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleConversationSearch)))))
 	mux.HandleFunc("DELETE /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectDelete))))))
@@ -1047,6 +1053,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, identity aut
 //   - "blocked": Layer 1 moderation flagged the request -- the full
 //     chatResponse (Blocked=true), no "meta"/"delta" ever preceded it.
 //   - "error": the request failed -- {message}.
+//   - "stopped": POST /chat/stop ended it (the partial reply is stored).
+//
+// Each connection opens with "stream" -- {stream_id} -- and numbers every
+// later event (SSE id:); a client that loses the connection rejoins with
+// GET /chat/stream/{stream_id}?after=<last id>. See streamjob.go.
 func (s *Server) handleChatStream(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
 	req, plan, ok := decodeChatRequest(w, r, s.Plans, identity)
 	if !ok {
@@ -1129,35 +1140,6 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		return
 	}
 	s.writeChatStream(w, r, req, plan)
-}
-
-func (s *Server) writeChatStream(w http.ResponseWriter, r *http.Request, req chatRequest, plan limits.PlanLimits) {
-
-	flusher, ok := w.(http.Flusher)
-	if !ok {
-		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
-		return
-	}
-	w.Header().Set("Content-Type", "text/event-stream")
-	w.Header().Set("Cache-Control", "no-cache")
-	w.Header().Set("Connection", "keep-alive")
-	w.WriteHeader(http.StatusOK)
-
-	send := func(event string, payload any) {
-		data, err := json.Marshal(payload)
-		if err != nil {
-			log.Printf("server: /chat/stream marshal %s event: %v", event, err)
-			return
-		}
-		_ = http.NewResponseController(w).SetWriteDeadline(time.Now().Add(10 * time.Second))
-		fmt.Fprintf(w, "event: %s\ndata: %s\n\n", event, data)
-		flusher.Flush()
-	}
-
-	if err := s.handleStream(r.Context(), req, plan, send); err != nil {
-		log.Printf("server: /chat/stream error for user_id=%s: %v", req.UserID, err)
-		send("error", map[string]string{"message": clientErrorMessage(err)})
-	}
 }
 
 // preparedRequest holds everything shared between handle and handleStream
@@ -1380,9 +1362,9 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 			history = history[:len(history)-req.regenerationHistoryDrop]
 		}
 		lastImage = lastGeneratedImage(history)
-		summaryServer := *s
-		summaryServer.Summarizer.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Summarizer.Client, inputRate: s.Summarizer.CostInputPerMTok, outputRate: s.Summarizer.CostOutputPerMTok}
-		tail, summaryText = summaryServer.maybeSummarize(ctx, req.UserID, conversationID, summaryState, history)
+		billed := s.Summarizer
+		billed.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Summarizer.Client, inputRate: s.Summarizer.CostInputPerMTok, outputRate: s.Summarizer.CostOutputPerMTok}
+		tail, summaryText = s.maybeSummarizeWith(ctx, billed, req.UserID, conversationID, summaryState, history)
 	}
 
 	persona := req.Persona
@@ -1520,6 +1502,12 @@ func (s *Server) loadHistory(ctx context.Context, userID, conversationID string)
 // conversation still hits applyHardFilters' context-window check, the
 // same outcome as before this feature existed.
 func (s *Server) maybeSummarize(ctx context.Context, userID, conversationID string, state conversation.Summary, window []conversation.Message) ([]conversation.Message, string) {
+	return s.maybeSummarizeWith(ctx, s.Summarizer, userID, conversationID, state, window)
+}
+
+// maybeSummarizeWith is maybeSummarize with the summarizer to call (prepare
+// passes one that bills the user's spend).
+func (s *Server) maybeSummarizeWith(ctx context.Context, summary summarizer.Summarizer, userID, conversationID string, state conversation.Summary, window []conversation.Message) ([]conversation.Message, string) {
 	// SummaryTriggerTokens <= 0 means the feature is unconfigured (the
 	// zero-value Server, e.g. in tests that don't set it) rather than
 	// "summarize everything" -- a real deployment always sets a positive
@@ -1548,7 +1536,7 @@ func (s *Server) maybeSummarize(ctx context.Context, userID, conversationID stri
 	tailStart := len(window) - s.SummaryTailMessages
 	toFold := summaryInput(window[:tailStart])
 
-	newSummary, err := s.Summarizer.Summarize(ctx, state.Text, toFold)
+	newSummary, err := summary.Summarize(ctx, state.Text, toFold)
 	if err != nil {
 		log.Printf("server: summarize user_id=%s conversation_id=%s: %v", userID, conversationID, err)
 		return window, state.Text

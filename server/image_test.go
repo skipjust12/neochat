@@ -129,10 +129,10 @@ func sendStream(t *testing.T, mux http.Handler, path, token string, headers map[
 
 func doneEvent(t *testing.T, transcript string) chatResponse {
 	t.Helper()
-	for _, block := range strings.Split(transcript, "\n\n") {
-		if strings.HasPrefix(block, "event: done\n") {
+	for _, event := range parseSSE(transcript) {
+		if event.name == "done" {
 			var done chatResponse
-			if err := json.Unmarshal([]byte(strings.TrimPrefix(block, "event: done\ndata: ")), &done); err != nil {
+			if err := json.Unmarshal([]byte(event.data), &done); err != nil {
 				t.Fatal(err)
 			}
 			return done

@@ -410,6 +410,9 @@ func main() {
 		if err := srvHTTP.Shutdown(shutdownCtx); err != nil {
 			log.Printf("server: graceful shutdown did not finish cleanly: %v", err)
 		}
+		// Answers whose client went away keep generating (they can be
+		// resumed); give them the rest of the grace period.
+		srv.DrainStreams(shutdownCtx)
 	}
 	log.Print("server stopped")
 }
