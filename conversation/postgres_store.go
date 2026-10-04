@@ -294,6 +294,88 @@ func (s *PostgresStore) GetProject(ctx context.Context, userID, projectID string
 	return project, err
 }
 
+func (s *PostgresStore) DeleteProject(ctx context.Context, userID, projectID string) error {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+	if _, err := tx.ExecContext(ctx, `
+		UPDATE conversation_metadata SET project_id = '' WHERE user_id = $1 AND project_id = $2
+	`, userID, projectID); err != nil {
+		return err
+	}
+	result, err := tx.ExecContext(ctx, `DELETE FROM projects WHERE user_id = $1 AND project_id = $2`, userID, projectID)
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err != nil {
+		return err
+	} else if n == 0 {
+		return ErrConversationNotFound
+	}
+	return tx.Commit()
+}
+
+// Search scans the user's own messages with strpos; a personal chat
+// history is small enough that this needs no full-text index. The match
+// is case-insensitive as far as the database's lower() is (Cyrillic
+// included under the usual UTF-8 locales).
+func (s *PostgresStore) Search(ctx context.Context, userID, query string, limit int) ([]SearchResult, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT c.conversation_id,
+		       COALESCE(NULLIF(md.title, ''), NULLIF((
+		           SELECT LEFT(BTRIM(first_message.content), 80)
+		           FROM conversation_messages first_message
+		           WHERE first_message.user_id = $1
+		             AND first_message.conversation_id = c.conversation_id
+		             AND first_message.role = $4
+		           ORDER BY first_message.id
+		           LIMIT 1
+		       ), ''), 'New chat'),
+		       COALESCE(md.pinned, FALSE),
+		       COALESCE(md.project_id, ''),
+		       c.updated_at,
+		       COALESCE(hit.excerpt, '')
+		FROM (
+			SELECT conversation_id, MAX(created_at) AS updated_at
+			FROM conversation_messages
+			WHERE user_id = $1
+			GROUP BY conversation_id
+		) c
+		LEFT JOIN conversation_metadata md
+		  ON md.user_id = $1 AND md.conversation_id = c.conversation_id
+		LEFT JOIN LATERAL (
+			SELECT SUBSTR(m.content, GREATEST(STRPOS(LOWER(m.content), LOWER($2)) - 120, 1), 400) AS excerpt
+			FROM conversation_messages m
+			WHERE m.user_id = $1 AND m.conversation_id = c.conversation_id
+			  AND NOT m.is_summary AND STRPOS(LOWER(m.content), LOWER($2)) > 0
+			ORDER BY m.id DESC
+			LIMIT 1
+		) hit ON TRUE
+		WHERE hit.excerpt IS NOT NULL OR STRPOS(LOWER(COALESCE(md.title, '')), LOWER($2)) > 0
+		ORDER BY c.updated_at DESC
+		LIMIT $3
+	`, userID, query, limit, RoleUser)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []SearchResult{}
+	for rows.Next() {
+		var result SearchResult
+		var excerpt string
+		if err := rows.Scan(&result.ID, &result.Title, &result.Pinned, &result.ProjectID, &result.UpdatedAt, &excerpt); err != nil {
+			return nil, err
+		}
+		if excerpt != "" {
+			result.Snippet = snippet(excerpt, query)
+		}
+		out = append(out, result)
+	}
+	return out, rows.Err()
+}
+
 func (s *PostgresStore) Delete(ctx context.Context, userID, conversationID string) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

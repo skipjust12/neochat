@@ -228,6 +228,10 @@ type Server struct {
 	// Images makes pictures for image models (image.go). Nil: image models
 	// answer that image generation isn't available.
 	Images *imagegen.Client
+
+	// BalanceURL is Polza's balance endpoint for GET /account/balance
+	// (workspace.go); empty means the real one.
+	BalanceURL string
 }
 
 // providerKeyHeader carries the user's own Polza AI key on chat requests.
@@ -420,6 +424,12 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
+	mux.HandleFunc("GET /conversations/search", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleConversationSearch)))))
+	mux.HandleFunc("DELETE /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectDelete))))))
+	mux.HandleFunc("GET /account/balance", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleBalance)))))
+	// Not through recovered: its X-Frame-Options: DENY would stop the
+	// app's own artifact viewer from framing this page.
+	mux.HandleFunc("GET /artifact-frame", artifactFrame)
 	mux.HandleFunc("GET /conversations", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationList))))))
 	mux.HandleFunc("GET /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationHistory))))))
 	mux.HandleFunc("PATCH /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationUpdate))))))
@@ -527,7 +537,7 @@ func (s *Server) handleProjectGet(w http.ResponseWriter, r *http.Request, identi
 		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
 		return
 	}
-	chats, err := s.Conversations.ListByProject(r.Context(), identity.UserID, id, 100)
+	chats, err := s.Conversations.ListByProject(r.Context(), identity.UserID, id, maxConversationList)
 	if err != nil {
 		log.Printf("server: list conversations for project_id=%s user_id=%s: %v", id, identity.UserID, err)
 		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
@@ -617,7 +627,7 @@ func (s *Server) handleConversationDelete(w http.ResponseWriter, r *http.Request
 }
 
 func (s *Server) handleConversationList(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
-	conversations, err := s.Conversations.List(r.Context(), identity.UserID, 100)
+	conversations, err := s.Conversations.List(r.Context(), identity.UserID, maxConversationList)
 	if err != nil {
 		log.Printf("server: list conversations for user_id=%s: %v", identity.UserID, err)
 		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)

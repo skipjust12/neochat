@@ -4,6 +4,8 @@ package conversation
 
 import (
 	"context"
+	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -320,5 +322,43 @@ func TestPostgresStore_WebActivityRoundTrip(t *testing.T) {
 	}
 	if len(updated.Versions) != 2 || updated.Versions[0].Activity[0].Query != "q" || updated.Versions[1].Activity[0].URL != "https://b.example" {
 		t.Fatalf("versions after regenerate = %+v", updated.Versions)
+	}
+}
+
+func TestPostgresStore_SearchAndDeleteProject(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_summaries", "conversation_metadata", "projects")
+	store := NewPostgresStore(pgDB)
+	ctx := context.Background()
+	at := time.Now().UTC()
+
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "how do goroutines leak?", CreatedAt: at}))
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: strings.Repeat("filler ", 60) + "A goroutine leaks when it blocks forever on a channel.", CreatedAt: at.Add(time.Second)}))
+	must(t, store.Append(ctx, "u1", "c2", Message{Role: RoleUser, Content: "recipes", CreatedAt: at.Add(2 * time.Second)}))
+	must(t, store.Append(ctx, "u2", "c3", Message{Role: RoleUser, Content: "goroutine", CreatedAt: at}))
+	title := "Kitchen notes"
+	must(t, store.UpdateMetadata(ctx, "u1", "c2", MetadataUpdate{Title: &title}))
+	must(t, store.CreateProject(ctx, "u1", Project{ID: "p1", Name: "Go", CreatedAt: at}))
+	project := "p1"
+	must(t, store.UpdateMetadata(ctx, "u1", "c1", MetadataUpdate{ProjectID: &project}))
+
+	results, err := store.Search(ctx, "u1", "BLOCKS FOREVER", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(results) != 1 || results[0].ID != "c1" || results[0].ProjectID != "p1" || results[0].Title != "how do goroutines leak?" || !strings.Contains(results[0].Snippet, "blocks forever") || !strings.HasPrefix(results[0].Snippet, "…") {
+		t.Fatalf("content search = %+v", results)
+	}
+	if results, _ := store.Search(ctx, "u1", "kitchen", 10); len(results) != 1 || results[0].ID != "c2" || results[0].Snippet != "" {
+		t.Fatalf("title search = %+v", results)
+	}
+
+	must(t, store.DeleteProject(ctx, "u1", "p1"))
+	if err := store.DeleteProject(ctx, "u1", "p1"); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("second delete: %v", err)
+	}
+	list, err := store.List(ctx, "u1", 10)
+	if err != nil || len(list) != 2 {
+		t.Fatalf("chats after deleting the project = %+v, %v", list, err)
 	}
 }

@@ -59,6 +59,14 @@ type Store interface {
 	CreateProject(ctx context.Context, userID string, project Project) error
 	ListProjects(ctx context.Context, userID string) ([]Project, error)
 	GetProject(ctx context.Context, userID, projectID string) (Project, error)
+	// DeleteProject removes a project. Its chats are kept and move back to
+	// the general list. ErrConversationNotFound if there is no such project.
+	DeleteProject(ctx context.Context, userID, projectID string) error
+
+	// Search finds the user's chats (in projects too) whose title or
+	// message text contains query, case-insensitively, most recently
+	// active first.
+	Search(ctx context.Context, userID, query string, limit int) ([]SearchResult, error)
 
 	// GetSummary returns the current rolling Summary for (userID,
 	// conversationID). An unknown conversation, or one that has never
@@ -307,6 +315,66 @@ func (s *InMemoryStore) GetProject(_ context.Context, userID, projectID string) 
 		return Project{}, ErrConversationNotFound
 	}
 	return project, nil
+}
+
+func (s *InMemoryStore) DeleteProject(_ context.Context, userID, projectID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := conversationKey{userID: userID, conversationID: projectID}
+	if _, ok := s.projects[key]; !ok {
+		return ErrConversationNotFound
+	}
+	delete(s.projects, key)
+	for chat, meta := range s.metadata {
+		if chat.userID == userID && meta.projectID == projectID {
+			meta.projectID = ""
+			s.metadata[chat] = meta
+		}
+	}
+	return nil
+}
+
+func (s *InMemoryStore) Search(_ context.Context, userID, query string, limit int) ([]SearchResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	needle := strings.ToLower(query)
+	out := []SearchResult{}
+	for key, messages := range s.history {
+		if key.userID != userID || len(messages) == 0 || needle == "" {
+			continue
+		}
+		meta := s.metadata[key]
+		result := SearchResult{ID: key.conversationID, Title: meta.title, Pinned: meta.pinned, ProjectID: meta.projectID}
+		matched := strings.Contains(strings.ToLower(meta.title), needle)
+		for i := len(messages) - 1; i >= 0; i-- {
+			m := messages[i]
+			if m.CreatedAt.After(result.UpdatedAt) {
+				result.UpdatedAt = m.CreatedAt
+			}
+			if result.Snippet == "" && !m.IsSummary && strings.Contains(strings.ToLower(m.Content), needle) {
+				result.Snippet = snippet(m.Content, query)
+				matched = true
+			}
+		}
+		if !matched {
+			continue
+		}
+		if result.Title == "" {
+			result.Title = "New chat"
+			for _, m := range messages {
+				if m.Role == RoleUser && strings.TrimSpace(m.Content) != "" {
+					result.Title = string([]rune(strings.TrimSpace(m.Content))[:min(80, len([]rune(strings.TrimSpace(m.Content))))])
+					break
+				}
+			}
+		}
+		out = append(out, result)
+	}
+	sort.SliceStable(out, func(i, j int) bool { return out[i].UpdatedAt.After(out[j].UpdatedAt) })
+	if limit > 0 && len(out) > limit {
+		out = out[:limit]
+	}
+	return out, nil
 }
 
 func (s *InMemoryStore) Delete(_ context.Context, userID, conversationID string) error {

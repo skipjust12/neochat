@@ -8,8 +8,10 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=17" />
+<link rel="stylesheet" href="/assets/fluid.css?v=18" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
+<link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
+<script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
 <link rel="stylesheet" href="/assets/landing/landing.css?v=1" />
 <script>try{if(!localStorage.getItem('neochat-signed-in')&&!sessionStorage.getItem('neochat-api-key'))document.documentElement.classList.add('is-guest')}catch(error){document.documentElement.classList.add('is-guest')}</script>
 </head>
@@ -32,6 +34,17 @@
 <div id="landing-root"></div>
 <!-- Outside .app so a toast still shows over the landing page (e.g. "session expired"). -->
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<!-- Full-screen view of an artifact (a model's HTML page), sandboxed. -->
+<div class="artifact-viewer" id="artifactViewer" role="dialog" aria-modal="true" aria-labelledby="artifactTitle" hidden>
+  <div class="artifact-bar">
+    <span class="artifact-bar-icon"><svg class="lucide lucide-app-window" data-lucide-icon="app-window" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M10 4v4" /><path d="M2 8h20" /><path d="M6 4v4" /></svg></span>
+    <h2 class="artifact-title" id="artifactTitle"></h2>
+    <button type="button" class="artifact-action" id="artifactCopy">Copy code</button>
+    <button type="button" class="artifact-action" id="artifactDownload">Download</button>
+    <button type="button" class="artifact-close" id="artifactClose" aria-label="Close"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
+  </div>
+  <iframe class="artifact-frame" id="artifactFrame" title="Artifact" sandbox="allow-scripts allow-modals allow-popups"></iframe>
+</div>
 <!-- "Ask" on text selected in an answer: quotes it in the composer. -->
 <button type="button" class="selection-ask" id="selectionAsk" hidden><svg class="lucide lucide-message-square-quote" data-lucide-icon="message-square-quote" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14a2 2 0 0 0 2-2V8h-2" /><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /><path d="M8 14a2 2 0 0 0 2-2V8H8" /></svg><span>Ask</span></button>
 <div class="app" id="app">
@@ -124,7 +137,7 @@
     <section class="content">
       <div class="chat-log" id="chatLog" aria-live="polite" aria-label="Conversation"></div>
       <div class="hero-stage" aria-live="polite">
-        <div class="hero default-hero is-visible" id="defaultHero"><h1 class="home-greeting" id="homeGreeting">How can I help?</h1><div class="project-context"><p class="project-description"></p><div class="project-chat-list"></div></div></div>
+        <div class="hero default-hero is-visible" id="defaultHero"><h1 class="home-greeting" id="homeGreeting">How can I help?</h1><div class="project-context"><p class="project-description"></p><div class="project-chat-list"></div><button class="link-btn danger project-delete" id="projectDelete" type="button">Delete project</button></div></div>
         <div class="hero incognito-hero" id="incognitoHero"><div class="incognito-badge"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="15" r="4"/><circle cx="18" cy="15" r="4"/><path d="M14 15a2 2 0 0 0-2-2 2 2 0 0 0-2 2"/><path d="M2.5 13 5 7c.7-1.3 1.4-2 3-2"/><path d="M21.5 13 19 7c-.7-1.3-1.5-2-3-2"/></svg></div><h1>Incognito mode.</h1><p>The chat will not be saved. For security reasons, we may retain a copy of it for up to 30 days.</p></div>
       </div>
       <div class="composer-wrap">
@@ -759,15 +772,13 @@
       </section>
 
       <section class="settings-pane" data-pane="usage" role="tabpanel" aria-label="Usage">
-        <h3 class="pane-heading">Usage</h3><p class="pane-description">Your remaining capacity, at a glance.</p>
+        <h3 class="pane-heading">Usage</h3><p class="pane-description">What's left on your Polza AI balance.</p>
         <div class="set-sec">
-          <div class="set-sec-title"><svg class="lucide lucide-chart-no-axes-column" data-lucide-icon="chart-no-axes-column" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></svg>Remaining usage limits</div>
-          <div class="usage">
-            <div class="usage-item"><span class="usage-figure"><strong>96%</strong><span>Instant</span></span><span class="usage-track"><span class="usage-fill" data-fill="96"></span></span></div>
-            <div class="usage-item"><span class="usage-figure"><strong>40%</strong><span>Thinking</span></span><span class="usage-track"><span class="usage-fill" data-fill="40"></span></span></div>
-            <div class="usage-item"><span class="usage-figure"><strong>10%</strong><span>Max</span></span><span class="usage-track"><span class="usage-fill" data-fill="10"></span></span></div>
+          <div class="set-sec-title"><svg class="lucide lucide-chart-no-axes-column" data-lucide-icon="chart-no-axes-column" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></svg>Balance</div>
+          <div class="usage usage-single">
+            <div class="usage-item"><span class="usage-figure"><strong id="balanceAmount">—</strong><span>Polza AI balance</span></span></div>
           </div>
-          <p class="set-note" style="margin-top:22px">Limits reset in 1 hour 19 minutes.</p>
+          <p class="set-note" id="balanceNote" style="margin-top:22px">The balance behind the Polza AI key in Account.</p>
         </div>
       </section>
 
@@ -1246,13 +1257,22 @@
     });
 
     /* ---------- usage bars ---------- */
-    function runUsage(){
-      document.querySelectorAll('.usage-fill').forEach(function(el){
-        el.style.width='0%';
-        requestAnimationFrame(function(){
-          requestAnimationFrame(function(){el.style.width=el.dataset.fill+'%'});
-        });
-      });
+    // The Polza balance behind the chat key, asked fresh each time the
+    // tab opens (through the server: the page may only talk to it).
+    async function runUsage(){
+      const amount=document.getElementById('balanceAmount');
+      const note=document.getElementById('balanceNote');
+      const key=providerKey();
+      if(!key){amount.textContent='—';note.textContent='Add your Polza AI key in Account to see the balance.';return}
+      amount.textContent='…';
+      try{
+        const response=await apiFetch('/account/balance',{headers:{'X-Provider-Key':key}});
+        if(!response.ok)throw new Error((await response.text()).trim()||'Could not load the balance.');
+        const data=await response.json();
+        const rub=function(value){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(Number(value)||0)};
+        amount.textContent=rub(data.amount_rub);
+        note.textContent=Math.abs((data.available_rub||0)-(data.amount_rub||0))>0.005?'Available to spend: '+rub(data.available_rub)+'.':'The balance behind the Polza AI key in Account.';
+      }catch(error){amount.textContent='—';note.textContent=error.message}
     }
 
     /* ---------- open / close ---------- */
@@ -1759,12 +1779,16 @@
     }
 
     function appendInlineMarkdown(parent,text){
-      const tokenPattern=/(?:`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g;
+      const tokenPattern=/(?:`[^`\n]+`|\$\$[^$\n]+?\$\$|\\\([^\n]+?\\\)|(?<![\\\w$])\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?!\d)|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g;
       let cursor=0;
       text.replace(tokenPattern,function(token,offset){
         if(offset>cursor)parent.append(document.createTextNode(text.slice(cursor,offset)));
         let element=null;
-        if(token[0]==='`'){
+        if(token.startsWith('$$')||token.startsWith('\\(')){
+          element=mathElement(token.slice(2,-2),false);
+        }else if(token[0]==='$'){
+          element=mathElement(token.slice(1,-1),false);
+        }else if(token[0]==='`'){
           element=document.createElement('code');
           element.textContent=token.slice(1,-1);
         }else if(token.startsWith('**')||token.startsWith('__')){
@@ -1794,7 +1818,7 @@
     }
 
     function isMarkdownBlockStart(line){
-      return /^\s*$|^```|^#{1,6}\s+|^>\s?|^\s*([-+*]|\d+\.)\s+|^\s*([-*_])(?:\s*\2){2,}\s*$/.test(line);
+      return /^\s*$|^```|^\s*\$\$|^\s*\\\[|^#{1,6}\s+|^>\s?|^\s*([-+*]|\d+\.)\s+|^\s*([-*_])(?:\s*\2){2,}\s*$/.test(line);
     }
 
     function splitMarkdownTableRow(line){
@@ -1837,6 +1861,103 @@
       row.append(cell);
     }
 
+    /* ---------- math ---------- */
+    // LaTeX, rendered by KaTeX (/assets/katex, deferred like highlight.js):
+    // $...$ and \(...\) inline, $$...$$ and \[...\] as blocks. A block
+    // still streaming shows its source until it's closed.
+    const katexScript=document.getElementById('katexScript');
+    if(katexScript&&!window.katex){
+      katexScript.addEventListener('load',function(){
+        document.querySelectorAll('[data-math="pending"]').forEach(renderTex);
+      });
+    }
+    function renderTex(element){
+      if(!window.katex){element.dataset.math='pending';element.textContent=element.dataset.tex;return}
+      delete element.dataset.math;
+      try{
+        window.katex.render(element.dataset.tex,element,{displayMode:element.dataset.display==='true',throwOnError:false,strict:'ignore'});
+      }catch(error){element.textContent=element.dataset.tex}
+    }
+    function mathElement(tex,display,complete){
+      const element=document.createElement(display?'div':'span');
+      element.className=display?'math-block':'math-inline';
+      element.dataset.tex=tex;
+      element.dataset.display=String(display);
+      if(complete===false){element.classList.add('is-pending');element.textContent=tex;return element}
+      renderTex(element);
+      return element;
+    }
+
+    /* ---------- artifacts ---------- */
+    // A complete HTML page in a ```html block is an artifact: a card in the
+    // answer that opens the page full screen. The page runs in a sandboxed
+    // iframe with no access to this site (see server/workspace.go). While
+    // it streams the card just counts lines.
+    const artifactViewer=document.getElementById('artifactViewer');
+    const artifactFrameElement=document.getElementById('artifactFrame');
+    const artifactTitle=document.getElementById('artifactTitle');
+    let openArtifactSource='';
+    let artifactReturnFocus=null;
+    function isArtifactSource(language,text){
+      return (language==='html'||language==='htm')&&/^\s*(<!doctype html|<html[\s>])/i.test(text);
+    }
+    function artifactName(text){
+      const match=text.match(/<title[^>]*>([^<]*)<\/title>/i);
+      const title=match?match[1].replace(/\s+/g,' ').trim():'';
+      return title||'Untitled page';
+    }
+    function artifactCard(text,complete){
+      const card=document.createElement('button');
+      card.type='button';
+      card.className='artifact-card'+(complete?'':' is-writing');
+      const lines=text.split('\n').length;
+      card.innerHTML='<span class="artifact-card-icon">'+'<svg class="lucide lucide-app-window" data-lucide-icon="app-window" viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="4" width="20" height="16" rx="2" /><path d="M10 4v4" /><path d="M2 8h20" /><path d="M6 4v4" /></svg>'+'</span><span class="artifact-card-copy"><strong></strong><small></small></span><span class="artifact-card-open">Open</span>';
+      card.querySelector('strong').textContent=complete?artifactName(text):'Writing a page…';
+      card.querySelector('small').textContent='HTML page · '+lines+(lines===1?' line':' lines');
+      card.disabled=!complete;
+      card.artifactSource=text;
+      card.addEventListener('click',function(){openArtifact(text)});
+      return card;
+    }
+    function openArtifact(text){
+      openArtifactSource=text;
+      artifactTitle.textContent=artifactName(text);
+      artifactReturnFocus=document.activeElement;
+      artifactViewer.hidden=false;
+      document.documentElement.classList.add('artifact-open');
+      artifactFrameElement.src='/artifact-frame?'+Date.now();
+      document.getElementById('artifactClose').focus();
+    }
+    function closeArtifact(){
+      if(artifactViewer.hidden)return;
+      artifactViewer.hidden=true;
+      document.documentElement.classList.remove('artifact-open');
+      artifactFrameElement.src='about:blank';
+      openArtifactSource='';
+      if(artifactReturnFocus&&artifactReturnFocus.focus)artifactReturnFocus.focus();
+    }
+    window.addEventListener('message',function(event){
+      if(event.source!==artifactFrameElement.contentWindow||!event.data||event.data.type!=='neochat-artifact-ready'||!openArtifactSource)return;
+      artifactFrameElement.contentWindow.postMessage({type:'neochat-artifact',html:openArtifactSource},'*');
+    });
+    document.getElementById('artifactClose').addEventListener('click',closeArtifact);
+    document.addEventListener('keydown',function(event){if(event.key==='Escape'&&!artifactViewer.hidden){event.preventDefault();closeArtifact()}});
+    document.getElementById('artifactCopy').addEventListener('click',async function(){
+      try{await copyMessageText(openArtifactSource);toast('Code copied.')}catch(error){toast('Could not copy the code.')}
+    });
+    document.getElementById('artifactDownload').addEventListener('click',function(){
+      const link=document.createElement('a');
+      link.href=URL.createObjectURL(new Blob([openArtifactSource],{type:'text/html'}));
+      link.download=(artifactName(openArtifactSource).replace(/[\\/:*?"<>|]+/g,' ').trim()||'page')+'.html';
+      document.body.append(link);link.click();link.remove();
+      setTimeout(function(){URL.revokeObjectURL(link.href)},1000);
+    });
+    // A page an answer has just made opens by itself.
+    function openNewArtifact(message){
+      const cards=message.querySelectorAll('.artifact-card:not(.is-writing)');
+      if(cards.length)openArtifact(cards[cards.length-1].artifactSource);
+    }
+
     /* ---------- code blocks ---------- */
     // Fenced code gets a header with its language and a Copy button, and is
     // colored by highlight.js (/assets/highlight, loaded with defer: blocks
@@ -1877,6 +1998,7 @@
 
     function codeBlock(info,text,complete){
       const language=String(info||'').toLowerCase().replace(/[^a-z0-9+#._-]/g,'').slice(0,30);
+      if(isArtifactSource(language,text))return artifactCard(text,complete);
       const block=document.createElement('div');
       block.className='code-block';
       const head=document.createElement('div');
@@ -1923,6 +2045,25 @@
           const complete=index<lines.length;
           if(complete)index++;
           container.append(codeBlock(fence[1],codeLines.join('\n'),complete));continue;
+        }
+
+        const mathOpen=line.trim().match(/^(\$\$|\\\[)(.*)$/);
+        if(mathOpen){
+          const close=mathOpen[1]==='$$'?'$$':'\\]';
+          const rest=mathOpen[2].trim();
+          let texLines=[],complete=false;
+          index++;
+          if(rest.length>=close.length&&rest.endsWith(close)){
+            texLines=[rest.slice(0,-close.length)];complete=true;
+          }else{
+            if(rest)texLines.push(rest);
+            while(index<lines.length){
+              const current=lines[index++].trim();
+              if(current.endsWith(close)){texLines.push(current.slice(0,-close.length));complete=true;break}
+              texLines.push(current);
+            }
+          }
+          container.append(mathElement(texLines.join('\n').trim(),true,complete));continue;
         }
 
         const heading=line.match(/^(#{1,6})\s+(.+)$/);
@@ -3426,6 +3567,7 @@
 
     function renderProjectHome(){
       if(!activeProject)return;
+      resetProjectDelete();
       mainPanel.classList.remove('projects-index','connectors-open');mainPanel.classList.add('project-mode');
       homeGreeting.textContent=activeProject.name;homeGreeting.classList.add('is-ready');
       document.querySelector('.project-description').textContent=activeProject.description||'Chats and instructions for this project';
@@ -3437,6 +3579,32 @@
     async function openProject(id){
       const session=signedInUser();if(!session){promptForSignIn();return}
       try{const response=await apiFetch('/projects/'+encodeURIComponent(id),{});if(!response.ok)throw new Error('Could not open project.');const data=await response.json();activeProject=data.project;activeProjectChats=data.conversations||[];resetConversation();renderProjectHome()}catch(error){toast(error.message)}
+    }
+
+    const projectDelete=document.getElementById('projectDelete');
+    let projectDeleteTimer=null;
+    projectDelete.addEventListener('click',async function(){
+      if(!activeProject)return;
+      if(!projectDelete.classList.contains('is-confirming')){
+        projectDelete.classList.add('is-confirming');
+        projectDelete.textContent='Delete “'+activeProject.name+'”? Its chats stay. Click again';
+        clearTimeout(projectDeleteTimer);
+        projectDeleteTimer=setTimeout(resetProjectDelete,4000);
+        return;
+      }
+      resetProjectDelete();
+      try{
+        const response=await apiFetch('/projects/'+encodeURIComponent(activeProject.project_id),{method:'DELETE'});
+        if(!response.ok&&response.status!==404)throw new Error((await response.text()).trim()||'Could not delete the project.');
+        toast('Project deleted. Its chats are in Recent.');
+        await showProjectsIndex();
+        loadConversations(false);
+      }catch(error){toast(error.message)}
+    });
+    function resetProjectDelete(){
+      clearTimeout(projectDeleteTimer);
+      projectDelete.classList.remove('is-confirming');
+      projectDelete.textContent='Delete project';
     }
 
     async function refreshActiveProject(){
@@ -3481,6 +3649,58 @@
       });
     }
 
+    /* ---------- search ---------- */
+    // The sidebar search looks through every chat's title and messages on
+    // the server; clearing it brings the usual list back.
+    const chatSearch=document.getElementById('chatSearch');
+    let searchTimer=null;
+    let searchSeq=0;
+    function searchQuery(){return chatSearch.value.trim()}
+    async function runSearch(){
+      const query=searchQuery();
+      const seq=++searchSeq;
+      if(query.length<2){if(query.length===0)loadConversations(false);return}
+      try{
+        const response=await apiFetch('/conversations/search?q='+encodeURIComponent(query),{});
+        if(!response.ok)throw new Error((await response.text()).trim()||'Search failed.');
+        const data=await response.json();
+        if(seq!==searchSeq||searchQuery()!==query)return;
+        renderSearchResults(Array.isArray(data.results)?data.results:[],query);
+      }catch(error){if(seq===searchSeq)setConversationListMessage(error.message)}
+    }
+    chatSearch.addEventListener('input',function(){
+      clearTimeout(searchTimer);
+      searchTimer=setTimeout(runSearch,searchQuery()?250:0);
+    });
+    function renderSearchResults(results,query){
+      conversationList.replaceChildren();
+      if(!results.length){setConversationListMessage('Nothing found for “'+query+'”.');return}
+      results.forEach(function(result){
+        const button=document.createElement('button');
+        button.type='button';
+        button.className='conversation-item has-title search-result';
+        button.dataset.conversationId=result.conversation_id;
+        const title=document.createElement('span');
+        title.className='conversation-title';
+        title.textContent=result.title||'New chat';
+        button.append(title);
+        if(result.snippet){
+          const snippet=document.createElement('span');
+          snippet.className='search-snippet';
+          const lower=result.snippet.toLocaleLowerCase(),at=lower.indexOf(query.toLocaleLowerCase());
+          if(at>=0){
+            const mark=document.createElement('mark');
+            mark.textContent=result.snippet.slice(at,at+query.length);
+            snippet.append(document.createTextNode(result.snippet.slice(0,at)),mark,document.createTextNode(result.snippet.slice(at+query.length)));
+          }else snippet.textContent=result.snippet;
+          button.append(snippet);
+        }
+        button.classList.toggle('is-active',result.conversation_id===conversationID);
+        button.addEventListener('click',function(){loadConversation(result.conversation_id,result.title,Boolean(result.pinned))});
+        conversationList.append(button);
+      });
+    }
+
     async function loadConversations(restoreCurrent){
       const session=signedInUser();
       if(!session){
@@ -3493,7 +3713,7 @@
         const data=await response.json();
         if(signedInUser()!==session)return;
         const conversations=Array.isArray(data.conversations)?data.conversations:[];
-        renderConversationList(conversations);
+        if(searchQuery().length>=2)runSearch();else renderConversationList(conversations);
         const savedID=storedValue(localStorage,currentConversationStorageKey);
         if(restoreCurrent&&savedID&&conversations.some(function(item){return item.conversation_id===savedID})){
           const savedConversation=conversations.find(function(item){return item.conversation_id===savedID});
@@ -3863,6 +4083,7 @@
         if(versionsData&&versionsData.message_id)message.dataset.messageId=String(versionsData.message_id);
         renderResponseVersion(message,message.responseVersionIndex);
         message.classList.add('is-complete');
+        openNewArtifact(message);
         updateAskState(true);
         if(!isIncognito){if(activeProject)refreshActiveProject();else loadConversations(false)}
       }catch(error){
@@ -4011,6 +4232,7 @@
         pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[]}];
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
+        openNewArtifact(pending);
         renderAskCard(pending);
         updateAskState(true);
         if(activeChatIncognito&&!terminalData.blocked){
@@ -4799,12 +5021,6 @@
       }
     });
 
-    function filterChats(){
-      const query=search.value.trim().toLocaleLowerCase();
-      conversationList.querySelectorAll('.conversation-item').forEach(function(item){item.hidden=!item.textContent.toLocaleLowerCase().includes(query)});
-    }
-    search.addEventListener('input',filterChats);
-    new MutationObserver(filterChats).observe(conversationList,{childList:true});
     document.querySelector('.history-toggle').addEventListener('click',function(event){
       const button=event.currentTarget;
       const expanded=button.getAttribute('aria-expanded')!=='true';
