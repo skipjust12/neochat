@@ -260,6 +260,7 @@ Known, not all resolved:
 - LaTeX formulas ($…$, $$…$$, \(…\), \[…\]) rendered with a vendored KaTeX.
 - Search through every chat's titles and messages (`GET /conversations/search`); the sidebar lists all chats, no longer the latest 100. Projects can be deleted, and their chats move back to Recent.
 - Settings → Usage shows the Polza balance behind the user's key (`GET /account/balance`).
+- The Manual model list follows Polza: new releases join it on their own (Claude Haiku 5.5 takes Claude Haiku 4.5's place, which moves to Legacy), checked when the app opens (at most every 10 minutes) or from Settings → General → Refresh models list (`GET /models`, `POST /models/refresh`, package `modelcatalog`).
 - Settings sync: tone, instructions, language, theme, the default model and web search follow the user between devices (`GET/PUT /account/settings`, table `user_settings`). API keys never leave the browser.
 - "+" → Compact: after a yes/no confirmation, GPT-6 Luna (on the user's key) folds everything but the last exchange into the chat's summary (`POST /conversations/{id}/compact`); later turns send the summary instead, and the thread marks where it happened.
 - Incognito keeps the home greeting, reading "Incognito mode"; the thinking label rotates every 10s through Fabrication, Hallucinating, Deep thinking, Thinking, Overthinking, Pondering and Calculating.

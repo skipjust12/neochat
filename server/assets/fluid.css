@@ -8236,3 +8236,60 @@ html.artifact-open body {
     transform: translateY(8px) scale(.98);
   }
 }
+
+/* ---------- live model list ---------- */
+.model-copy .model-tier.is-solo {
+  margin-top: 3px;
+  display: inline-block;
+}
+
+.model-copy .model-new {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-size: 9px;
+  font-weight: 620;
+  letter-spacing: .02em;
+  vertical-align: 1px;
+}
+
+.legacy-link[hidden] {
+  display: none;
+}
+
+.models-label {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+
+.models-updated {
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
+.models-updated:empty {
+  display: none;
+}
+
+#refreshModels .lucide {
+  width: 13px;
+  height: 13px;
+  margin-right: 4px;
+  vertical-align: -2px;
+}
+
+#refreshModels.is-busy .lucide {
+  animation: models-spin .8s linear infinite;
+}
+
+@keyframes models-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #refreshModels.is-busy .lucide { animation: none; }
+}

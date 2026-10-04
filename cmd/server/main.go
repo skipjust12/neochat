@@ -29,6 +29,7 @@ import (
 	"neochat/imagegen"
 	"neochat/internal/envfile"
 	"neochat/limits"
+	"neochat/modelcatalog"
 	"neochat/moderation"
 	"neochat/pagestore"
 	"neochat/provider"
@@ -257,6 +258,19 @@ func main() {
 	summaryClient.CostInputPerMTok = getenvFloatDefault("SUMMARIZER_COST_INPUT_PER_MTOK", classifierCostInputPerMTok)
 	summaryClient.CostOutputPerMTok = getenvFloatDefault("SUMMARIZER_COST_OUTPUT_PER_MTOK", classifierCostOutputPerMTok)
 	authStore := auth.NewPostgresStore(pgDB)
+	// The Manual picker follows Polza's releases (package modelcatalog):
+	// fetched now, then again when someone opens the app and the list is
+	// over 10 minutes old. MODEL_CATALOG_LIVE=false keeps
+	// configs/models.json exactly as it is.
+	var liveModels *modelcatalog.Live
+	if os.Getenv("MODEL_CATALOG_LIVE") != "false" {
+		liveModels = modelcatalog.New(catalog)
+		go func() {
+			if _, err := liveModels.Refresh(context.Background(), false); err != nil {
+				log.Printf("server: model list from Polza: %v (serving configs/models.json until the next try)", err)
+			}
+		}()
+	}
 	srv := &server.Server{
 		TrustedProxies: trustedProxies,
 		RequireHTTPS:   os.Getenv("REQUIRE_HTTPS") == "true",
@@ -315,6 +329,7 @@ func main() {
 		// Preferences follow the user between devices
 		// (db/migrations/0012_user_settings.sql).
 		Settings:         settings.NewPostgresStore(pgDB),
+		Models:           liveModels,
 		Pages:            pagestore.NewPostgresStore(pgDB),
 		WebSearchModelID: os.Getenv("WEB_SEARCH_MODEL"),
 		IPRateLimiter:    ipRateLimiter,

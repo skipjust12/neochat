@@ -90,7 +90,7 @@ func (s *Server) handleConversationCompact(w http.ResponseWriter, r *http.Reques
 		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
 		return
 	}
-	model, found := s.Router.Catalog.FindModel(compactModelID)
+	model, found := s.router().Catalog.FindModel(compactModelID)
 	gen := s.Generators[model.Provider]
 	if !found || gen == nil {
 		http.Error(w, "compacting isn't available on this server", http.StatusServiceUnavailable)

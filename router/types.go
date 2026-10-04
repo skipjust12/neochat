@@ -68,6 +68,10 @@ type Model struct {
 	// (e.g. "Claude Opus 5.5"). Purely cosmetic -- never sent to a vendor.
 	DisplayName string `json:"display_name,omitempty"`
 
+	// Description is the one-line blurb under the name in the Manual
+	// picker (current models only; legacy ones show just their tier).
+	Description string `json:"description,omitempty"`
+
 	// Reasoning says how this model takes a reasoning-effort setting:
 	// "effort" (reasoning.effort), "adaptive" (Claude Opus 4.7+'s
 	// type=adaptive + effort_level), or "" when the vendor exposes no

@@ -487,7 +487,7 @@ func (s *Server) searchWeb(ctx context.Context, req chatRequest, prepared prepar
 	if modelID == "" {
 		modelID = defaultWebSearchModelID
 	}
-	model, ok := s.Router.Catalog.FindModel(modelID)
+	model, ok := s.router().Catalog.FindModel(modelID)
 	if !ok {
 		return nil, fmt.Errorf("web search model %q is not in the catalog", modelID)
 	}

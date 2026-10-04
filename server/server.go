@@ -28,6 +28,7 @@ import (
 	"neochat/idempotency"
 	"neochat/imagegen"
 	"neochat/limits"
+	"neochat/modelcatalog"
 	"neochat/moderation"
 	"neochat/pagestore"
 	"neochat/provider"
@@ -237,6 +238,11 @@ type Server struct {
 	// Settings keeps each user's preferences for GET/PUT /account/settings
 	// (compact.go). Nil: settings stay in each browser.
 	Settings settings.Store
+
+	// Models keeps the catalog current with Polza's releases (models.go);
+	// when set, it is the catalog every lookup and route uses, with
+	// Router's weights. Nil: Router's catalog, fixed at startup.
+	Models *modelcatalog.Live
 }
 
 // providerKeyHeader carries the user's own Polza AI key on chat requests.
@@ -434,6 +440,8 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /account/settings", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleSettingsGet)))))
 	mux.HandleFunc("PUT /account/settings", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleSettingsPut)))))
 	mux.HandleFunc("POST /conversations/{conversation_id}/compact", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationCompact))))))
+	mux.HandleFunc("GET /models", recovered(s.rateLimited(s.handleModels)))
+	mux.HandleFunc("POST /models/refresh", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleModelsRefresh)))))
 	mux.HandleFunc("GET /account/balance", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleBalance)))))
 	// Not through recovered: its X-Frame-Options: DENY would stop the
 	// app's own artifact viewer from framing this page.
@@ -1610,7 +1618,7 @@ func streamingGenerate(onDelta func(delta string)) generateCaller {
 	}
 }
 
-// routeAndCall picks a model via s.Router.Route and calls it through call,
+// routeAndCall picks a model via the current router's Route and calls it through call,
 // retrying with the failed model excluded whenever call returns a
 // *provider.CircuitOpenError (see provider.CircuitBreakerClient), bounded
 // by maxCircuitFailoverAttempts so a catalog with every candidate's
@@ -1628,7 +1636,8 @@ func streamingGenerate(onDelta func(delta string)) generateCaller {
 func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared preparedRequest, onRoute func(router.RouteResult), call generateCaller, onActivity func([]conversation.ToolActivity)) (router.RouteResult, router.Model, webAnswer, error) {
 	excludedModelIDs := map[string]bool{}
 	for attempt := 0; ; attempt++ {
-		result, err := s.Router.Route(prepared.classified, req.RequestedMode, req.ManualModelID, prepared.estimatedContextTokens, prepared.locked, excludedModelIDs)
+		catalogRouter := s.router()
+		result, err := catalogRouter.Route(prepared.classified, req.RequestedMode, req.ManualModelID, prepared.estimatedContextTokens, prepared.locked, excludedModelIDs)
 		if err != nil {
 			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("route: %w", err)
 		}
@@ -1636,7 +1645,7 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 			onRoute(result)
 		}
 
-		model, ok := s.Router.Catalog.FindModel(result.SelectedModelID)
+		model, ok := catalogRouter.Catalog.FindModel(result.SelectedModelID)
 		if !ok {
 			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("selected model %q not found in catalog", result.SelectedModelID)
 		}
@@ -1943,6 +1952,7 @@ func (s *Server) finishIdempotent(ctx context.Context, req chatRequest, resp cha
 // directly with a fixed request/plan and inspect the typed result instead
 // of parsing HTTP output.
 func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
+	s.knowModel(ctx, req.ManualModelID)
 	if err := s.validateRequest(req); err != nil {
 		return chatResponse{}, err
 	}
@@ -2003,6 +2013,7 @@ func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.Pl
 // way handle is split from handleChat, for the same reason: testable
 // without parsing SSE wire output.
 func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.PlanLimits, send func(event string, payload any)) error {
+	s.knowModel(ctx, req.ManualModelID)
 	if err := s.validateRequest(req); err != nil {
 		return err
 	}

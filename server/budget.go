@@ -131,7 +131,7 @@ func (s *Server) validateRequest(req chatRequest) error {
 			return errRouterDisabled
 		}
 		// An image model runs on the image key alone (image.go).
-		model, found := s.Router.Catalog.FindModel(req.ManualModelID)
+		model, found := s.router().Catalog.FindModel(req.ManualModelID)
 		switch {
 		case found && model.Kind == router.KindImage:
 			if req.imageKey == "" {
@@ -171,7 +171,7 @@ func (s *Server) validateRequest(req chatRequest) error {
 	switch req.RequestedMode {
 	case "auto", "instant", "thinking", "max":
 	case "manual":
-		if _, ok := s.Router.Catalog.FindModel(req.ManualModelID); !ok {
+		if _, ok := s.router().Catalog.FindModel(req.ManualModelID); !ok {
 			return fmt.Errorf("%w: unknown manual model", errInvalidRequest)
 		}
 	default:

@@ -13,6 +13,7 @@ import (
 	"neochat/conversation"
 	"neochat/imagegen"
 	"neochat/limits"
+	"neochat/modelcatalog"
 	"neochat/provider"
 	"neochat/router"
 )
@@ -34,10 +35,9 @@ import (
 // chat key.
 const imageKeyHeader = "X-Image-Key"
 
-// rubPerUSD is the rate the catalog's prices were converted from Polza's
-// rubles at (docs/running-locally.md), used here the other way: Polza
-// reports what an image cost in rubles.
-const rubPerUSD = 117.068
+// rubPerUSD converts what Polza reports an image cost (rubles) back to
+// the dollars the catalog prices in.
+const rubPerUSD = modelcatalog.RUBPerUSD
 
 var errMissingImageKey = userError{text: "Add your Image API key in Settings → Account to make images."}
 
