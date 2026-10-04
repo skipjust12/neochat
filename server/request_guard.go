@@ -46,3 +46,14 @@ func (s *Server) withRequestSlot(next identityHandler) identityHandler {
 		next(w, r.WithContext(ctx), identity)
 	}
 }
+
+// withReadTimeout bounds a read endpoint. Reads don't take the
+// active-request slot: another device must be able to open a chat while
+// a reply streams into it (live.go). They stay bounded and rate limited.
+func (s *Server) withReadTimeout(next identityHandler) identityHandler {
+	return func(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+		ctx, cancel := context.WithTimeout(r.Context(), 30*time.Second)
+		defer cancel()
+		next(w, r.WithContext(ctx), identity)
+	}
+}

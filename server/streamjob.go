@@ -60,12 +60,17 @@ type streamJob struct {
 	key    string
 	cancel context.CancelFunc
 	ended  chan struct{} // closed once the job finishes
+	// asked is what other devices are told when the reply starts (see
+	// live.go); private (incognito) replies aren't announced.
+	asked   liveNotice
+	private bool
 
-	mu       sync.Mutex
-	events   []jobEvent
-	done     bool
-	finished time.Time
-	wake     chan struct{} // closed and replaced on every change
+	mu             sync.Mutex
+	events         []jobEvent
+	done           bool
+	finished       time.Time
+	wake           chan struct{} // closed and replaced on every change
+	conversationID string        // known from the "meta" event on
 }
 
 // send is the job's event sink (handleStream's send): it numbers and keeps
@@ -122,6 +127,11 @@ type streamRegistry struct {
 	byKey   map[string]*streamJob
 	stopped map[string]time.Time // Stops that came before their stream
 	running sync.WaitGroup
+
+	// watchers are the open GET /events streams, by user (live.go).
+	watchers map[string]map[chan liveEvent]struct{}
+	closing  chan struct{} // closed on shutdown, ends the watchers
+	closed   bool
 }
 
 func streamKey(userID, key string) string { return userID + "\x00" + key }
@@ -129,7 +139,7 @@ func streamKey(userID, key string) string { return userID + "\x00" + key }
 // open returns the user's job for an idempotency key, running or still
 // kept (attached), or else registers a new one that cancel stops. stopped
 // reports a Stop that arrived before the request did.
-func (r *streamRegistry) open(userID, key string, cancel context.CancelFunc, now time.Time) (job *streamJob, attached, stopped bool) {
+func (r *streamRegistry) open(userID, key string, cancel context.CancelFunc, asked liveNotice, private bool, now time.Time) (job *streamJob, attached, stopped bool) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.sweepLocked(now)
@@ -141,7 +151,7 @@ func (r *streamRegistry) open(userID, key string, cancel context.CancelFunc, now
 	if r.byID == nil {
 		r.byID, r.byKey, r.stopped = map[string]*streamJob{}, map[string]*streamJob{}, map[string]time.Time{}
 	}
-	job = &streamJob{id: conversation.NewID(), userID: userID, key: key, cancel: cancel, ended: make(chan struct{}), wake: make(chan struct{})}
+	job = &streamJob{id: conversation.NewID(), userID: userID, key: key, cancel: cancel, asked: asked, private: private, ended: make(chan struct{}), wake: make(chan struct{})}
 	r.byID[job.id] = job
 	if key != "" {
 		k := streamKey(userID, key)
@@ -262,7 +272,11 @@ func (s *Server) writeChatStream(w http.ResponseWriter, r *http.Request, req cha
 		base = context.WithoutCancel(base)
 	}
 	ctx, cancel := context.WithCancel(base)
-	job, attached, stopped := s.streams.open(req.UserID, req.IdempotencyKey, cancel, time.Now())
+	asked := liveNotice{Message: req.Message, Quote: req.Quote, RegenerateMessageID: req.regenerateMessageID, ModelID: req.ManualModelID}
+	if req.regenerateMessageID > 0 {
+		asked.Message, asked.Quote = "", ""
+	}
+	job, attached, stopped := s.streams.open(req.UserID, req.IdempotencyKey, cancel, asked, req.Incognito, time.Now())
 	if attached {
 		cancel()
 	} else {
@@ -279,12 +293,26 @@ func (s *Server) writeChatStream(w http.ResponseWriter, r *http.Request, req cha
 // "done"/"blocked" (from handleStream), "stopped", or "error".
 func (s *Server) runStream(ctx context.Context, job *streamJob, req chatRequest, plan limits.PlanLimits) {
 	defer s.streams.running.Done()
+	defer s.streams.announceEnd(job) // once the reply is stored and the job done
 	defer job.finish()
 	defer job.cancel()
+	// The "meta" event names the chat: from then on the user's other
+	// devices can follow the reply.
+	send := func(event string, payload any) {
+		job.send(event, payload)
+		if event != "meta" || job.private {
+			return
+		}
+		if fields, ok := payload.(map[string]any); ok {
+			if id, _ := fields["conversation_id"].(string); id != "" && job.setConversation(id) {
+				s.streams.announce(job.userID, "started", job.notice())
+			}
+		}
+	}
 	var err error
 	func() {
 		defer recoverGoroutine("chat stream", &err)
-		err = s.handleStream(ctx, req, plan, job.send)
+		err = s.handleStream(ctx, req, plan, send)
 	}()
 	switch {
 	case err == nil:

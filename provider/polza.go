@@ -539,6 +539,11 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 				}
 				reasoning.WriteString(choice.Delta.Reasoning)
 				details.add(choice.Delta.ReasoningDetails)
+				if thinking := reasoningText(choice.Delta.Reasoning, choice.Delta.ReasoningDetails); thinking != "" {
+					if !send(StreamChunk{Reasoning: thinking}) {
+						return
+					}
+				}
 				final.Citations = appendCitations(final.Citations, parseCitations(choice.Delta.Annotations))
 				if choice.Message != nil {
 					final.Citations = appendCitations(final.Citations, parseCitations(choice.Message.Annotations))

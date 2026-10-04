@@ -407,6 +407,8 @@ func main() {
 		const shutdownGracePeriod = 25 * time.Second
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownGracePeriod)
 		defer cancel()
+		// The live-event streams never end on their own.
+		srvHTTP.RegisterOnShutdown(srv.CloseLive)
 		if err := srvHTTP.Shutdown(shutdownCtx); err != nil {
 			log.Printf("server: graceful shutdown did not finish cleanly: %v", err)
 		}

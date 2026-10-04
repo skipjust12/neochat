@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=22" />
+<link rel="stylesheet" href="/assets/fluid.css?v=23" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -229,7 +229,7 @@
                 <span class="trigger-state trigger-instant"><svg class="lucide lucide-zap" data-lucide-icon="zap" viewBox="0 0 24 24" aria-hidden="true"><path d="M15.914 4a1.5 1.5 0 00-2.474-1.561l-9 9A1.5 1.5 0 005.5 14h4.002a.5.5 0 01.471.666L8.086 20a1.5 1.5 0 002.475 1.56l9-9A1.5 1.5 0 0018.5 10h-3.997a.5.5 0 01-.472-.667z" /></svg><span>Instant</span></span>
                 <span class="trigger-state trigger-thinking"><svg class="lucide lucide-brain" data-lucide-icon="brain" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18V5" /><path d="M15 13a4.17 4.17 0 0 1-3-4 4.17 4.17 0 0 1-3 4" /><path d="M17.598 6.5A3 3 0 1 0 12 5a3 3 0 1 0-5.598 1.5" /><path d="M17.997 5.125a4 4 0 0 1 2.526 5.77" /><path d="M18 18a4 4 0 0 0 2-7.464" /><path d="M19.967 17.483A4 4 0 1 1 12 18a4 4 0 1 1-7.967-.517" /><path d="M6 18a4 4 0 0 1-2-7.464" /><path d="M6.003 5.125a4 4 0 0 0-2.526 5.77" /></svg><span>Thinking</span></span>
                 <span class="trigger-state trigger-max"><svg class="lucide lucide-gem" data-lucide-icon="gem" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.5 3 8 9l4 13 4-13-2.5-6" /><path d="M17 3a2 2 0 0 1 1.6.8l3 4a2 2 0 0 1 .013 2.382l-7.99 10.986a2 2 0 0 1-3.247 0l-7.99-10.986A2 2 0 0 1 2.4 7.8l2.998-3.997A2 2 0 0 1 7 3z" /><path d="M2 9h20" /></svg><span>Max</span></span>
-                <span class="trigger-state trigger-manual"><svg class="lucide lucide-circle-dot" data-lucide-icon="circle-dot" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="12" r="10" /></svg><span>Manual</span></span>
+                <span class="trigger-state trigger-manual"><span class="trigger-model-icon" id="triggerModelIcon"><svg class="lucide lucide-circle-dot" data-lucide-icon="circle-dot" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="1" /><circle cx="12" cy="12" r="10" /></svg></span><span class="trigger-model-name" id="triggerModelName">Manual</span></span>
                 <svg class="mode-chevron lucide lucide-chevron-down" data-lucide-icon="chevron-down" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>
               </summary>
 
@@ -274,6 +274,7 @@
                 </label>
                 </div>
                 <div class="reasoning-effort" id="reasoningEffort" aria-hidden="true" inert>
+                  <div class="reasoning-effort-clip"><div class="reasoning-effort-body">
                   <div class="effort-head">
                     <span class="effort-title">Reasoning effort</span>
                     <output class="effort-value" id="reasoningValue" for="reasoningRange" aria-live="polite">Medium</output>
@@ -290,6 +291,7 @@
                     <button class="effort-option" type="button" data-effort="3">xHigh</button>
                     <button class="effort-option" type="button" data-effort="4">Max</button>
                   </div>
+                  </div></div>
                 </div>
                 </div>
 
@@ -1003,6 +1005,24 @@
     document.getElementById('modelIcons').content.querySelectorAll('[data-provider]').forEach(function(icon){
       modelIcons[icon.dataset.provider]=icon.innerHTML;
     });
+    // In Manual the composer's mode button shows the chosen model: its
+    // vendor's logo and name, in place of "Manual".
+    const triggerModelIcon=document.getElementById('triggerModelIcon');
+    const triggerModelName=document.getElementById('triggerModelName');
+    const manualIcon=triggerModelIcon.innerHTML;
+    function syncManualTrigger(){
+      const id=manualState.dataset.modelId||'';
+      const row=id?panel.querySelector('.model-row[data-model-id="'+CSS.escape(id)+'"]'):null;
+      const list=row?row.closest('.model-list'):null;
+      const name=id?(row?row.dataset.model:manualState.textContent.trim()):'';
+      const icon=list&&modelIcons[list.dataset.provider];
+      triggerModelName.textContent=name||'Manual';
+      triggerModelIcon.innerHTML=icon||manualIcon;
+      triggerModelIcon.classList.toggle('is-vendor',Boolean(icon));
+      trigger.classList.toggle('has-model',Boolean(name));
+      trigger.title=name?'Manual · '+name:'';
+    }
+    new MutationObserver(syncManualTrigger).observe(manualState,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['data-model-id']});
     let modelsData=null;
     function modelRowFor(model){
       const row=document.createElement('button');
@@ -1058,6 +1078,7 @@
       const chosen=manualState.dataset.modelId?panel.querySelector('.model-row[data-model-id="'+manualState.dataset.modelId+'"]'):null;
       if(chosen)manualState.textContent=chosen.dataset.model;
       modelsData=data;
+      syncManualTrigger();
       if(picker.open)capModelLists();
       document.dispatchEvent(new CustomEvent('models:change',{detail:data}));
       return true;
@@ -1073,6 +1094,7 @@
       return response.ok?response.json():null;
     }).then(function(data){if(data)applyModels(data)}).catch(function(){});
     window.NeoChatModels={apply:applyModels,current:function(){return modelsData}};
+    syncManualTrigger();
 
     document.addEventListener('pointerdown',function(event){
       if(picker.open&&!picker.contains(event.target))closePicker();
@@ -1424,6 +1446,12 @@
     const reasoningEffortValues=['low','medium','high','xhigh','max'];
     const routerDisabledMessage='Router disabled — switch to Manual and pick a model.';
     let activeAbort=null;
+    // Live replies on every device (see "live replies" below).
+    const liveReplies=new Map(); // conversation_id -> notice
+    const ownStreamIDs=new Set(); // replies this page sent or already followed
+    let liveChannel=null;
+    let liveFailures=0;
+    let followingStreamID='';
     let conversationID='';
     let currentConversationTitle='New chat';
     let currentConversationPinned=false;
@@ -1658,6 +1686,7 @@
       if(window.NeoChatAttachments)window.NeoChatAttachments.clear();
       clearComposerQuote();
       updateChatModeControls();
+      if(userID)startLiveChannel();else stopLiveChannel();
       if(!userID||!reattachStream(userID))loadConversations(true);
     }
 
@@ -2340,7 +2369,7 @@
       const seconds=state.seconds?Math.max(1,Math.round(state.seconds)):0;
       const running=activity.filter(function(step){return step.pending});
       const live=Boolean(state.live||running.length);
-      if(!live&&!seconds&&!activity.length&&!sources.length){
+      if(!live&&!seconds&&!activity.length&&!sources.length&&!(state.reasoning||'').trim()){
         const old=message.querySelector('.chat-copy > .thought-time');
         if(old)old.remove();
         return;
@@ -2369,6 +2398,19 @@
 
       const body=block.querySelector('.thinking-content');
       body.replaceChildren();
+      // The model's own thinking, for models that share it: here only, so
+      // it shows when the block is opened.
+      // Only leading space goes: later pieces are appended to this text.
+      const reasoning=typeof state.reasoning==='string'?state.reasoning.replace(/^\s+/,''):'';
+      if(reasoning.trim()){
+        const section=webSection('Thinking',0);
+        section.classList.add('thought-reasoning-section');
+        const text=document.createElement('div');
+        text.className='thought-reasoning';
+        text.textContent=reasoning;
+        section.append(text);
+        body.append(section);
+      }
       const searchSteps=activity.filter(function(step){return step.tool!=='web_fetch'});
       const pageSteps=activity.filter(function(step){return step.tool==='web_fetch'});
       if(searchSteps.length){
@@ -2386,7 +2428,7 @@
         section.append(webResultList(sources));
         body.append(section);
       }
-      body.classList.toggle('has-web',Boolean(activity.length||sources.length));
+      body.classList.toggle('has-web',Boolean(activity.length||sources.length||reasoning.trim()));
       if(!body.childElementCount){
         if(seconds)body.textContent='Response started after '+plural(seconds,'second.','seconds.');
         else if(live)body.textContent='Working on the answer…';
@@ -2402,7 +2444,7 @@
     // web step's label while it runs, back to "Thinking" after it, and the
     // time it took when the text (re)starts.
     function thoughtTracker(message,startedAt){
-      const state={live:true,seconds:0,activity:[],sources:[]};
+      const state={live:true,seconds:0,activity:[],sources:[],reasoning:''};
       let waiting=true;
       function since(){return (performance.now()-startedAt)/1000}
       function clearThinkingState(){
@@ -2426,12 +2468,32 @@
         },
         done:function(data){
           state.live=false;
+          if(data&&typeof data.reasoning==='string'&&data.reasoning)state.reasoning=data.reasoning;
           if(data&&Array.isArray(data.activity))state.activity=data.activity;
           state.sources=data&&Array.isArray(data.sources)?data.sources:[];
           if(data&&data.thought_ms)state.seconds=data.thought_ms/1000;
           else if(!state.seconds)state.seconds=since();
           renderThought(message,state);
         },
+        // A piece of the model's thinking. The first one turns "Thinking"
+        // into the block's label, which opens to show it; later ones are
+        // added to the open text without redrawing it.
+        reasoning:function(piece){
+          if(!piece)return;
+          state.reasoning+=piece;
+          const shown=message.querySelector('.chat-copy > .thought-time .thought-reasoning');
+          if(shown){
+            const box=shown.closest('.thought-time');
+            const follow=shown.scrollHeight-shown.scrollTop-shown.clientHeight<24;
+            shown.append(piece);
+            if(follow&&box.open)shown.scrollTop=shown.scrollHeight;
+            return;
+          }
+          if(!state.seconds)state.live=true;
+          clearThinkingState();
+          renderThought(message,state);
+        },
+        reasoningText:function(){return state.reasoning},
         ms:function(){return Math.round(state.seconds*1000)},
         stop:function(){
           if(!state.live&&!state.activity.some(function(step){return step.pending}))return;
@@ -2886,7 +2948,7 @@
       message.dataset.messageText=version.content;
       renderMarkdown(message.querySelector('.chat-text'),version.content);
       renderGeneratedImages(message,version.images);
-      renderThought(message,{live:false,seconds:version.thought_ms?version.thought_ms/1000:0,activity:version.activity,sources:version.sources});
+      renderThought(message,{live:false,seconds:version.thought_ms?version.thought_ms/1000:0,activity:version.activity,sources:version.sources,reasoning:version.reasoning});
       renderAskCard(message);
       const navigation=message.querySelector('.response-versions');
       if(!navigation)return;
@@ -3296,7 +3358,7 @@
       return count===1?'[You made an image for this request; the user sees it in the chat.]':'[You made '+count+' images for this request; the user sees them in the chat.]';
     }
 
-    const silentThought={activity:function(){},text:function(){},done:function(){},stop:function(){},ms:function(){return 0}};
+    const silentThought={activity:function(){},text:function(){},done:function(){},stop:function(){},reasoning:function(){},reasoningText:function(){return ''},ms:function(){return 0}};
 
     /* ---------- quoting a selection ---------- */
     // Text selected in a finished answer gets an "Ask" button. It puts the
@@ -3635,6 +3697,7 @@
         button.addEventListener('click',function(){loadConversation(conversation.conversation_id,conversation.title,Boolean(conversation.pinned))});
         conversationList.append(button);
       });
+      if(typeof markLiveConversations==='function')markLiveConversations();
     }
 
     /* ---------- yes / no ---------- */
@@ -3795,6 +3858,8 @@
           if(data.compacted_through_id&&message.id===data.compacted_through_id)chatLog.append(compactDivider());
         });
         showOlderMessagesButton(id,data.next_cursor,session);
+        const live=liveReplies.get(conversationID);
+        if(live&&!ownStreamIDs.has(live.stream_id))setTimeout(function(){followLiveReply(live)},0);
         if(!chatLog.children.length)chatContent.classList.remove('has-chat');
         updateAskState(true);
         updateChatModeControls();
@@ -4277,12 +4342,14 @@
         await runChatStream({url:url,request:request,headers:chatHeaders(request),signal:controller.signal,message:message,
           onStream:function(id){
             activeStream.id=id;
+            ownStreamIDs.add(id);
             if(record){record.id=id;saveStreamRecord(record)}
           },
           onEvent:function(event,data){
           if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
           if(event==='blocked')throw new Error(data.response_text||'Regeneration was blocked.');
           if(event==='versions'){versionsData=data;return}
+          if(event==='reasoning'){thought.reasoning(data&&data.text?String(data.text):'');return}
           if(event==='activity'){
             liveActivity=Array.isArray(data&&data.activity)?data.activity:[];
             thought.activity(liveActivity);
@@ -4312,7 +4379,7 @@
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
         if(isIncognito){
-          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[]}]);
+          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],reasoning:terminalData.reasoning||''}]);
           incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images),questionnaire:terminalData.questionnaire||undefined};
         }else{
           message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
@@ -4335,7 +4402,7 @@
         }else if(stopped&&receivedText){
           // Stopped mid-regeneration: the server kept what was streamed as
           // a new version, so show it as one.
-          message.responseVersions=(message.responseVersions||[]).concat([{content:receivedText,model_id:request.manual_model_id||'',activity:stoppedActivity(liveActivity),thought_ms:thought.ms()}]);
+          message.responseVersions=(message.responseVersions||[]).concat([{content:receivedText,model_id:request.manual_model_id||'',activity:stoppedActivity(liveActivity),thought_ms:thought.ms(),reasoning:thought.reasoningText()}]);
           if(isIncognito)incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:receivedText};
           renderResponseVersion(message,message.responseVersions.length-1);
           message.classList.add('is-complete');
@@ -4425,6 +4492,7 @@
         await runChatStream({url:'/chat/stream',request:request,headers:chatHeaders(request),signal:controller.signal,message:pending,
           onStream:function(id){
             activeStream.id=id;
+            ownStreamIDs.add(id);
             if(record){record.id=id;saveStreamRecord(record)}
           },
           onEvent:function(event,data){
@@ -4437,6 +4505,7 @@
             }
             return;
           }
+          if(event==='reasoning'){thought.reasoning(data&&data.text?String(data.text):'');return}
           if(event==='activity'){
             // "Searching the web" / "Reading example.com" take the place of
             // "Thinking" while a step runs.
@@ -4474,7 +4543,7 @@
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(signedInUser()!==session){stream.cancel();return}
         await stream.finish();
-        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[]}];
+        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],reasoning:terminalData.reasoning||''}];
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
         openNewArtifact(pending);
@@ -4495,7 +4564,7 @@
           const body=pending.querySelector('.chat-text');
           thought.stop();
           if(receivedText){
-            pending.responseVersions=[{content:receivedText,model_id:request.manual_model_id||'',activity:stoppedActivity(liveActivity),thought_ms:thought.ms()}];
+            pending.responseVersions=[{content:receivedText,model_id:request.manual_model_id||'',activity:stoppedActivity(liveActivity),thought_ms:thought.ms(),reasoning:thought.reasoningText()}];
             pending.responseVersionIndex=0;
             renderResponseVersion(pending,0);
             pending.classList.add('is-complete');
@@ -4559,41 +4628,32 @@
       return true;
     }
 
-    async function resumeRecordedStream(record){
-      if(record.conversation_id){
-        conversationID=record.conversation_id;
-        storeValue(localStorage,currentConversationStorageKey,conversationID);
-      }
-      activeChatIncognito=false;
-      chatLog.replaceChildren();
-      setConversationListMessage('Finishing the last answer…');
-      appendMessage('user',record.shown||'',{quote:record.quote||undefined});
-      const pending=appendMessage('assistant','');
-      pending.classList.add('is-pending','is-latest-response');
+    // followReply streams a reply this page didn't send -- one from before
+    // a reload, or from another device -- into pending. It resolves with
+    // how that went: 'done', 'stopped', 'ended' (the server no longer has
+    // it) or 'lost'.
+    async function followReply(pending,options){
       setThinkingState(pending);
       setSending(true);
       const stream=createSmoothMessageStream(pending);
       const thought=thoughtTracker(pending,performance.now());
       const controller=new AbortController();
       activeAbort=controller;
-      activeStream={key:record.key,id:record.id||''};
-      let keepRecord=false;
+      activeStream={key:options.key||'',id:options.streamID||''};
+      let outcome='done';
       try{
-        await runChatStream({streamID:record.id||'',url:record.url,request:record.request,headers:chatHeaders(record.request),signal:controller.signal,message:pending,
+        await runChatStream({streamID:options.streamID||'',url:options.url,request:options.request,headers:options.request?chatHeaders(options.request):{},signal:controller.signal,message:pending,
           onStream:function(id){
             activeStream.id=id;
-            record.id=id;
-            saveStreamRecord(record);
+            if(options.onStream)options.onStream(id);
           },
           onEvent:function(event,data){
             if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
             if(event==='meta'){
-              if(data&&data.conversation_id){
-                conversationID=data.conversation_id;
-                storeValue(localStorage,currentConversationStorageKey,conversationID);
-              }
+              if(data&&data.conversation_id&&options.onConversation)options.onConversation(data.conversation_id);
               return;
             }
+            if(event==='reasoning'){thought.reasoning(data&&data.text?String(data.text):'');return}
             if(event==='activity'){thought.activity(Array.isArray(data&&data.activity)?data.activity:[]);return}
             if(event==='delta'){
               const text=data&&data.text?String(data.text):'';
@@ -4613,19 +4673,157 @@
         thought.stop();
         pending.classList.remove('is-pending');
         if(error.lost){
-          keepRecord=true;
+          outcome='lost';
           pending.classList.add('is-error');
           pending.querySelector('.chat-text').textContent=lostConnectionText(true);
+        }else{
+          outcome=controller.signal.aborted||error.stopped?'stopped':'ended';
         }
       }finally{
-        if(!keepRecord)clearStreamRecord(record);
         activeStream=null;
         setSending(false);
       }
-      if(keepRecord)return;
+      return outcome;
+    }
+
+    async function resumeRecordedStream(record){
+      if(record.conversation_id){
+        conversationID=record.conversation_id;
+        storeValue(localStorage,currentConversationStorageKey,conversationID);
+      }
+      activeChatIncognito=false;
+      chatLog.replaceChildren();
+      setConversationListMessage('Finishing the last answer…');
+      appendMessage('user',record.shown||'',{quote:record.quote||undefined});
+      const pending=appendMessage('assistant','');
+      pending.classList.add('is-pending','is-latest-response');
+      if(record.id)ownStreamIDs.add(record.id);
+      const outcome=await followReply(pending,{streamID:record.id||'',key:record.key,url:record.url,request:record.request,
+        onStream:function(id){record.id=id;ownStreamIDs.add(id);saveStreamRecord(record)},
+        onConversation:function(id){conversationID=id;storeValue(localStorage,currentConversationStorageKey,id)}});
+      if(outcome==='lost')return; // the note stays: a later reload tries again
+      clearStreamRecord(record);
       // The whole chat as stored, this reply included.
       await Promise.resolve(stopRequest);
       loadConversations(true);
+    }
+
+    /* ---------- live replies on every device ---------- */
+    // GET /events (server/live.go) tells this page when a reply starts or
+    // ends on any of the user's devices. A reply in the chat open here
+    // streams in as it's written; other chats get a live dot in the
+    // sidebar, and the list refreshes when they're done.
+
+    function startLiveChannel(){
+      stopLiveChannel();
+      const session=signedInUser();
+      const channel={controller:new AbortController(),lastByte:Date.now()};
+      liveChannel=channel;
+      (async function(){
+        try{
+          const response=await apiFetch('/events',{signal:channel.controller.signal});
+          if(!response.ok)throw streamFailure('HTTP '+response.status,{status:response.status});
+          liveFailures=0;
+          liveReplies.clear();
+          markLiveConversations();
+          await readServerSentEvents(response,function(event,data){
+            channel.lastByte=Date.now();
+            if(event==='started')liveStarted(data);
+            if(event==='finished')liveFinished(data);
+          },function(){channel.lastByte=Date.now()});
+        }catch(error){
+          if(channel.controller.signal.aborted||error.status===401)return;
+        }
+        if(liveChannel!==channel||signedInUser()!==session)return;
+        // Dropped: try again, backing off up to half a minute.
+        liveFailures++;
+        setTimeout(function(){
+          if(liveChannel===channel&&signedInUser()===session)startLiveChannel();
+        },Math.min(30000,1000*Math.pow(2,Math.min(liveFailures,5))));
+      })();
+    }
+    function stopLiveChannel(){
+      if(liveChannel){liveChannel.controller.abort();liveChannel=null}
+      liveReplies.clear();
+      markLiveConversations();
+    }
+    // Back from the background on a channel that went quiet (the server
+    // writes every 25 s): reconnect now.
+    document.addEventListener('visibilitychange',function(){
+      if(document.visibilityState==='visible'&&liveChannel&&Date.now()-liveChannel.lastByte>40000)startLiveChannel();
+    });
+
+    function liveStarted(notice){
+      if(!notice||!notice.conversation_id||!notice.stream_id)return;
+      if(ownStreamIDs.has(notice.stream_id))return;
+      liveReplies.set(notice.conversation_id,notice);
+      markLiveConversations();
+      if(conversationID===notice.conversation_id&&!activeChatIncognito)followLiveReply(notice);
+    }
+
+    function liveFinished(notice){
+      if(!notice||!notice.conversation_id)return;
+      liveReplies.delete(notice.conversation_id);
+      markLiveConversations();
+      if(ownStreamIDs.has(notice.stream_id))return;
+      if(sending)return; // this page is busy with a reply of its own; it refreshes after
+      if(activeProject)refreshActiveProject();else loadConversations(false);
+      if(conversationID===notice.conversation_id&&followingStreamID!==notice.stream_id)reloadCurrentConversation();
+    }
+
+    // Streams another device's reply into the chat open here.
+    async function followLiveReply(notice){
+      if(sending||followingStreamID===notice.stream_id||conversationID!==notice.conversation_id)return;
+      followingStreamID=notice.stream_id;
+      chatLog.querySelectorAll('.is-latest-response').forEach(function(message){message.classList.remove('is-latest-response')});
+      if(notice.regenerate_message_id){
+        // The answer being replaced makes room for the new version.
+        const old=chatLog.querySelector('.chat-message.assistant[data-message-id="'+Number(notice.regenerate_message_id)+'"]');
+        if(old)old.remove();
+      }else{
+        appendMessage('user',notice.message||'',{quote:notice.quote||undefined});
+      }
+      const pending=appendMessage('assistant','');
+      pending.classList.add('is-pending','is-latest-response');
+      chatLog.scrollTop=chatLog.scrollHeight;
+      const outcome=await followReply(pending,{streamID:notice.stream_id});
+      followingStreamID='';
+      // Done with it here, whenever its "finished" comes.
+      ownStreamIDs.add(notice.stream_id);
+      if(liveReplies.get(notice.conversation_id)===notice)liveReplies.delete(notice.conversation_id);
+      markLiveConversations();
+      if(outcome==='lost')return;
+      await Promise.resolve(stopRequest);
+      if(conversationID===notice.conversation_id)reloadCurrentConversation();
+      if(activeProject)refreshActiveProject();else loadConversations(false);
+    }
+
+    // Sidebar: a dot on chats with a reply streaming, and a stand-in row for
+    // a chat another device just started (it's stored once the reply is).
+    function markLiveConversations(){
+      conversationList.querySelectorAll('.conversation-item.is-live-placeholder').forEach(function(item){
+        if(!liveReplies.has(item.dataset.conversationId))item.remove();
+      });
+      conversationList.querySelectorAll('.conversation-item[data-conversation-id]').forEach(function(item){
+        item.classList.toggle('is-live',liveReplies.has(item.dataset.conversationId));
+      });
+      liveReplies.forEach(function(notice,id){
+        if(notice.regenerate_message_id||conversationList.querySelector('.conversation-item[data-conversation-id="'+CSS.escape(id)+'"]'))return;
+        const title=Array.from(String(notice.message||'New chat')).slice(0,80).join('')||'New chat';
+        const button=document.createElement('button');
+        button.type='button';
+        button.className='conversation-item has-title is-live is-live-placeholder';
+        button.dataset.conversationId=id;
+        const label=document.createElement('span');
+        label.className='conversation-title';
+        label.textContent=title;
+        button.append(label);
+        button.title=title;
+        button.addEventListener('click',function(){loadConversation(id,title,false)});
+        const empty=conversationList.querySelector(':scope > :not(.conversation-item)');
+        if(empty)empty.remove();
+        conversationList.prepend(button);
+      });
     }
 
     document.querySelectorAll('.suggestions button').forEach(function(button){

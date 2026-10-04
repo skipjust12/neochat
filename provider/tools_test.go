@@ -226,3 +226,18 @@ func TestPolzaClient_GenerateParagraphBreak(t *testing.T) {
 		t.Fatalf("text = %q, %v", result.Text, err)
 	}
 }
+
+func TestReasoningText(t *testing.T) {
+	raw := func(s string) json.RawMessage { return json.RawMessage(s) }
+	if got := reasoningText("plain", []json.RawMessage{raw(`{"type":"reasoning.text","text":"ignored"}`)}); got != "plain" {
+		t.Fatalf("delta.reasoning wins: %q", got)
+	}
+	details := []json.RawMessage{
+		raw(`{"type":"reasoning.text","text":"step one, "}`),
+		raw(`{"type":"reasoning.summary","summary":"in short"}`),
+		raw(`{"type":"reasoning.encrypted","data":"c2VjcmV0"}`),
+	}
+	if got := reasoningText("", details); got != "step one, in short" {
+		t.Fatalf("from details: %q", got)
+	}
+}

@@ -93,13 +93,17 @@ type Client interface {
 
 // StreamChunk is one piece of an in-progress streamed generation, sent on
 // the channel GenerateStream returns. Exactly one of two shapes appears
-// per stream: zero or more chunks with Delta set, followed by either one
+// per stream: zero or more chunks with Delta (or Reasoning) set, followed by either one
 // chunk with Done set and Final populated (success) or one chunk with Err
 // set (failure) -- the channel is always closed right after that terminal
 // chunk, so a range loop naturally ends there.
 type StreamChunk struct {
 	Delta string
-	Err   error
+	// Reasoning is a piece of the model's thinking text (reasoning models
+	// that share it), sent before and between Delta chunks. It is never
+	// part of the answer.
+	Reasoning string
+	Err       error
 
 	Done  bool
 	Final GenerateResult // populated only when Done is true

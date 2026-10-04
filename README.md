@@ -261,6 +261,9 @@ Known, not all resolved:
 - Search through every chat's titles and messages (`GET /conversations/search`); the sidebar lists all chats, no longer the latest 100. Projects can be deleted, and their chats move back to Recent.
 - Settings → Usage shows the Polza balance behind the user's key (`GET /account/balance`).
 - Replies survive a dropped connection: generation runs detached from the request, the client rejoins the numbered stream (`GET /chat/stream/{id}?after=N`) up to five times with "Streaming interrupted, retrying (n/5)", a reloaded page picks the reply back up, and Stop is explicit (`POST /chat/stop`).
+- The model's thinking streams along with the answer and opens on a tap on what it's doing ("Pondering", "Thought for N seconds"); it's kept with the answer.
+- Replies are live on every device: `GET /events` announces them, an open chat follows the reply as it's written, the sidebar marks chats with a reply in progress, and Stop works from any device.
+- In Manual the composer shows the chosen model with its vendor's logo instead of "Manual".
 - The Manual model list follows Polza: new releases join it on their own (Claude Haiku 5.5 takes Claude Haiku 4.5's place, which moves to Legacy), checked when the app opens (at most every 10 minutes) or from Settings → General → Refresh models list (`GET /models`, `POST /models/refresh`, package `modelcatalog`).
 - Settings sync: tone, instructions, language, theme, the default model and web search follow the user between devices (`GET/PUT /account/settings`, table `user_settings`). API keys never leave the browser.
 - "+" → Compact: after a yes/no confirmation, GPT-6 Luna (on the user's key) folds everything but the last exchange into the chat's summary (`POST /conversations/{id}/compact`); later turns send the summary instead, and the thread marks where it happened.

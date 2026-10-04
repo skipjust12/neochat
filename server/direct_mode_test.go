@@ -42,6 +42,8 @@ type polzaStandIn struct {
 	// rejectStatus (default 400).
 	rejectWeb    bool
 	rejectStatus int
+	// thinking is streamed as delta.reasoning before the reply.
+	thinking []string
 }
 
 func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -74,6 +76,10 @@ func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	flusher := w.(http.Flusher)
 	for _, chunk := range p.chunks {
 		fmt.Fprintf(w, "data: %s\n\n", chunk)
+		flusher.Flush()
+	}
+	for _, thought := range p.thinking {
+		fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"reasoning\":%q}}]}\n\n", thought)
 		flusher.Flush()
 	}
 	words := strings.SplitAfter(p.reply, " ")

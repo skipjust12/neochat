@@ -405,6 +405,8 @@ type chatResponse struct {
 	Questionnaire *conversation.Questionnaire `json:"questionnaire,omitempty"`
 	// Images: pictures an image model made (see ResponseVersion.Images).
 	Images []conversation.Attachment `json:"images,omitempty"`
+	// Reasoning: the model's thinking (see ResponseVersion.Reasoning).
+	Reasoning string `json:"reasoning,omitempty"`
 
 	// Blocked is true when Layer 1 moderation flagged the request before
 	// any generation happened -- ResponseText is then tosViolationMessage,
@@ -447,18 +449,19 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("PUT /account/settings", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleSettingsPut)))))
 	mux.HandleFunc("POST /conversations/{conversation_id}/compact", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationCompact))))))
 	mux.HandleFunc("GET /models", recovered(s.rateLimited(s.handleModels)))
+	mux.HandleFunc("GET /events", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleLiveEvents)))))
 	mux.HandleFunc("POST /models/refresh", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleModelsRefresh)))))
 	mux.HandleFunc("GET /account/balance", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleBalance)))))
 	// Not through recovered: its X-Frame-Options: DENY would stop the
 	// app's own artifact viewer from framing this page.
 	mux.HandleFunc("GET /artifact-frame", artifactFrame)
-	mux.HandleFunc("GET /conversations", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationList))))))
-	mux.HandleFunc("GET /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationHistory))))))
+	mux.HandleFunc("GET /conversations", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withReadTimeout(s.handleConversationList))))))
+	mux.HandleFunc("GET /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withReadTimeout(s.handleConversationHistory))))))
 	mux.HandleFunc("PATCH /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationUpdate))))))
 	mux.HandleFunc("DELETE /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationDelete))))))
-	mux.HandleFunc("GET /projects", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectList))))))
+	mux.HandleFunc("GET /projects", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withReadTimeout(s.handleProjectList))))))
 	mux.HandleFunc("POST /projects", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectCreate))))))
-	mux.HandleFunc("GET /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectGet))))))
+	mux.HandleFunc("GET /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withReadTimeout(s.handleProjectGet))))))
 	// No request slot on uploads: several files upload in parallel, and
 	// while a reply streams the user may already be attaching the next one.
 	mux.HandleFunc("POST /files", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleFileUpload)))))
@@ -1567,9 +1570,10 @@ func directGenerate(ctx context.Context, gen provider.Client, apiModelID string,
 
 // streamingGenerate builds the generateCaller handleStream uses: it
 // streams through gen's provider.StreamingClient, invoking onDelta for
-// every text chunk as it arrives, and returns the stream's final
-// GenerateResult once the vendor signals it's done.
-func streamingGenerate(onDelta func(delta string)) generateCaller {
+// every text chunk as it arrives (and onReasoning, if set, for every piece
+// of the model's thinking), and returns the stream's final GenerateResult
+// once the vendor signals it's done.
+func streamingGenerate(onDelta func(delta string), onReasoning func(text string)) generateCaller {
 	return func(ctx context.Context, gen provider.Client, apiModelID string, messages []provider.Message) (provider.GenerateResult, error) {
 		streamingClient, ok := gen.(provider.StreamingClient)
 		if !ok {
@@ -1586,6 +1590,9 @@ func streamingGenerate(onDelta func(delta string)) generateCaller {
 		for chunk := range ch {
 			if chunk.Err != nil {
 				return provider.GenerateResult{Text: partial.String()}, chunk.Err
+			}
+			if chunk.Reasoning != "" && onReasoning != nil {
+				onReasoning(chunk.Reasoning)
 			}
 			if chunk.Delta != "" {
 				if firstDelta != nil {
@@ -1695,7 +1702,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	version := conversation.ResponseVersion{
 		Content: genResult.Text, ModelID: model.ID, CreatedAt: now,
 		Activity: answer.Activity, Sources: webLinks(genResult.Citations), ThoughtMS: thought.Milliseconds(),
-		Questionnaire: answer.Questionnaire, Images: answer.Images,
+		Questionnaire: answer.Questionnaire, Images: answer.Images, Reasoning: answer.Reasoning,
 	}
 	if len(version.Images) > 0 {
 		version.ThoughtMS = 0 // a picture isn't "thought for N seconds"
@@ -1731,6 +1738,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		ThoughtMS:        version.ThoughtMS,
 		Questionnaire:    version.Questionnaire,
 		Images:           version.Images,
+		Reasoning:        version.Reasoning,
 	}
 	if req.regenerateMessageID > 0 {
 		response.MessageID = regenerated.ID
@@ -1800,13 +1808,13 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 // the partial reply is stored like a normal turn, so the conversation the
 // server remembers matches the one on screen. Nothing is stored when the
 // stop came before any text arrived.
-func (s *Server) persistStopped(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, partial string, activity []conversation.ToolActivity, thought time.Duration) (conversation.Message, bool) {
+func (s *Server) persistStopped(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, partial string, activity []conversation.ToolActivity, thought time.Duration, reasoning string) (conversation.Message, bool) {
 	if model.ID == "" || strings.TrimSpace(partial) == "" {
 		return conversation.Message{}, false
 	}
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	msg, err := s.persistTurn(persistCtx, req, prepared, model, conversation.ResponseVersion{Content: partial, ModelID: model.ID, CreatedAt: time.Now(), Activity: activity, ThoughtMS: thought.Milliseconds()})
+	msg, err := s.persistTurn(persistCtx, req, prepared, model, conversation.ResponseVersion{Content: partial, ModelID: model.ID, CreatedAt: time.Now(), Activity: activity, ThoughtMS: thought.Milliseconds(), Reasoning: reasoning})
 	if err != nil {
 		log.Printf("server: persist stopped response for conversation_id=%s: %v", prepared.conversationID, err)
 		return conversation.Message{}, false
@@ -2032,6 +2040,18 @@ func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.
 	return err
 }
 
+// maxReasoningRunes bounds the thinking kept with an answer.
+const maxReasoningRunes = 16000
+
+// clipReasoning keeps the start of a long thinking text.
+func clipReasoning(text string) string {
+	text = strings.TrimSpace(text)
+	if runes := []rune(text); len(runes) > maxReasoningRunes {
+		return string(runes[:maxReasoningRunes]) + "…"
+	}
+	return text
+}
+
 // handleStreamOnce is handleStream's actual work, run at most once per
 // idempotency key -- see handleStream's wrapping via
 // reserveIdempotent/finishIdempotent.
@@ -2056,6 +2076,9 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 	var mu sync.Mutex
 	started, thoughtUntil, waiting := time.Now(), time.Time{}, true
 	var liveActivity []conversation.ToolActivity
+	// The model's thinking goes out as it comes (the client shows it only
+	// when asked) and is kept with the answer, up to maxReasoningRunes.
+	var reasoning strings.Builder
 	call := streamingGenerate(func(delta string) {
 		mu.Lock()
 		if waiting {
@@ -2064,6 +2087,11 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 		streamed.WriteString(delta)
 		mu.Unlock()
 		send("delta", map[string]string{"text": delta})
+	}, func(text string) {
+		mu.Lock()
+		reasoning.WriteString(text)
+		mu.Unlock()
+		send("reasoning", map[string]string{"text": text})
 	})
 	onActivity := func(activity []conversation.ToolActivity) {
 		mu.Lock()
@@ -2082,7 +2110,7 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 
 	result, model, answer, err := s.routeAndCall(ctx, req, prepared, onRoute, call, onActivity)
 	mu.Lock()
-	partial, activity := streamed.String(), liveActivity
+	partial, activity, thinking := streamed.String(), liveActivity, clipReasoning(reasoning.String())
 	end := thoughtUntil
 	if end.IsZero() || (waiting && err == nil) {
 		// No text yet, or the answer ended on a web step: thinking ran to
@@ -2098,11 +2126,12 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 		// button aborting the request. Keep the partial reply the user saw,
 		// with the web steps that led up to it.
 		if errors.Is(ctx.Err(), context.Canceled) {
-			s.persistStopped(ctx, req, prepared, model, partial, finishedSteps(activity), thought)
+			s.persistStopped(ctx, req, prepared, model, partial, finishedSteps(activity), thought, thinking)
 		}
 		return chatResponse{}, err
 	}
 
+	answer.Reasoning = thinking
 	resp, err := s.finalize(ctx, req, prepared, result, model, answer, thought)
 	if err != nil {
 		return chatResponse{}, err

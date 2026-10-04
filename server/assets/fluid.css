@@ -1199,6 +1199,9 @@ html[data-theme="dark"] .row-chevron {
 }
 
 .mode-screen {
+  /* Keeps the last row's margin inside the screen, so the height the panel
+     animates to is the height it ends at. */
+  display: flow-root;
   transition: opacity .22s ease,transform .3s var(--ease-out);
 }
 
@@ -1359,33 +1362,57 @@ html[data-theme="dark"] .row-chevron {
   display: grid;
 }
 
+/* The effort block opens to its real height (grid rows 0fr -> 1fr), so the
+   panel around it grows with it frame by frame. Its height depends only on
+   Manual being chosen, not on which screen is showing: the panel measures
+   the main screen's final height when it slides back to it. */
 .reasoning-effort {
-  max-height: 0;
+  display: grid;
+  grid-template-rows: 0fr;
   margin: 0 5px;
-  padding: 0 11px;
   border-top: 1px solid transparent;
-  overflow: hidden;
   visibility: hidden;
   pointer-events: none;
   opacity: 0;
-  transform: translateY(5px);
-  transition: max-height .42s var(--ease-out),margin .42s var(--ease-out),padding .42s var(--ease-out),border-color .2s ease,opacity .14s ease,transform .22s var(--ease-out),visibility 0s linear .42s;
+  transform: translateY(4px);
+  transition: grid-template-rows .24s var(--ease-out),margin .24s var(--ease-out),border-color .2s ease,opacity .12s ease,transform .2s var(--ease-out),visibility 0s linear .24s;
 }
 
-#mode-manual:checked ~ .mode-panel .mode-screen.is-active .reasoning-effort {
-  max-height: 108px;
-  margin: 8px 5px 4px;
+.reasoning-effort-clip {
+  min-height: 0;
+  overflow: hidden;
+}
+
+.reasoning-effort-body {
   padding: 15px 11px 7px;
+}
+
+#mode-manual:checked ~ .mode-panel .reasoning-effort {
+  grid-template-rows: 1fr;
+  margin: 8px 5px 4px;
   border-color: var(--line);
+  transition: grid-template-rows .26s var(--ease-out),margin .26s var(--ease-out),border-color .2s ease,opacity .14s ease,transform .22s var(--ease-out),visibility 0s;
+}
+
+/* Seen and clickable only on the screen showing: a hidden screen's slider
+   must not catch taps meant for the one on top. */
+#mode-manual:checked ~ .mode-panel .mode-screen.is-active .reasoning-effort {
   visibility: visible;
   pointer-events: auto;
-  transition: max-height .46s var(--ease-out),margin .46s var(--ease-out),padding .46s var(--ease-out),border-color .25s ease,opacity .16s ease,transform .24s var(--ease-out),visibility 0s;
 }
 
 .mode-picker.is-open #mode-manual:checked ~ .mode-panel .mode-screen.is-active .reasoning-effort {
   opacity: 1;
   transform: none;
-  transition: max-height .46s var(--ease-out),margin .46s var(--ease-out),padding .46s var(--ease-out),border-color .25s ease,opacity .24s ease 110ms,transform .38s var(--ease-out) 110ms,visibility 0s;
+  transition: grid-template-rows .26s var(--ease-out),margin .26s var(--ease-out),border-color .2s ease,opacity .2s ease 60ms,transform .26s var(--ease-out) 60ms,visibility 0s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reasoning-effort,
+  #mode-manual:checked ~ .mode-panel .reasoning-effort,
+  .mode-picker.is-open #mode-manual:checked ~ .mode-panel .mode-screen.is-active .reasoning-effort {
+    transition: none;
+  }
 }
 
 .mode-picker.is-closing .reasoning-effort {
@@ -3377,8 +3404,11 @@ html[data-theme="dark"] #incognitoState:checked~.main::after {
   font-weight: 520;
 }
 
-#mode-manual:checked~.mode-panel .mode-screen.is-active .reasoning-effort {
+#mode-manual:checked~.mode-panel .reasoning-effort {
   margin: 6px 4px 3px;
+}
+
+.reasoning-effort-body {
   padding: 12px 8px 5px;
 }
 
@@ -8320,4 +8350,66 @@ html.artifact-open body {
 
 @media (prefers-reduced-motion: reduce) {
   .stream-status::before { animation: none; opacity: .6; }
+}
+
+/* ---------- the chosen model in the composer ---------- */
+.trigger-model-icon {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+}
+
+.trigger-model-icon.is-vendor svg {
+  color: var(--text);
+}
+
+.trigger-model-name {
+  max-width: 170px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mode-trigger.has-model {
+  color: var(--text);
+}
+
+@media (max-width:840px) {
+  .trigger-model-name {
+    max-width: 128px;
+  }
+}
+
+/* ---------- the model's thinking ---------- */
+.thought-reasoning {
+  max-height: 280px;
+  overflow-y: auto;
+  padding: 2px 0 2px 12px;
+  border-left: 2px solid var(--line);
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overscroll-behavior: contain;
+}
+
+.thought-time.is-live > summary {
+  cursor: pointer;
+}
+
+/* ---------- live replies in the sidebar ---------- */
+.conversation-item.is-live .conversation-title::after {
+  content: "";
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-left: 7px;
+  vertical-align: 2px;
+  border-radius: 50%;
+  background: var(--accent);
+  animation: stream-status-pulse 1.1s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-item.is-live .conversation-title::after { animation: none; }
 }

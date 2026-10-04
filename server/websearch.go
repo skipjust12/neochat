@@ -125,6 +125,9 @@ type webAnswer struct {
 	// Images an image model made (imageAnswer), and what they cost.
 	Images       []conversation.Attachment
 	ImageCostUSD float64
+	// Reasoning is the model's thinking for this answer (streamed answers
+	// only), kept with it.
+	Reasoning string
 }
 
 // webRun answers one message, running web tools as the model asks.

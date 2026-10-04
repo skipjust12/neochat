@@ -87,6 +87,10 @@ type ResponseVersion struct {
 	// Images are the pictures an image model made for this answer, kept
 	// with the chat's files (server/image.go).
 	Images []Attachment `json:"images,omitempty"`
+
+	// Reasoning is the model's thinking before and while it wrote this
+	// version, for models that share it; the client shows it on request.
+	Reasoning string `json:"reasoning,omitempty"`
 }
 
 // Questionnaire is a set of questions the model put to the user, shown as

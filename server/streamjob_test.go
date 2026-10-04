@@ -75,7 +75,7 @@ func openStream(t *testing.T, method, url, token, body string, headers map[strin
 		cancel()
 		t.Fatalf("%s %s: %d %s", method, url, response.StatusCode, raw)
 	}
-	stream := &liveStream{t: t, body: response.Body, reader: bufio.NewReader(response.Body), cancel: cancel}
+	stream := &liveStream{t: t, body: response.Body, reader: newLineReader(response.Body), cancel: cancel}
 	if first := stream.next(); first.name != "stream" {
 		t.Fatalf("first event = %+v, want stream", first)
 	} else {
@@ -136,6 +136,8 @@ func (s *liveStream) until(names ...string) (sseEvent, string) {
 		}
 	}
 }
+
+func newLineReader(body io.Reader) *bufio.Reader { return bufio.NewReader(body) }
 
 func (s *liveStream) drop() {
 	s.cancel()
@@ -308,7 +310,7 @@ func TestStreamRegistry_ForgetsOldStreams(t *testing.T) {
 	now := time.Now()
 	var jobs []*streamJob
 	for i := 0; i < streamsPerUser+2; i++ {
-		job, _, _ := r.open("u1", fmt.Sprintf("k%d", i), func() {}, now)
+		job, _, _ := r.open("u1", fmt.Sprintf("k%d", i), func() {}, liveNotice{}, false, now)
 		job.finish()
 		job.mu.Lock()
 		job.finished = now.Add(time.Duration(i) * time.Second)

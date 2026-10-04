@@ -172,6 +172,33 @@ func (r *reasoningDetails) add(raw []json.RawMessage) {
 	}
 }
 
+// reasoningText is the readable thinking in one streamed delta: the
+// reasoning text, or else the text and summary pieces of its
+// reasoning_details (encrypted pieces carry nothing to show).
+func reasoningText(text string, details []json.RawMessage) string {
+	if text != "" {
+		return text
+	}
+	var out strings.Builder
+	for _, piece := range details {
+		var item struct {
+			Type    string `json:"type"`
+			Text    string `json:"text"`
+			Summary string `json:"summary"`
+		}
+		if json.Unmarshal(piece, &item) != nil {
+			continue
+		}
+		switch item.Type {
+		case "reasoning.text":
+			out.WriteString(item.Text)
+		case "reasoning.summary":
+			out.WriteString(item.Summary)
+		}
+	}
+	return out.String()
+}
+
 func (r *reasoningDetails) raw() json.RawMessage {
 	if len(r.entries) == 0 {
 		return nil
