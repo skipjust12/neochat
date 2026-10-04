@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=23" />
+<link rel="stylesheet" href="/assets/fluid.css?v=24" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -51,6 +51,25 @@
     <h2 id="confirmTitle"></h2>
     <p id="confirmText"></p>
     <div class="confirm-actions"><button type="button" class="confirm-no" id="confirmNo">Cancel</button><button type="button" class="confirm-yes" id="confirmYes">Yes</button></div>
+  </div>
+</div>
+<!-- "+" -> Sketch: draw something and attach it to the message. -->
+<div class="sketch-backdrop" id="sketchDialog" hidden>
+  <div class="sketch-dialog" role="dialog" aria-modal="true" aria-labelledby="sketchTitle">
+    <h2 class="sketch-title" id="sketchTitle">Sketch</h2>
+    <div class="sketch-toolbar" role="toolbar" aria-label="Sketch tools">
+      <div class="sketch-group"><button type="button" class="sketch-tool is-active" data-tool="pen" aria-label="Pen" title="Pen" aria-pressed="true"><svg class="lucide lucide-pencil" data-lucide-icon="pencil" viewBox="0 0 24 24" aria-hidden="true"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z" /><path d="m15 5 4 4" /></svg></button><button type="button" class="sketch-tool" data-tool="eraser" aria-label="Eraser" title="Eraser" aria-pressed="false"><svg class="lucide lucide-eraser" data-lucide-icon="eraser" viewBox="0 0 24 24" aria-hidden="true"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21" /><path d="M22 21H7" /><path d="m5 11 9 9" /></svg></button><button type="button" class="sketch-tool" data-tool="select" aria-label="Move and resize" title="Move and resize" aria-pressed="false"><svg class="lucide lucide-mouse-pointer-2" data-lucide-icon="mouse-pointer-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M4.037 4.688a.495.495 0 0 1 .651-.651l16 6.5a.5.5 0 0 1-.063.947l-6.124 1.58a2 2 0 0 0-1.438 1.435l-1.579 6.126a.5.5 0 0 1-.947.063z" /></svg></button><button type="button" class="sketch-tool" data-tool="rect" aria-label="Rectangle" title="Rectangle" aria-pressed="false"><svg class="lucide lucide-square" data-lucide-icon="square" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" /></svg></button><button type="button" class="sketch-tool" data-tool="ellipse" aria-label="Ellipse" title="Ellipse" aria-pressed="false"><svg class="lucide lucide-circle" data-lucide-icon="circle" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" /></svg></button><button type="button" class="sketch-tool" data-tool="line" aria-label="Line" title="Line" aria-pressed="false"><svg class="lucide lucide-line" data-lucide-icon="line" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19 19 5" /></svg></button><button type="button" class="sketch-tool" data-tool="arrow" aria-label="Arrow" title="Arrow" aria-pressed="false"><svg class="lucide lucide-move-up-right" data-lucide-icon="move-up-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M13 5h6v6" /><path d="M19 5 5 19" /></svg></button></div>
+      <div class="sketch-group sketch-colors"><button type="button" class="sketch-color is-active" data-color="#111111" aria-label="Black" title="Black" aria-pressed="true" style="--swatch:#111111"></button><button type="button" class="sketch-color" data-color="#e5484d" aria-label="Red" title="Red" aria-pressed="false" style="--swatch:#e5484d"></button><button type="button" class="sketch-color" data-color="#f5a524" aria-label="Orange" title="Orange" aria-pressed="false" style="--swatch:#f5a524"></button><button type="button" class="sketch-color" data-color="#30a46c" aria-label="Green" title="Green" aria-pressed="false" style="--swatch:#30a46c"></button><button type="button" class="sketch-color" data-color="#3e63dd" aria-label="Blue" title="Blue" aria-pressed="false" style="--swatch:#3e63dd"></button><button type="button" class="sketch-color" data-color="#8e4ec6" aria-label="Purple" title="Purple" aria-pressed="false" style="--swatch:#8e4ec6"></button></div>
+      <div class="sketch-group">
+        <button type="button" class="sketch-tool" id="sketchUndo" aria-label="Undo" title="Undo" disabled><svg class="lucide lucide-undo-2" data-lucide-icon="undo-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" /></svg></button>
+        <button type="button" class="sketch-tool" id="sketchClear" aria-label="Clear" title="Clear" disabled><svg class="lucide lucide-trash-2" data-lucide-icon="trash-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg></button>
+      </div>
+    </div>
+    <div class="sketch-stage"><canvas id="sketchCanvas" width="1600" height="1120" aria-label="Drawing area"></canvas></div>
+    <div class="sketch-actions">
+      <button type="button" class="sketch-cancel" id="sketchCancel">Cancel</button>
+      <button type="button" class="sketch-confirm" id="sketchConfirm" disabled><svg class="lucide lucide-forward" data-lucide-icon="forward" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 17 5-5-5-5" /><path d="M4 18v-2a4 4 0 0 1 4-4h12" /></svg>Confirm</button>
+    </div>
   </div>
 </div>
 <!-- "Ask" on text selected in an answer: quotes it in the composer. -->
@@ -167,6 +186,11 @@
             </div>
           </div>
         </section>
+        <div class="balance-banner" id="balanceBanner" role="status" hidden>
+          <svg class="lucide lucide-triangle-alert balance-icon-approaching" data-lucide-icon="triangle-alert" viewBox="0 0 24 24" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3" /><path d="M12 9v4" /><path d="M12 17h.01" /></svg>
+          <svg class="lucide lucide-hand balance-icon-low" data-lucide-icon="hand" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 11V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2" /><path d="M14 10V4a2 2 0 0 0-2-2a2 2 0 0 0-2 2v2" /><path d="M10 10.5V6a2 2 0 0 0-2-2a2 2 0 0 0-2 2v8" /><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15" /></svg>
+          <span class="balance-banner-text" id="balanceBannerText"></span>
+        </div>
         <div class="composer">
           <div class="attachments" id="attachments"><div class="attachments-inner" id="attachmentsInner"></div></div>
           <div class="prompt-entry" id="promptEntry"><div class="connector-highlights" id="connectorHighlights" aria-hidden="true"></div><textarea id="message" rows="2" aria-label="Message" placeholder="Ask anything…"></textarea></div><div class="composer-bottom">
@@ -198,6 +222,10 @@
                   <span class="row-symbol"><svg class="lucide lucide-notebook-tabs" data-lucide-icon="notebook-tabs" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" /><rect width="16" height="20" x="4" y="2" rx="2" /><path d="M15 2v20" /><path d="M15 7h5" /><path d="M15 12h5" /><path d="M15 17h5" /></svg></span>
                   <span class="row-copy"><strong>Skills</strong><span>Reuse specialized skills to handle specific tasks reliably</span></span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                </button>
+                <button class="attach-row" id="sketchRow" role="menuitem">
+                  <span class="row-symbol"><svg class="lucide lucide-brush" data-lucide-icon="brush" viewBox="0 0 24 24" aria-hidden="true"><path d="m11 10 3 3" /><path d="M6.5 21A3.5 3.5 0 1 0 3 17.5a2.62 2.62 0 0 1-.708 1.792A1 1 0 0 0 3 21z" /><path d="M9.969 17.031 21.378 5.624a1 1 0 0 0-3.002-3.002L6.967 14.031" /></svg></span>
+                  <span class="row-copy"><strong>Sketch</strong><span>Draw something to attach to your message</span></span>
                 </button>
                 <button class="attach-row" id="compactRow" role="menuitem">
                   <span class="row-symbol"><svg class="lucide lucide-fold-vertical" data-lucide-icon="fold-vertical" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-6" /><path d="M12 8V2" /><path d="M4 12H2" /><path d="M10 12H8" /><path d="M16 12h-2" /><path d="M22 12h-2" /><path d="m15 19-3-3-3 3" /><path d="m15 5-3 3-3-3" /></svg></span>
@@ -590,6 +618,18 @@
             <div class="usage-item"><span class="usage-figure"><strong id="balanceAmount">—</strong><span>Polza AI balance</span></span></div>
           </div>
           <p class="set-note" id="balanceNote" style="margin-top:22px">The balance behind the Polza AI key in Account.</p>
+        </div>
+        <div class="set-sec">
+          <div class="set-sec-title"><svg class="lucide lucide-bell" data-lucide-icon="bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0" /><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /></svg>Low balance alerts</div>
+          <p class="set-note">A note above the message box when the balance gets close to running out, and when it does. Sending is never blocked. Leave a field empty to turn that note off.</p>
+          <div class="set-row">
+            <label class="label soft" for="balanceWarnAt">Low balance approaching below</label>
+            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceWarnAt" type="number" min="0" step="10" inputmode="decimal" value="300" /><span aria-hidden="true">₽</span></span></span>
+          </div>
+          <div class="set-row">
+            <label class="label soft" for="balanceLowAt">Low balance below</label>
+            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceLowAt" type="number" min="0" step="10" inputmode="decimal" value="100" /><span aria-hidden="true">₽</span></span></span>
+          </div>
         </div>
       </section>
 
@@ -1169,6 +1209,67 @@
       }
     });
 
+    /* ---------- low balance ---------- */
+    // A note above the message box once the Polza balance behind the chat
+    // key nears or passes the thresholds set in Usage. Sending is never
+    // blocked. The balance is asked when the app opens, a moment after
+    // each answer, when the key changes, and when the app comes back after
+    // a while.
+    const balanceBanner=document.getElementById('balanceBanner');
+    const balanceBannerText=document.getElementById('balanceBannerText');
+    let knownBalance=null;
+    let balanceCheckedAt=0;
+    let balanceTimer=0;
+    function balanceThreshold(id){
+      const raw=document.getElementById(id).value.trim();
+      const value=Number(raw);
+      return raw!==''&&Number.isFinite(value)&&value>=0?value:null;
+    }
+    // What can be spent: the available amount when Polza holds some back.
+    function noteBalance(data){
+      const amount=Number(data&&data.amount_rub)||0;
+      const available=Number(data&&data.available_rub);
+      knownBalance=Number.isFinite(available)&&available>0?Math.min(amount,available):amount;
+      balanceCheckedAt=Date.now();
+      renderBalanceBanner();
+    }
+    function renderBalanceBanner(){
+      let state='';
+      if(knownBalance!==null&&providerKey()&&signedInUser()){
+        const low=balanceThreshold('balanceLowAt'),warn=balanceThreshold('balanceWarnAt');
+        if(low!==null&&knownBalance<=low)state='low';
+        else if(warn!==null&&knownBalance<=warn)state='approaching';
+      }
+      if(balanceBanner.dataset.state===state)return;
+      balanceBanner.dataset.state=state;
+      balanceBanner.hidden=!state;
+      balanceBannerText.textContent=state==='low'
+        ?'Hold on! Your balance is currently low, you can continue sending messages, but you should top up your balance.'
+        :state==='approaching'?'Low balance approaching':'';
+    }
+    async function refreshBalance(){
+      clearTimeout(balanceTimer);
+      const key=providerKey();
+      if(!key||!signedInUser()){knownBalance=null;renderBalanceBanner();return}
+      try{
+        const response=await apiFetch('/account/balance',{headers:{'X-Provider-Key':key}});
+        if(!response.ok)return;
+        noteBalance(await response.json());
+      }catch(error){}
+    }
+    // After an answer Polza needs a moment to charge for it.
+    function scheduleBalanceCheck(){
+      clearTimeout(balanceTimer);
+      balanceTimer=setTimeout(refreshBalance,2500);
+    }
+    document.addEventListener('balance:thresholds',renderBalanceBanner);
+    document.addEventListener('key:change',function(event){
+      if(event.detail===providerKeyStorageKey){knownBalance=null;renderBalanceBanner();refreshBalance()}
+    });
+    document.addEventListener('visibilitychange',function(){
+      if(document.visibilityState==='visible'&&signedInUser()&&Date.now()-balanceCheckedAt>10*60*1000)refreshBalance();
+    });
+
     /* ---------- usage bars ---------- */
     // The Polza balance behind the chat key, asked fresh each time the
     // tab opens (through the server: the page may only talk to it).
@@ -1182,6 +1283,7 @@
         const response=await apiFetch('/account/balance',{headers:{'X-Provider-Key':key}});
         if(!response.ok)throw new Error((await response.text()).trim()||'Could not load the balance.');
         const data=await response.json();
+        noteBalance(data);
         const rub=function(value){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(Number(value)||0)};
         amount.textContent=rub(data.amount_rub);
         note.textContent=Math.abs((data.available_rub||0)-(data.amount_rub||0))>0.005?'Available to spend: '+rub(data.available_rub)+'.':'The balance behind the Polza AI key in Account.';
@@ -1522,11 +1624,13 @@
         if(/\s/.test(key)){toast('That key contains spaces — copy it again from polza.ai.');return}
         storeValue(localStorage,storageKey,key);
         render();
+        document.dispatchEvent(new CustomEvent('key:change',{detail:storageKey}));
         toast(key.startsWith('pza_')?name+' saved.':'Saved. Polza keys usually start with pza_ — double-check it.');
       });
       remove.addEventListener('click',function(){
         storeValue(localStorage,storageKey,'');
         render();
+        document.dispatchEvent(new CustomEvent('key:change',{detail:storageKey}));
         toast(name+' removed.');
       });
       render();
@@ -1687,6 +1791,8 @@
       clearComposerQuote();
       updateChatModeControls();
       if(userID)startLiveChannel();else stopLiveChannel();
+      knownBalance=null;renderBalanceBanner();
+      if(userID)refreshBalance();
       if(!userID||!reattachStream(userID))loadConversations(true);
     }
 
@@ -4390,6 +4496,7 @@
         message.classList.add('is-complete');
         openNewArtifact(message);
         updateAskState(true);
+        scheduleBalanceCheck();
         if(!isIncognito){if(activeProject)refreshActiveProject();else loadConversations(false)}
       }catch(error){
         if(imageGen)imageGen.cancel();
@@ -4549,6 +4656,7 @@
         openNewArtifact(pending);
         renderAskCard(pending);
         updateAskState(true);
+        scheduleBalanceCheck();
         if(activeChatIncognito&&!terminalData.blocked){
           incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images),questionnaire:terminalData.questionnaire||undefined});
         }else if(!activeChatIncognito){
@@ -4765,6 +4873,7 @@
       if(!notice||!notice.conversation_id)return;
       liveReplies.delete(notice.conversation_id);
       markLiveConversations();
+      scheduleBalanceCheck(); // another device spent from the same key, likely
       if(ownStreamIDs.has(notice.stream_id))return;
       if(sending)return; // this page is busy with a reply of its own; it refreshes after
       if(activeProject)refreshActiveProject();else loadConversations(false);
@@ -5422,6 +5531,12 @@
     function loadPreferences(){
       try{return JSON.parse(localStorage.getItem(storageKey)||'{}')}catch(error){return {}}
     }
+    // A low-balance threshold in rubles, or null when the field is empty.
+    function thresholdValue(id){
+      const raw=document.getElementById(id).value.trim();
+      const value=Number(raw);
+      return raw!==''&&Number.isFinite(value)&&value>=0?value:null;
+    }
     function savePreferences(){
       const activeTheme=themeSeg.querySelector('button.is-active');
       const selectedMode=modePicker.querySelector('input[name="work-mode"]:checked');
@@ -5435,7 +5550,9 @@
         manualModel:manualState.dataset.modelId?manualState.textContent.trim():'',
         manualModelId:manualState.dataset.modelId||'',
         reasoningEffort:Math.round(Number(reasoningRange.value)),
-        webSearch:webSearchState.textContent.trim()
+        webSearch:webSearchState.textContent.trim(),
+        balanceWarnAt:thresholdValue('balanceWarnAt'),
+        balanceLowAt:thresholdValue('balanceLowAt')
       };
       try{localStorage.setItem(storageKey,JSON.stringify(preferences))}catch(error){}
       if(!applying)document.dispatchEvent(new CustomEvent('preferences:change',{detail:preferences}));
@@ -5492,6 +5609,11 @@
       reasoningRange.value=String(Math.max(0,Math.min(4,preferences.reasoningEffort)));
       reasoningRange.dispatchEvent(new Event('input'));
     }
+    ['balanceWarnAt','balanceLowAt'].forEach(function(id){
+      if(preferences[id]===null)document.getElementById(id).value='';
+      else if(Number.isFinite(preferences[id]))document.getElementById(id).value=String(preferences[id]);
+    });
+    document.dispatchEvent(new CustomEvent('balance:thresholds'));
     if(['Auto','On','Off'].includes(preferences.webSearch)){
       while(webSearchState.textContent.trim()!==preferences.webSearch)webSearchRow.click();
     }
@@ -5508,6 +5630,12 @@
     manualState.addEventListener('model:selected',savePreferences);
     reasoningRange.addEventListener('input',savePreferences);
     webSearchRow.addEventListener('click',savePreferences);
+    ['balanceWarnAt','balanceLowAt'].forEach(function(id){
+      document.getElementById(id).addEventListener('input',function(){
+        savePreferences();
+        document.dispatchEvent(new CustomEvent('balance:thresholds'));
+      });
+    });
     window.addEventListener('beforeunload',savePreferences);
   })();
 </script>
@@ -5747,6 +5875,341 @@
     });
 
     applyPlan();
+  })();
+</script>
+<script>
+  (function(){
+    /* ---------- sketch ---------- */
+    // "+" -> Sketch: a small drawing board. Pen and eraser draw freehand;
+    // rectangles, ellipses, lines and arrows stay shapes that can be moved
+    // and resized (drag a corner, or an end of a line). The eraser rubs
+    // out ink and removes the shapes it touches. Confirm turns the board
+    // into a PNG and attaches it to the message being written; it isn't
+    // sent until the message is.
+    const W=800,H=560,SCALE=2;
+    const PEN=4,ERASER=26,SHAPE=4,HANDLE=8,MAX_UNDO=60;
+    const dialog=document.getElementById('sketchDialog');
+    const canvas=document.getElementById('sketchCanvas');
+    const ctx=canvas.getContext('2d');
+    const ink=document.createElement('canvas');
+    ink.width=W*SCALE;ink.height=H*SCALE;
+    const inkCtx=ink.getContext('2d');
+    const undoButton=document.getElementById('sketchUndo');
+    const clearButton=document.getElementById('sketchClear');
+    const confirmButton=document.getElementById('sketchConfirm');
+    const coarse=window.matchMedia('(pointer: coarse)');
+    let tool='pen',color='#111111';
+    let strokes=[]; // ink: {kind:'pen'|'erase',color,width,points}
+    let shapes=[];  // {kind:'rect'|'ellipse'|'line'|'arrow',color,width,x1,y1,x2,y2}
+    let selected=null;
+    let history=[];
+    let drag=null;
+    let lastFocus=null;
+
+    function isLine(shape){return shape.kind==='line'||shape.kind==='arrow'}
+    function hasDrawing(){return shapes.length>0||strokes.some(function(stroke){return stroke.kind==='pen'})}
+    function syncButtons(){
+      undoButton.disabled=!history.length;
+      clearButton.disabled=!strokes.length&&!shapes.length;
+      confirmButton.disabled=!hasDrawing();
+    }
+    function remember(){
+      history.push(JSON.stringify({strokes:strokes,shapes:shapes,selected:shapes.indexOf(selected)}));
+      if(history.length>MAX_UNDO)history.shift();
+      syncButtons();
+    }
+    function undo(){
+      if(!history.length)return;
+      const state=JSON.parse(history.pop());
+      strokes=state.strokes;shapes=state.shapes;selected=shapes[state.selected]||null;
+      redrawInk();render();syncButtons();
+    }
+
+    /* drawing */
+    function strokePath(c,points){
+      c.beginPath();
+      c.moveTo(points[0][0],points[0][1]);
+      if(points.length===1){c.lineTo(points[0][0]+0.01,points[0][1]);return}
+      for(let i=1;i<points.length-1;i++){
+        const mx=(points[i][0]+points[i+1][0])/2,my=(points[i][1]+points[i+1][1])/2;
+        c.quadraticCurveTo(points[i][0],points[i][1],mx,my);
+      }
+      const end=points[points.length-1];
+      c.lineTo(end[0],end[1]);
+    }
+    function inkStyle(stroke){
+      inkCtx.setTransform(SCALE,0,0,SCALE,0,0);
+      inkCtx.lineCap='round';inkCtx.lineJoin='round';
+      inkCtx.lineWidth=stroke.width;
+      inkCtx.strokeStyle=stroke.color;
+      inkCtx.globalCompositeOperation=stroke.kind==='erase'?'destination-out':'source-over';
+    }
+    function redrawInk(){
+      inkCtx.setTransform(1,0,0,1,0,0);
+      inkCtx.globalCompositeOperation='source-over';
+      inkCtx.clearRect(0,0,ink.width,ink.height);
+      strokes.forEach(function(stroke){inkStyle(stroke);strokePath(inkCtx,stroke.points);inkCtx.stroke()});
+    }
+    // While drawing: only the newest piece, so long strokes stay fast.
+    function drawTail(stroke){
+      const points=stroke.points;
+      inkStyle(stroke);
+      strokePath(inkCtx,points.slice(Math.max(0,points.length-3)));
+      inkCtx.stroke();
+    }
+    function box(shape){
+      return {x:Math.min(shape.x1,shape.x2),y:Math.min(shape.y1,shape.y2),w:Math.abs(shape.x2-shape.x1),h:Math.abs(shape.y2-shape.y1)};
+    }
+    function drawShape(c,shape){
+      c.save();
+      c.strokeStyle=shape.color;c.lineWidth=shape.width;c.lineCap='round';c.lineJoin='round';
+      c.beginPath();
+      if(shape.kind==='rect'){
+        const b=box(shape);
+        c.rect(b.x,b.y,b.w,b.h);
+      }else if(shape.kind==='ellipse'){
+        const b=box(shape);
+        c.ellipse(b.x+b.w/2,b.y+b.h/2,Math.max(b.w/2,0.5),Math.max(b.h/2,0.5),0,0,Math.PI*2);
+      }else{
+        c.moveTo(shape.x1,shape.y1);c.lineTo(shape.x2,shape.y2);
+        if(shape.kind==='arrow'&&Math.hypot(shape.x2-shape.x1,shape.y2-shape.y1)>2){
+          const angle=Math.atan2(shape.y2-shape.y1,shape.x2-shape.x1),head=Math.min(20,6+Math.hypot(shape.x2-shape.x1,shape.y2-shape.y1)*0.3);
+          c.moveTo(shape.x2,shape.y2);c.lineTo(shape.x2-head*Math.cos(angle-0.5),shape.y2-head*Math.sin(angle-0.5));
+          c.moveTo(shape.x2,shape.y2);c.lineTo(shape.x2-head*Math.cos(angle+0.5),shape.y2-head*Math.sin(angle+0.5));
+        }
+      }
+      c.stroke();
+      c.restore();
+    }
+    function handles(shape){
+      if(isLine(shape))return [{x:shape.x1,y:shape.y1,keys:['x1','y1']},{x:shape.x2,y:shape.y2,keys:['x2','y2']}];
+      return [{x:shape.x1,y:shape.y1,keys:['x1','y1']},{x:shape.x2,y:shape.y1,keys:['x2','y1']},{x:shape.x1,y:shape.y2,keys:['x1','y2']},{x:shape.x2,y:shape.y2,keys:['x2','y2']}];
+    }
+    function drawSelection(shape){
+      ctx.save();
+      ctx.strokeStyle='#3e63dd';ctx.lineWidth=1.2;ctx.setLineDash([5,4]);
+      if(!isLine(shape)){
+        const b=box(shape),pad=shape.width/2+3;
+        ctx.strokeRect(b.x-pad,b.y-pad,b.w+pad*2,b.h+pad*2);
+      }
+      ctx.setLineDash([]);
+      handles(shape).forEach(function(handle){
+        ctx.fillStyle='#ffffff';
+        ctx.beginPath();ctx.rect(handle.x-HANDLE/2,handle.y-HANDLE/2,HANDLE,HANDLE);ctx.fill();ctx.stroke();
+      });
+      ctx.restore();
+    }
+    function render(forExport){
+      ctx.setTransform(1,0,0,1,0,0);
+      ctx.fillStyle='#ffffff';
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.drawImage(ink,0,0);
+      ctx.setTransform(SCALE,0,0,SCALE,0,0);
+      shapes.forEach(function(shape){drawShape(ctx,shape)});
+      if(!forExport&&selected)drawSelection(selected);
+    }
+
+    /* hit testing, in board units */
+    function point(event){
+      const r=canvas.getBoundingClientRect();
+      return {x:Math.max(0,Math.min(W,(event.clientX-r.left)/r.width*W)),y:Math.max(0,Math.min(H,(event.clientY-r.top)/r.height*H))};
+    }
+    function segmentDistance(p,x1,y1,x2,y2){
+      const dx=x2-x1,dy=y2-y1,length=dx*dx+dy*dy;
+      const t=length?Math.max(0,Math.min(1,((p.x-x1)*dx+(p.y-y1)*dy)/length)):0;
+      return Math.hypot(p.x-(x1+t*dx),p.y-(y1+t*dy));
+    }
+    function outlineDistance(shape,p){
+      if(isLine(shape))return segmentDistance(p,shape.x1,shape.y1,shape.x2,shape.y2);
+      const b=box(shape);
+      if(shape.kind==='rect'){
+        return Math.min(segmentDistance(p,b.x,b.y,b.x+b.w,b.y),segmentDistance(p,b.x+b.w,b.y,b.x+b.w,b.y+b.h),
+          segmentDistance(p,b.x+b.w,b.y+b.h,b.x,b.y+b.h),segmentDistance(p,b.x,b.y+b.h,b.x,b.y));
+      }
+      const rx=Math.max(b.w/2,1),ry=Math.max(b.h/2,1),dx=p.x-(b.x+rx),dy=p.y-(b.y+ry);
+      return Math.abs(Math.hypot(dx/rx,dy/ry)-1)*Math.min(rx,ry);
+    }
+    function grabs(shape,p){
+      const slack=coarse.matches?14:8;
+      if(isLine(shape))return segmentDistance(p,shape.x1,shape.y1,shape.x2,shape.y2)<=slack+shape.width/2;
+      const b=box(shape);
+      return p.x>=b.x-slack&&p.x<=b.x+b.w+slack&&p.y>=b.y-slack&&p.y<=b.y+b.h+slack;
+    }
+    function shapeAt(p){
+      for(let i=shapes.length-1;i>=0;i--)if(grabs(shapes[i],p))return shapes[i];
+      return null;
+    }
+    function handleAt(p){
+      if(!selected)return null;
+      const reach=HANDLE/2+(coarse.matches?12:5);
+      return handles(selected).find(function(handle){return Math.abs(handle.x-p.x)<=reach&&Math.abs(handle.y-p.y)<=reach})||null;
+    }
+    function eraseShapesAt(p){
+      const before=shapes.length;
+      shapes=shapes.filter(function(shape){return outlineDistance(shape,p)>ERASER/2+shape.width/2});
+      if(shapes.indexOf(selected)<0)selected=null;
+      return shapes.length!==before;
+    }
+
+    /* gestures */
+    canvas.addEventListener('pointerdown',function(event){
+      if(event.pointerType==='mouse'&&event.button!==0)return;
+      event.preventDefault();
+      canvas.setPointerCapture(event.pointerId);
+      const p=point(event);
+      if(tool!=='pen'&&tool!=='eraser'){
+        const handle=handleAt(p);
+        if(handle){remember();drag={type:'resize',keys:handle.keys};return}
+        const hit=tool==='select'?shapeAt(p):(selected&&grabs(selected,p)?selected:null);
+        if(hit){remember();selected=hit;drag={type:'move',last:p};render();return}
+        if(tool==='select'){selected=null;render();return}
+        remember();
+        const shape={kind:tool,color:color,width:SHAPE,x1:p.x,y1:p.y,x2:p.x,y2:p.y};
+        shapes.push(shape);selected=shape;
+        drag={type:'shape'};
+        render();
+        return;
+      }
+      remember();
+      selected=null;
+      const stroke={kind:tool==='eraser'?'erase':'pen',color:color,width:tool==='eraser'?ERASER:PEN,points:[[p.x,p.y]]};
+      strokes.push(stroke);
+      drag={type:'stroke',stroke:stroke};
+      drawTail(stroke);
+      if(tool==='eraser')eraseShapesAt(p);
+      render();
+    });
+    canvas.addEventListener('pointermove',function(event){
+      if(!drag)return;
+      const p=point(event);
+      if(drag.type==='stroke'){
+        const points=drag.stroke.points,last=points[points.length-1];
+        if(Math.hypot(p.x-last[0],p.y-last[1])<0.8)return;
+        points.push([p.x,p.y]);
+        drawTail(drag.stroke);
+        if(drag.stroke.kind==='erase')eraseShapesAt(p);
+      }else if(drag.type==='shape'){
+        selected.x2=p.x;selected.y2=p.y;
+      }else if(drag.type==='move'){
+        const dx=p.x-drag.last.x,dy=p.y-drag.last.y;
+        selected.x1+=dx;selected.x2+=dx;selected.y1+=dy;selected.y2+=dy;
+        drag.last=p;
+      }else if(drag.type==='resize'){
+        selected[drag.keys[0]]=p.x;selected[drag.keys[1]]=p.y;
+      }
+      render();
+    });
+    function endGesture(){
+      if(!drag)return;
+      // A tap with a shape tool makes no shape.
+      if(drag.type==='shape'&&selected&&Math.hypot(selected.x2-selected.x1,selected.y2-selected.y1)<4){
+        shapes.pop();selected=null;history.pop();
+      }
+      drag=null;
+      render();
+      syncButtons();
+    }
+    canvas.addEventListener('pointerup',endGesture);
+    canvas.addEventListener('pointercancel',endGesture);
+
+    /* toolbar */
+    function setTool(name){
+      tool=name;
+      dialog.querySelectorAll('.sketch-tool[data-tool]').forEach(function(button){
+        const active=button.dataset.tool===name;
+        button.classList.toggle('is-active',active);
+        button.setAttribute('aria-pressed',String(active));
+      });
+      canvas.dataset.tool=name;
+      if(name==='pen'||name==='eraser'){selected=null;render()}
+    }
+    dialog.querySelectorAll('.sketch-tool[data-tool]').forEach(function(button){
+      button.addEventListener('click',function(){setTool(button.dataset.tool)});
+    });
+    dialog.querySelectorAll('.sketch-color').forEach(function(button){
+      button.addEventListener('click',function(){
+        color=button.dataset.color;
+        dialog.querySelectorAll('.sketch-color').forEach(function(other){
+          other.classList.toggle('is-active',other===button);
+          other.setAttribute('aria-pressed',String(other===button));
+        });
+        // In Move and resize, the chosen shape takes the color; with a
+        // drawing tool the color is for what's drawn next (a shape just
+        // drawn stays selected for resizing, and keeps its own).
+        if(tool==='select'&&selected&&selected.color!==color){remember();selected.color=color;render()}
+        if(tool==='eraser')setTool('pen');
+      });
+    });
+    undoButton.addEventListener('click',undo);
+    clearButton.addEventListener('click',function(){
+      if(!strokes.length&&!shapes.length)return;
+      remember();
+      strokes=[];shapes=[];selected=null;
+      redrawInk();render();syncButtons();
+    });
+
+    /* open / close */
+    function reset(){
+      strokes=[];shapes=[];selected=null;history=[];drag=null;
+      color='#111111';
+      dialog.querySelectorAll('.sketch-color').forEach(function(button){
+        const active=button.dataset.color===color;
+        button.classList.toggle('is-active',active);
+        button.setAttribute('aria-pressed',String(active));
+      });
+      setTool('pen');
+      redrawInk();render();syncButtons();
+    }
+    function openSketch(){
+      reset();
+      lastFocus=document.activeElement;
+      dialog.hidden=false;
+      requestAnimationFrame(function(){dialog.classList.add('is-open')});
+      dialog.querySelector('.sketch-tool.is-active').focus({preventScroll:true});
+    }
+    function closeSketch(){
+      dialog.classList.remove('is-open');
+      dialog.hidden=true;
+      drag=null;
+      if(lastFocus&&lastFocus.focus)lastFocus.focus({preventScroll:true});
+    }
+    document.getElementById('sketchCancel').addEventListener('click',closeSketch);
+    confirmButton.addEventListener('click',function(){
+      if(!hasDrawing())return;
+      selected=null;
+      render(true);
+      canvas.toBlob(function(blob){
+        render();
+        if(!blob){if(window.toast)window.toast('Could not save the sketch.');return}
+        const stamp=new Date().toISOString().slice(0,16).replace(/[-:T]/g,'');
+        window.NeoChatAttachments.add(new File([blob],'sketch-'+stamp+'.png',{type:'image/png'}));
+        closeSketch();
+        const message=document.getElementById('message');
+        if(message)message.focus({preventScroll:true});
+      },'image/png');
+    });
+    document.addEventListener('keydown',function(event){
+      if(dialog.hidden)return;
+      if(event.key==='Escape'){event.preventDefault();closeSketch();return}
+      if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&event.key.toLowerCase()==='z'){event.preventDefault();undo();return}
+      if((event.key==='Delete'||event.key==='Backspace')&&selected){
+        event.preventDefault();
+        remember();
+        shapes.splice(shapes.indexOf(selected),1);
+        selected=null;
+        render();syncButtons();
+      }
+    });
+
+    document.getElementById('sketchRow').addEventListener('click',function(){
+      document.getElementById('attachBtn').click();
+      if(!window.NeoChatAuth||!window.NeoChatAuth.isSignedIn()){if(window.toast)window.toast('Sign in to attach a sketch.');return}
+      if(document.getElementById('incognitoState').checked||document.querySelector('.chat-message[data-incognito]')){
+        if(window.toast)window.toast("Files can't be attached in incognito chats yet.");
+        return;
+      }
+      openSketch();
+    });
   })();
 </script>
 <script type="module" src="/assets/landing/landing.js?v=2"></script>
