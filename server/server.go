@@ -26,6 +26,7 @@ import (
 	"neochat/conversation"
 	"neochat/costlog"
 	"neochat/idempotency"
+	"neochat/imagegen"
 	"neochat/limits"
 	"neochat/moderation"
 	"neochat/pagestore"
@@ -223,6 +224,10 @@ type Server struct {
 	Fetcher          *webfetch.Fetcher
 	Pages            pagestore.Store
 	WebSearchModelID string
+
+	// Images makes pictures for image models (image.go). Nil: image models
+	// answer that image generation isn't available.
+	Images *imagegen.Client
 }
 
 // providerKeyHeader carries the user's own Polza AI key on chat requests.
@@ -325,6 +330,9 @@ type chatRequest struct {
 	// providerKey is the user's own vendor key, read from the
 	// X-Provider-Key header (never from the body, never persisted).
 	providerKey string
+	// imageKey is the user's separate key for image models, from the
+	// X-Image-Key header (image.go); same handling as providerKey.
+	imageKey string
 }
 
 type incognitoMessage struct {
@@ -376,6 +384,8 @@ type chatResponse struct {
 	// Questionnaire: the answer ends with questions for the user (see
 	// ResponseVersion.Questionnaire).
 	Questionnaire *conversation.Questionnaire `json:"questionnaire,omitempty"`
+	// Images: pictures an image model made (see ResponseVersion.Images).
+	Images []conversation.Attachment `json:"images,omitempty"`
 
 	// Blocked is true when Layer 1 moderation flagged the request before
 	// any generation happened -- ResponseText is then tosViolationMessage,
@@ -880,6 +890,7 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 	req.UserID = identity.UserID
 	req.PlanID = identity.PlanID
 	req.providerKey = strings.TrimSpace(r.Header.Get(providerKeyHeader))
+	req.imageKey = strings.TrimSpace(r.Header.Get(imageKeyHeader))
 	req.Quote = cleanQuote(req.Quote)
 
 	if req.Message == "" && len(req.Attachments) == 0 {
@@ -1082,6 +1093,7 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		Instructions:        input.Instructions,
 		WebSearch:           input.WebSearch,
 		providerKey:         strings.TrimSpace(r.Header.Get(providerKeyHeader)),
+		imageKey:            strings.TrimSpace(r.Header.Get(imageKeyHeader)),
 		regenerateMessageID: target.ID, regenerationHistoryDrop: 2,
 	}
 	if req.Persona != "" && !isValidPersona(req.Persona) {
@@ -1140,6 +1152,10 @@ type preparedRequest struct {
 	// attachments are the files sent with this turn's user message, stored
 	// on it by persistTurn.
 	attachments []conversation.Attachment
+
+	// lastImage is the newest picture an earlier answer in this chat made,
+	// what an image model edits when the message attaches none.
+	lastImage *conversation.Attachment
 
 	// requestID identifies this one /chat call's costlog.Store.Record
 	// entries -- shared by the classify/moderate entries recordAuxCostLog
@@ -1309,6 +1325,7 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 
 	var tail []conversation.Message
 	var summaryText string
+	var lastImage *conversation.Attachment
 	if req.Incognito {
 		tail = make([]conversation.Message, 0, len(req.IncognitoHistory))
 		for _, message := range req.IncognitoHistory {
@@ -1334,6 +1351,7 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 			}
 			history = history[:len(history)-req.regenerationHistoryDrop]
 		}
+		lastImage = lastGeneratedImage(history)
 		summaryServer := *s
 		summaryServer.Summarizer.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Summarizer.Client, inputRate: s.Summarizer.CostInputPerMTok, outputRate: s.Summarizer.CostOutputPerMTok}
 		tail, summaryText = summaryServer.maybeSummarize(ctx, req.UserID, conversationID, summaryState, history)
@@ -1386,6 +1404,7 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 		requestID:              requestID,
 		plan:                   plan,
 		attachments:            attachmentRefs(files),
+		lastImage:              lastImage,
 	}, nil, nil
 }
 
@@ -1601,6 +1620,13 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 		if !ok {
 			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("selected model %q not found in catalog", result.SelectedModelID)
 		}
+		if model.Kind == router.KindImage {
+			answer, err := s.imageAnswer(ctx, req, prepared, result, model)
+			if err != nil {
+				return result, model, answer, fmt.Errorf("generate image: %w", err)
+			}
+			return result, model, answer, nil
+		}
 		gen, ok := s.Generators[model.Provider]
 		if !ok {
 			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
@@ -1652,14 +1678,17 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	version := conversation.ResponseVersion{
 		Content: genResult.Text, ModelID: model.ID, CreatedAt: now,
 		Activity: answer.Activity, Sources: webLinks(genResult.Citations), ThoughtMS: thought.Milliseconds(),
-		Questionnaire: answer.Questionnaire,
+		Questionnaire: answer.Questionnaire, Images: answer.Images,
+	}
+	if len(version.Images) > 0 {
+		version.ThoughtMS = 0 // a picture isn't "thought for N seconds"
 	}
 	regenerated, err := s.persistTurn(ctx, req, prepared, model, version)
 	if err != nil {
 		return chatResponse{}, err
 	}
 
-	actualCost := router.ComputeCostUSD(model, genResult.InputTokens, genResult.OutputTokens)
+	actualCost := router.ComputeCostUSD(model, genResult.InputTokens, genResult.OutputTokens) + answer.ImageCostUSD
 	// Best-effort like Conversations.Append above: the request already
 	// succeeded and the user already has their answer, so a logging
 	// failure here shouldn't fail the request -- it just means this one
@@ -1667,6 +1696,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	// checklist item 7), not from the spend store already settled by billedCall,
 	// which is what actually gates the Thinking+Max cap.
 	entry := router.NewCostLogEntry(req.UserID, prepared.requestID, model, result.SelectedMode, genResult.InputTokens, genResult.OutputTokens, now)
+	entry.CostUSD += answer.ImageCostUSD
 	if err := s.CostLog.Record(ctx, entry); err != nil {
 		log.Printf("server: failed to record cost log entry for request_id=%s: %v", prepared.requestID, err)
 	}
@@ -1683,6 +1713,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		Sources:          version.Sources,
 		ThoughtMS:        version.ThoughtMS,
 		Questionnaire:    version.Questionnaire,
+		Images:           version.Images,
 	}
 	if req.regenerateMessageID > 0 {
 		response.MessageID = regenerated.ID
@@ -1722,6 +1753,17 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 		}
 		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: text, ModelID: model.ID, CreatedAt: now, Versions: []conversation.ResponseVersion{version}}); err != nil {
 			log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
+		}
+	}
+	// Generated pictures join the chat's files only now that the answer
+	// showing them is stored, the same order uploads follow.
+	if len(version.Images) > 0 && s.Attachments != nil {
+		ids := make([]string, len(version.Images))
+		for i, image := range version.Images {
+			ids[i] = image.ID
+		}
+		if err := s.Attachments.Claim(ctx, req.UserID, prepared.conversationID, ids); err != nil {
+			log.Printf("server: claim generated images for conversation_id=%s: %v", prepared.conversationID, err)
 		}
 	}
 	if req.ProjectID != "" {
@@ -1769,6 +1811,10 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
 	if model.ID == "" {
 		// Never reached a model (routing failed, no generator configured,
 		// every circuit open) -- nothing was sent, so nothing was billed.
+		return
+	}
+	if model.Kind == router.KindImage {
+		// imageAnswer settled (or retained) the picture's price itself.
 		return
 	}
 

@@ -130,12 +130,21 @@ func (s *Server) validateRequest(req chatRequest) error {
 		if req.RequestedMode != "manual" {
 			return errRouterDisabled
 		}
-		if req.providerKey == "" {
+		// An image model runs on the image key alone (image.go).
+		model, found := s.Router.Catalog.FindModel(req.ManualModelID)
+		switch {
+		case found && model.Kind == router.KindImage:
+			if req.imageKey == "" {
+				return errMissingImageKey
+			}
+		case req.providerKey == "":
 			return errMissingProviderKey
 		}
 	}
-	if len(req.providerKey) > 512 || strings.ContainsAny(req.providerKey, " \t\r\n") {
-		return fmt.Errorf("%w: malformed provider API key", errInvalidRequest)
+	for _, key := range []string{req.providerKey, req.imageKey} {
+		if len(key) > 512 || strings.ContainsAny(key, " \t\r\n") {
+			return fmt.Errorf("%w: malformed provider API key", errInvalidRequest)
+		}
 	}
 	if len(req.Attachments) > attachment.MaxPerMessage {
 		return userErrorf("You can attach up to %d files to one message.", attachment.MaxPerMessage)

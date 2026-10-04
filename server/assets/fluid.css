@@ -7557,3 +7557,333 @@ html.is-asking .ask-card.is-pending .ask-card-action {
   display: block;
   max-height: none;
 }
+
+/* Pictures an image model made, and the dot field shown while one is made. */
+.generated-images {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 2px 0 10px;
+}
+
+.image-gen-phrase {
+  position: relative;
+  height: 22px;
+  margin: 0;
+  font-size: 14px;
+  transition: opacity .4s ease;
+}
+
+.image-gen-phrase.is-done {
+  opacity: 0;
+}
+
+.image-gen-phrase .image-gen-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  white-space: nowrap;
+  animation: image-phrase-in .45s var(--ease-out) both;
+}
+
+.image-gen-phrase .image-gen-label.is-leaving {
+  animation: image-phrase-out .35s ease forwards;
+}
+
+@keyframes image-phrase-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(2px);
+  }
+}
+
+@keyframes image-phrase-out {
+  to {
+    opacity: 0;
+    transform: translateY(-8px);
+    filter: blur(2px);
+  }
+}
+
+.generated-image {
+  position: relative;
+  width: min(100%, 440px);
+  margin: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: var(--hover);
+}
+
+.generated-image.is-generating {
+  background: #120f17;
+}
+
+.dot-field-canvas,
+.dot-field-glow {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  transition: opacity .6s ease;
+}
+
+/* App-wide icon styles give every svg a stroke; the glow has none. */
+.dot-field-glow,
+.dot-field-glow circle {
+  stroke: none;
+}
+
+.generated-image.is-ready .dot-field-canvas,
+.generated-image.is-ready .dot-field-glow {
+  opacity: 0;
+}
+
+.generated-image-open {
+  display: block;
+  width: 100%;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+}
+
+.generated-image img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+  transition: opacity .6s ease;
+}
+
+.generated-image.is-ready img {
+  opacity: 1;
+}
+
+.generated-image-download {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border: 0;
+  border-radius: 9px;
+  background: rgb(0 0 0 / .55);
+  color: #fff;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity .16s ease;
+}
+
+.generated-image-download svg {
+  width: 16px;
+  height: 16px;
+}
+
+.generated-image.is-ready:hover .generated-image-download,
+.generated-image-download:focus-visible {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .generated-image.is-ready .generated-image-download {
+    opacity: 1;
+  }
+}
+
+.generated-image.is-generating .generated-image-download,
+.generated-image.is-missing .generated-image-download {
+  display: none;
+}
+
+.generated-image.is-missing::after {
+  content: "Image unavailable";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+/* Code blocks: a header with the language and Copy, then the code, colored
+   by highlight.js (vendored in /assets/highlight). Token colors follow
+   GitHub's light and dark palettes. */
+.chat-text .code-block {
+  margin: .9em 0;
+  overflow: hidden;
+  border-radius: 10px;
+  background: var(--surface-1);
+  box-shadow: var(--shadow-2);
+  --code-comment: #6e7781;
+  --code-keyword: #cf222e;
+  --code-string: #0a3069;
+  --code-number: #0550ae;
+  --code-title: #8250df;
+  --code-type: #953800;
+  --code-tag: #116329;
+  --code-added: #116329;
+  --code-added-bg: #dafbe1;
+  --code-removed: #82071e;
+  --code-removed-bg: #ffebe9;
+}
+
+html[data-theme="dark"] .chat-text .code-block {
+  --code-comment: #8b949e;
+  --code-keyword: #ff7b72;
+  --code-string: #a5d6ff;
+  --code-number: #79c0ff;
+  --code-title: #d2a8ff;
+  --code-type: #ffa657;
+  --code-tag: #7ee787;
+  --code-added: #aff5b4;
+  --code-added-bg: #033a16;
+  --code-removed: #ffdcd7;
+  --code-removed-bg: #67060c;
+}
+
+.chat-text .code-block pre {
+  margin: 0;
+  padding: 12px 16px 16px;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.code-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 5px 6px 5px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+  font-family: Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size: 12px;
+  line-height: 1;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.code-lang {
+  overflow: hidden;
+  font-family: "SFMono-Regular",Consolas,"Liberation Mono",monospace;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.code-copy {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease;
+}
+
+.code-copy:hover,
+.code-copy.is-copied {
+  color: var(--text);
+}
+
+.code-copy:hover {
+  background: var(--hover);
+}
+
+.code-copy svg {
+  width: 14px;
+  height: 14px;
+}
+
+.hljs-comment,
+.hljs-quote {
+  color: var(--code-comment);
+  font-style: italic;
+}
+
+.hljs-keyword,
+.hljs-selector-tag,
+.hljs-literal,
+.hljs-doctag,
+.hljs-template-tag,
+.hljs-meta .hljs-keyword {
+  color: var(--code-keyword);
+}
+
+.hljs-string,
+.hljs-regexp,
+.hljs-meta .hljs-string,
+.hljs-char.escape_ {
+  color: var(--code-string);
+}
+
+.hljs-number,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-attr,
+.hljs-attribute,
+.hljs-variable.constant_,
+.hljs-selector-attr,
+.hljs-selector-pseudo,
+.hljs-meta,
+.hljs-link {
+  color: var(--code-number);
+}
+
+.hljs-title,
+.hljs-title.function_,
+.hljs-section,
+.hljs-selector-id,
+.hljs-selector-class {
+  color: var(--code-title);
+}
+
+.hljs-built_in,
+.hljs-type,
+.hljs-title.class_,
+.hljs-variable,
+.hljs-template-variable,
+.hljs-params {
+  color: var(--code-type);
+}
+
+.hljs-params {
+  color: inherit;
+}
+
+.hljs-name,
+.hljs-tag,
+.hljs-property {
+  color: var(--code-tag);
+}
+
+.hljs-addition {
+  color: var(--code-added);
+  background: var(--code-added-bg);
+}
+
+.hljs-deletion {
+  color: var(--code-removed);
+  background: var(--code-removed-bg);
+}
+
+.hljs-emphasis {
+  font-style: italic;
+}
+
+.hljs-strong {
+  font-weight: 600;
+}

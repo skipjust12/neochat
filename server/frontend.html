@@ -8,7 +8,8 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=15" />
+<link rel="stylesheet" href="/assets/fluid.css?v=17" />
+<script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/landing/landing.css?v=1" />
 <script>try{if(!localStorage.getItem('neochat-signed-in')&&!sessionStorage.getItem('neochat-api-key'))document.documentElement.classList.add('is-guest')}catch(error){document.documentElement.classList.add('is-guest')}</script>
 </head>
@@ -498,11 +499,11 @@
                       <span class="model-symbol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68q.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58a12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68q-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96q2.19.93 3.81 2.55t2.55 3.81" fill="currentColor" stroke="none"/></svg></span>
                       <span class="model-copy"><strong>Gemini 3.5 Flash-Lite</strong><span class="model-meta"><span>Cheapest Google model</span></span><span class="model-tier">Instant tier</span></span>
                     </button>
-                    <button class="model-row" data-unavailable="Image models need the image API, which is not wired up yet." data-model="Nano Banana Pro" type="button">
+                    <button class="model-row" data-model="Nano Banana Pro" data-model-id="nano-banana-pro" data-inputs="text,image" data-kind="image" type="button">
                       <span class="model-symbol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68q.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58a12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68q-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96q2.19.93 3.81 2.55t2.55 3.81" fill="currentColor" stroke="none"/></svg></span>
                       <span class="model-copy"><strong>Nano Banana Pro</strong><span class="model-meta"><span>Most advanced image model</span></span><span class="model-tier">Max/image tier</span></span>
                     </button>
-                    <button class="model-row" data-unavailable="Image models need the image API, which is not wired up yet." data-model="Nano Banana 2 lite" type="button">
+                    <button class="model-row" data-model="Nano Banana 2 lite" data-model-id="nano-banana-2-lite" data-inputs="text,image" data-kind="image" type="button">
                       <span class="model-symbol"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11.04 19.32Q12 21.51 12 24q0-2.49.93-4.68q.96-2.19 2.58-3.81t3.81-2.55Q21.51 12 24 12q-2.49 0-4.68-.93a12.3 12.3 0 0 1-3.81-2.58a12.3 12.3 0 0 1-2.58-3.81Q12 2.49 12 0q0 2.49-.96 4.68q-.93 2.19-2.55 3.81a12.3 12.3 0 0 1-3.81 2.58Q2.49 12 0 12q2.49 0 4.68.96q2.19.93 3.81 2.55t2.55 3.81" fill="currentColor" stroke="none"/></svg></span>
                       <span class="model-copy"><strong>Nano Banana 2 lite</strong><span class="model-meta"><span>Fast image model</span></span><span class="model-tier">Instant/image tier</span></span>
                     </button>
@@ -705,6 +706,18 @@
           <div class="set-row">
             <span class="label soft" id="providerKeyStatus" aria-live="polite">No key added yet.</span>
             <span class="val"><button class="link-btn danger" id="providerKeyRemove" type="button" hidden>Remove</button></span>
+          </div>
+        </div>
+        <div class="set-sec" id="imageKeySec">
+          <div class="set-sec-title"><svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>Image API</div>
+          <p class="set-note">A separate Polza AI key for image models (Nano Banana). NeoChat sends it only when you make a picture, so images are billed apart from chat. It stays in this browser and is never stored on the server.</p>
+          <form class="set-row provider-key-row" id="imageKeyForm" autocomplete="off">
+            <label class="label soft" for="imageKey">Image API key</label>
+            <span class="val"><input class="api-key-input" id="imageKey" type="password" autocomplete="off" spellcheck="false" placeholder="pza_…" maxlength="512" /><button class="link-btn" type="submit">Save</button></span>
+          </form>
+          <div class="set-row">
+            <span class="label soft" id="imageKeyStatus" aria-live="polite">No key added yet.</span>
+            <span class="val"><button class="link-btn danger" id="imageKeyRemove" type="button" hidden>Remove</button></span>
           </div>
         </div>
         <div class="set-sec" id="sessionsSec">
@@ -1482,6 +1495,9 @@
     // The user's own Polza AI key (Settings -> Account). Sent per request
     // as X-Provider-Key; the server never stores it.
     const providerKeyStorageKey='neochat-provider-key';
+    // The separate key for image models (Settings -> Account -> Image API),
+    // sent as X-Image-Key only with requests to an image model.
+    const imageKeyStorageKey='neochat-image-key';
     const providerKeyForm=document.getElementById('providerKeyForm');
     const providerKeyField=document.getElementById('providerKey');
     const providerKeyStatus=document.getElementById('providerKeyStatus');
@@ -1540,29 +1556,46 @@
     }
 
     function providerKey(){return storedValue(localStorage,providerKeyStorageKey).trim()}
+    function imageKey(){return storedValue(localStorage,imageKeyStorageKey).trim()}
     function maskedProviderKey(key){return key.length>12?key.slice(0,6)+'…'+key.slice(-4):'••••'}
-    function renderProviderKey(){
-      const key=providerKey();
-      providerKeyStatus.textContent=key?'Saved: '+maskedProviderKey(key):'No key added yet.';
-      providerKeyRemove.hidden=!key;
-      providerKeyField.value='';
-      providerKeyField.placeholder=key?maskedProviderKey(key):'pza_…';
+
+    // A key kept in this browser (Settings -> Account): the Polza key for
+    // chat, and the separate one for image models. Both work the same way.
+    function keySetting(storageKey,form,field,status,remove,name){
+      function render(){
+        const key=storedValue(localStorage,storageKey).trim();
+        status.textContent=key?'Saved: '+maskedProviderKey(key):'No key added yet.';
+        remove.hidden=!key;
+        field.value='';
+        field.placeholder=key?maskedProviderKey(key):'pza_…';
+      }
+      form.addEventListener('submit',function(event){
+        event.preventDefault();
+        const key=field.value.trim();
+        if(!key){toast('Paste your '+name+' first.');return}
+        if(/\s/.test(key)){toast('That key contains spaces — copy it again from polza.ai.');return}
+        storeValue(localStorage,storageKey,key);
+        render();
+        toast(key.startsWith('pza_')?name+' saved.':'Saved. Polza keys usually start with pza_ — double-check it.');
+      });
+      remove.addEventListener('click',function(){
+        storeValue(localStorage,storageKey,'');
+        render();
+        toast(name+' removed.');
+      });
+      render();
+      return render;
     }
-    providerKeyForm.addEventListener('submit',function(event){
-      event.preventDefault();
-      const key=providerKeyField.value.trim();
-      if(!key){toast('Paste your Polza AI key first.');return}
-      if(/\s/.test(key)){toast('That key contains spaces — copy it again from polza.ai.');return}
-      storeValue(localStorage,providerKeyStorageKey,key);
-      renderProviderKey();
-      toast(key.startsWith('pza_')?'Polza AI key saved.':'Saved. Polza keys usually start with pza_ — double-check it.');
-    });
-    providerKeyRemove.addEventListener('click',function(){
-      storeValue(localStorage,providerKeyStorageKey,'');
-      renderProviderKey();
-      toast('Polza AI key removed.');
-    });
-    renderProviderKey();
+    const renderProviderKey=keySetting(providerKeyStorageKey,providerKeyForm,providerKeyField,providerKeyStatus,providerKeyRemove,'Polza AI key');
+    const renderImageKey=keySetting(imageKeyStorageKey,document.getElementById('imageKeyForm'),document.getElementById('imageKey'),document.getElementById('imageKeyStatus'),document.getElementById('imageKeyRemove'),'Image API key');
+
+    function modelRow(modelID){
+      return modelID?document.querySelector('.model-row[data-model-id="'+modelID+'"]'):null;
+    }
+    function isImageModel(modelID){
+      const row=modelRow(modelID);
+      return Boolean(row&&row.dataset.kind==='image');
+    }
 
     function selectedReasoningEffort(){
       const index=Math.round(Number(reasoningRange.value));
@@ -1584,6 +1617,14 @@
     function readyToSend(request){
       if(request.requested_mode!=='manual'){toast(routerDisabledMessage);return false}
       if(!request.manual_model_id){toast('Pick a model in Manual mode first.');return false}
+      if(isImageModel(request.manual_model_id)){
+        if(!imageKey()){
+          toast('Add your Image API key in Settings → Account to make images.');
+          if(window.openSettings)window.openSettings('account');
+          return false;
+        }
+        return true;
+      }
       if(!providerKey()){
         toast('Add your Polza AI API key in Settings → Account.');
         if(window.openSettings)window.openSettings('account');
@@ -1592,8 +1633,11 @@
       return true;
     }
 
-    function chatHeaders(){
-      return {'Content-Type':'application/json','X-Provider-Key':providerKey()};
+    // The image key goes only with requests to an image model.
+    function chatHeaders(request){
+      const headers={'Content-Type':'application/json','X-Provider-Key':providerKey()};
+      if(request&&isImageModel(request.manual_model_id)&&imageKey())headers['X-Image-Key']=imageKey();
+      return headers;
     }
 
     // Signed in means this browser holds a session cookie (HttpOnly, so this
@@ -1793,6 +1837,75 @@
       row.append(cell);
     }
 
+    /* ---------- code blocks ---------- */
+    // Fenced code gets a header with its language and a Copy button, and is
+    // colored by highlight.js (/assets/highlight, loaded with defer: blocks
+    // drawn before it arrives are colored once it does). A block that names
+    // no language gets a guess once it's complete -- guessing while it
+    // streams would make the label jump.
+    const codeCopyIcon='<svg class="lucide lucide-copy" data-lucide-icon="copy" viewBox="0 0 24 24" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2" /><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2" /></svg>';
+    const codeCheckIcon='<svg class="lucide lucide-check" data-lucide-icon="check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" /></svg>';
+    const guessableLanguages=['python','javascript','typescript','go','bash','json','yaml','sql','java','cpp','c','csharp','rust','php','ruby','kotlin','swift','xml','css','scss','markdown','dockerfile','powershell','ini','diff','lua','r'];
+    const hljsScript=document.getElementById('hljsScript');
+    if(hljsScript&&!window.hljs){
+      hljsScript.addEventListener('load',function(){
+        document.querySelectorAll('.code-block code[data-highlight="pending"]').forEach(highlightCode);
+      });
+    }
+
+    function highlightCode(code){
+      if(!window.hljs){code.dataset.highlight='pending';return}
+      delete code.dataset.highlight;
+      const named=code.dataset.language||'';
+      const text=code.textContent;
+      if(!text.trim()||text.length>60000)return;
+      let language=named&&window.hljs.getLanguage(named)?named:'';
+      let html='';
+      try{
+        if(language){
+          html=window.hljs.highlight(text,{language:language,ignoreIllegals:true}).value;
+        }else if(!named&&code.dataset.complete==='true'){
+          const guess=window.hljs.highlightAuto(text,guessableLanguages);
+          if(guess.language&&guess.relevance>=5){html=guess.value;language=guess.language}
+        }
+      }catch(error){html=''}
+      // highlight.js escapes the text it wraps in spans.
+      if(html){code.innerHTML=html;code.classList.add('hljs')}
+      const block=code.closest('.code-block');
+      if(!named&&language&&block)block.querySelector('.code-lang').textContent=language;
+    }
+
+    function codeBlock(info,text,complete){
+      const language=String(info||'').toLowerCase().replace(/[^a-z0-9+#._-]/g,'').slice(0,30);
+      const block=document.createElement('div');
+      block.className='code-block';
+      const head=document.createElement('div');
+      head.className='code-head';
+      const label=document.createElement('span');
+      label.className='code-lang';
+      label.textContent=language||'text';
+      const copy=document.createElement('button');
+      copy.type='button';copy.className='code-copy';copy.setAttribute('aria-label','Copy code');
+      copy.innerHTML=codeCopyIcon+'<span>Copy</span>';
+      const pre=document.createElement('pre');
+      const code=document.createElement('code');
+      if(language){code.dataset.language=language;code.className='language-'+language.replace(/[^a-z0-9_-]/g,'')}
+      code.dataset.complete=String(Boolean(complete));
+      code.textContent=text;
+      copy.addEventListener('click',async function(){
+        try{await copyMessageText(code.textContent)}catch(error){toast('Could not copy the code.');return}
+        copy.innerHTML=codeCheckIcon+'<span>Copied</span>';
+        copy.classList.add('is-copied');
+        clearTimeout(copy.resetTimer);
+        copy.resetTimer=setTimeout(function(){copy.innerHTML=codeCopyIcon+'<span>Copy</span>';copy.classList.remove('is-copied')},2000);
+      });
+      head.append(label,copy);
+      pre.append(code);
+      block.append(head,pre);
+      highlightCode(code);
+      return block;
+    }
+
     function renderMarkdown(container,source){
       container.replaceChildren();
       const lines=String(source||'').replace(/\r\n?/g,'\n').split('\n');
@@ -1801,17 +1914,15 @@
         const line=lines[index];
         if(!line.trim()){index++;continue}
 
-        const fence=line.match(/^```([\w-]*)\s*$/);
+        // The info string's first word is the language: ```c++, ```python title="x".
+        const fence=line.match(/^```\s*([^\s`]*)[^`]*$/);
         if(fence){
           index++;
           const codeLines=[];
           while(index<lines.length&&!/^```\s*$/.test(lines[index]))codeLines.push(lines[index++]);
-          if(index<lines.length)index++;
-          const pre=document.createElement('pre');
-          const code=document.createElement('code');
-          if(fence[1])code.className='language-'+fence[1];
-          code.textContent=codeLines.join('\n');
-          pre.append(code);container.append(pre);continue;
+          const complete=index<lines.length;
+          if(complete)index++;
+          container.append(codeBlock(fence[1],codeLines.join('\n'),complete));continue;
         }
 
         const heading=line.match(/^(#{1,6})\s+(.+)$/);
@@ -2646,6 +2757,7 @@
       const version=versions[message.responseVersionIndex];
       message.dataset.messageText=version.content;
       renderMarkdown(message.querySelector('.chat-text'),version.content);
+      renderGeneratedImages(message,version.images);
       renderThought(message,{live:false,seconds:version.thought_ms?version.thought_ms/1000:0,activity:version.activity,sources:version.sources});
       renderAskCard(message);
       const navigation=message.querySelector('.response-versions');
@@ -2772,12 +2884,291 @@
       if(!row)return '';
       const inputs=(row.dataset.inputs||'text').split(',');
       const name=row.dataset.model||modelID;
+      if(row.dataset.kind==='image'){
+        const other=files.find(function(file){return file.kind!=='image'});
+        if(other)return name+' works from pictures only. Remove '+other.name+', or pick a chat model for it.';
+        return '';
+      }
       for(const file of files){
         if(file.kind==='image'&&inputs.indexOf('image')<0)return name+" can't read images. Pick another model or remove "+file.name+'.';
         if(file.kind==='document'&&inputs.indexOf('file')<0)return name+" can't read PDF or DOCX files. Pick another model or remove "+file.name+'.';
       }
       return '';
     }
+
+    /* ---------- generated images ---------- */
+    // An image model answers with a picture. While it's being made, the
+    // answer shows a dot field (react-bits' DotField, ported to a plain
+    // canvas) under a line that moves on every 10 seconds; the picture then
+    // fades in in the field's place. Pictures are the chat's files, fetched
+    // through apiFetch like attachments.
+    const imagePhrases=['Making sketches.','Adding details','Adding a shadow','Almost finished','Finishing touches'];
+    const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+    const downloadIcon='<svg class="lucide lucide-download" data-lucide-icon="download" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></svg>';
+
+    // DotField: a grid of dots in a diagonal gradient that bulges away from
+    // the pointer while it moves, under a soft glow that follows it.
+    function createDotField(host,options){
+      const o=Object.assign({dotRadius:2,dotSpacing:16,cursorRadius:250,cursorForce:0,bulgeOnly:true,bulgeStrength:58,glowRadius:160,sparkle:false,waveAmplitude:0,gradientFrom:'#ffffff',gradientTo:'#B497CF',glowColor:'#120F17'},options);
+      const TWO_PI=Math.PI*2;
+      const canvas=document.createElement('canvas');
+      canvas.className='dot-field-canvas';
+      const svg=document.createElementNS('http://www.w3.org/2000/svg','svg');
+      svg.setAttribute('class','dot-field-glow');
+      svg.setAttribute('aria-hidden','true');
+      const gradientID='dot-field-glow-'+Math.random().toString(36).slice(2,9);
+      svg.innerHTML='<defs><radialGradient id="'+gradientID+'"><stop offset="0%" stop-color="'+o.glowColor+'"/><stop offset="100%" stop-color="transparent"/></radialGradient></defs><circle cx="-9999" cy="-9999" r="'+o.glowRadius+'" fill="url(#'+gradientID+')" stroke="none" style="opacity:0;will-change:opacity"/>';
+      const glow=svg.querySelector('circle');
+      host.append(canvas,svg);
+      const ctx=canvas.getContext('2d',{alpha:true});
+      const dpr=Math.min(window.devicePixelRatio||1,2);
+      const mouse={x:-9999,y:-9999,prevX:-9999,prevY:-9999,speed:0};
+      let w=0,h=0,dots=[],raf=0,frameCount=0,engagement=0,glowOpacity=0,visible=true,alive=true;
+
+      function buildDots(){
+        const step=o.dotRadius+o.dotSpacing;
+        const cols=Math.floor(w/step),rows=Math.floor(h/step);
+        const padX=(w%step)/2,padY=(h%step)/2;
+        dots=[];
+        for(let row=0;row<rows;row++){
+          for(let col=0;col<cols;col++){
+            const ax=padX+col*step+step/2,ay=padY+row*step+step/2;
+            dots.push({ax:ax,ay:ay,sx:ax,sy:ay,vx:0,vy:0,x:ax,y:ay});
+          }
+        }
+      }
+      function resize(){
+        const rect=host.getBoundingClientRect();
+        w=rect.width;h=rect.height;
+        canvas.width=Math.round(w*dpr);canvas.height=Math.round(h*dpr);
+        canvas.style.width=w+'px';canvas.style.height=h+'px';
+        ctx.setTransform(dpr,0,0,dpr,0,0);
+        buildDots();
+        if(reducedMotion.matches)draw();
+      }
+      function onMove(event){
+        const rect=host.getBoundingClientRect();
+        mouse.x=event.clientX-rect.left;
+        mouse.y=event.clientY-rect.top;
+      }
+      function updateSpeed(){
+        const dx=mouse.prevX-mouse.x,dy=mouse.prevY-mouse.y;
+        mouse.speed+=(Math.sqrt(dx*dx+dy*dy)-mouse.speed)*0.5;
+        if(mouse.speed<0.001)mouse.speed=0;
+        mouse.prevX=mouse.x;mouse.prevY=mouse.y;
+      }
+      function draw(){
+        frameCount++;
+        const t=frameCount*0.02;
+        engagement+=(Math.min(mouse.speed/5,1)-engagement)*0.06;
+        if(engagement<0.001)engagement=0;
+        const eng=engagement;
+        glowOpacity+=(eng-glowOpacity)*0.08;
+        glow.setAttribute('cx',mouse.x);
+        glow.setAttribute('cy',mouse.y);
+        glow.style.opacity=glowOpacity;
+        ctx.clearRect(0,0,w,h);
+        const gradient=ctx.createLinearGradient(0,0,w,h);
+        gradient.addColorStop(0,o.gradientFrom);
+        gradient.addColorStop(1,o.gradientTo);
+        ctx.fillStyle=gradient;
+        const cr=o.cursorRadius,crSq=cr*cr,rad=o.dotRadius/2;
+        ctx.beginPath();
+        for(let i=0;i<dots.length;i++){
+          const d=dots[i];
+          const dx=mouse.x-d.ax,dy=mouse.y-d.ay,distSq=dx*dx+dy*dy;
+          if(distSq<crSq&&eng>0.01){
+            const dist=Math.sqrt(distSq),angle=Math.atan2(dy,dx);
+            if(o.bulgeOnly){
+              const k=1-dist/cr,push=k*k*o.bulgeStrength*eng;
+              d.sx+=(d.ax-Math.cos(angle)*push-d.sx)*0.15;
+              d.sy+=(d.ay-Math.sin(angle)*push-d.sy)*0.15;
+            }else{
+              const move=(500/dist)*(mouse.speed*o.cursorForce);
+              d.vx+=Math.cos(angle)*-move;
+              d.vy+=Math.sin(angle)*-move;
+            }
+          }else if(o.bulgeOnly){
+            d.sx+=(d.ax-d.sx)*0.1;
+            d.sy+=(d.ay-d.sy)*0.1;
+          }
+          if(!o.bulgeOnly){
+            d.vx*=0.9;d.vy*=0.9;
+            d.x=d.ax+d.vx;d.y=d.ay+d.vy;
+            d.sx+=(d.x-d.sx)*0.1;d.sy+=(d.y-d.sy)*0.1;
+          }
+          let x=d.sx,y=d.sy;
+          if(o.waveAmplitude>0){
+            y+=Math.sin(d.ax*0.03+t)*o.waveAmplitude;
+            x+=Math.cos(d.ay*0.03+t*0.7)*o.waveAmplitude*0.5;
+          }
+          const r=o.sparkle&&((((i*2654435761)^(frameCount>>3))>>>0)%100)<3?rad*1.8:rad;
+          ctx.moveTo(x+r,y);
+          ctx.arc(x,y,r,0,TWO_PI);
+        }
+        ctx.fill();
+      }
+      function tick(){
+        draw();
+        raf=visible&&alive?requestAnimationFrame(tick):0;
+      }
+      const speedTimer=setInterval(updateSpeed,20);
+      const sizeObserver=new ResizeObserver(resize);
+      sizeObserver.observe(host);
+      // Off screen (scrolled away) the field stops drawing.
+      const viewObserver=new IntersectionObserver(function(entries){
+        visible=entries[entries.length-1].isIntersecting;
+        if(visible&&!raf&&alive&&!reducedMotion.matches)raf=requestAnimationFrame(tick);
+      });
+      viewObserver.observe(host);
+      resize();
+      if(!reducedMotion.matches){
+        window.addEventListener('pointermove',onMove,{passive:true});
+        raf=requestAnimationFrame(tick);
+      }
+      return {destroy:function(){
+        alive=false;
+        cancelAnimationFrame(raf);
+        clearInterval(speedTimer);
+        sizeObserver.disconnect();
+        viewObserver.disconnect();
+        window.removeEventListener('pointermove',onMove);
+        canvas.remove();svg.remove();
+      }};
+    }
+
+    // Where a message's pictures go: above its text.
+    function generatedImagesHolder(message,create){
+      let holder=message.querySelector('.chat-copy > .generated-images');
+      if(!holder&&create){
+        holder=document.createElement('div');
+        holder.className='generated-images';
+        const body=message.querySelector('.chat-text');
+        body.parentNode.insertBefore(holder,body);
+      }
+      return holder;
+    }
+
+    function downloadAttachment(file){
+      attachmentURL(file.id).then(function(url){
+        const link=document.createElement('a');
+        link.href=url;link.download=file.name||'image.png';
+        document.body.append(link);link.click();link.remove();
+      }).catch(function(){toast('That image is no longer available.')});
+    }
+
+    // A picture, in figure (a new one unless given), with open and download
+    // buttons. settled(ok) runs once it has loaded or failed to.
+    function imageFigure(image,figure,settled){
+      figure=figure||document.createElement('figure');
+      figure.classList.add('generated-image');
+      figure.dataset.imageId=image.id;
+      figure.style.aspectRatio=image.width>0&&image.height>0?image.width+' / '+image.height:'1 / 1';
+      const open=document.createElement('button');
+      open.type='button';open.className='generated-image-open';open.setAttribute('aria-label','Open image');
+      const img=document.createElement('img');
+      img.alt='Generated image';img.decoding='async';
+      let done=false;
+      function finish(ok){
+        if(done)return;
+        done=true;
+        figure.classList.add(ok?'is-ready':'is-missing');
+        if(settled)settled(ok);
+      }
+      img.addEventListener('load',function(){finish(true)});
+      img.addEventListener('error',function(){finish(false)});
+      open.append(img);
+      open.addEventListener('click',function(){openAttachment(image)});
+      const download=document.createElement('button');
+      download.type='button';download.className='generated-image-download';download.setAttribute('aria-label','Download image');download.title='Download';
+      download.innerHTML=downloadIcon;
+      download.addEventListener('click',function(){downloadAttachment(image)});
+      figure.append(open,download);
+      attachmentURL(image.id).then(function(url){img.src=url}).catch(function(){finish(false)});
+      return figure;
+    }
+
+    function renderGeneratedImages(message,images){
+      const list=Array.isArray(images)?images.filter(function(image){return image&&image.id}):[];
+      const holder=generatedImagesHolder(message,list.length>0);
+      if(!holder)return;
+      if(!list.length){holder.remove();return}
+      const ids=list.map(function(image){return image.id}).join(',');
+      // Already showing exactly these (say, the one that just faded in).
+      if(holder.dataset.ids===ids&&!holder.classList.contains('is-generating'))return;
+      holder.dataset.ids=ids;
+      holder.classList.remove('is-generating');
+      holder.replaceChildren.apply(holder,list.map(function(image){return imageFigure(image)}));
+    }
+
+    // The field shown while a picture is made, and what it turns into.
+    function startImageGeneration(message){
+      const holder=generatedImagesHolder(message,true);
+      holder.classList.add('is-generating');
+      delete holder.dataset.ids;
+      const phrase=document.createElement('p');
+      phrase.className='image-gen-phrase';
+      phrase.setAttribute('aria-live','polite');
+      const figure=document.createElement('figure');
+      figure.className='generated-image is-generating';
+      figure.style.aspectRatio='1 / 1';
+      holder.replaceChildren(phrase,figure);
+      const field=createDotField(figure);
+      let step=0;
+      function say(text){
+        const previous=phrase.querySelector('.image-gen-label:not(.is-leaving)');
+        if(previous){
+          previous.classList.add('is-leaving');
+          setTimeout(function(){previous.remove()},400);
+        }
+        const label=document.createElement('span');
+        label.className='thinking-label image-gen-label';
+        label.textContent=text;label.dataset.text=text;
+        phrase.append(label);
+      }
+      say(imagePhrases[0]);
+      const timer=setInterval(function(){
+        if(step>=imagePhrases.length-1){clearInterval(timer);return}
+        step++;
+        say(imagePhrases[step]);
+      },10000);
+      function cancel(){
+        clearInterval(timer);
+        field.destroy();
+        holder.remove();
+      }
+      return {
+        cancel:cancel,
+        finish:function(images){
+          clearInterval(timer);
+          const list=Array.isArray(images)?images.filter(function(image){return image&&image.id}):[];
+          if(!list.length){cancel();return}
+          // The first picture takes the field's place: it fades in over the
+          // dots as they fade out. Any others just follow.
+          imageFigure(list[0],figure,function(ok){
+            phrase.classList.add('is-done');
+            setTimeout(function(){
+              field.destroy();
+              phrase.remove();
+              figure.classList.remove('is-generating');
+            },ok?700:0);
+          });
+          list.slice(1).forEach(function(image){holder.append(imageFigure(image))});
+          holder.classList.remove('is-generating');
+          holder.dataset.ids=list.map(function(image){return image.id}).join(',');
+        }
+      };
+    }
+
+    // An answer that made pictures, as an incognito chat's history carries
+    // it (the same note the server writes for saved chats).
+    function imageHistoryNote(images){
+      const count=Array.isArray(images)?images.length:0;
+      if(!count)return '';
+      return count===1?'[You made an image for this request; the user sees it in the chat.]':'[You made '+count+' images for this request; the user sees them in the chat.]';
+    }
+
+    const silentThought={activity:function(){},text:function(){},done:function(){},stop:function(){},ms:function(){return 0}};
 
     /* ---------- quoting a selection ---------- */
     // Text selected in a finished answer gets an "Ask" button. It puts the
@@ -2944,7 +3335,8 @@
         if(messageDetails&&messageDetails.id)message.dataset.messageId=String(messageDetails.id);
         appendMessageActions(message);
         renderResponseVersion(message,message.responseVersionIndex);
-        if(text||versionQuestionnaire(message))message.classList.add('is-complete');
+        const latest=message.responseVersions[message.responseVersionIndex];
+        if(text||versionQuestionnaire(message)||(latest&&Array.isArray(latest.images)&&latest.images.length))message.classList.add('is-complete');
       }else if(role==='user'){
         const pairs=parseAnswersText(text);
         if(pairs)renderAnswers(body,pairs);
@@ -3232,9 +3624,11 @@
 
     document.getElementById('logOut').addEventListener('click',function(){
       document.getElementById('settingsClose').click();
-      // Logging out on this device forgets the Polza key too.
+      // Logging out on this device forgets the Polza keys too.
       storeValue(localStorage,providerKeyStorageKey,'');
+      storeValue(localStorage,imageKeyStorageKey,'');
       renderProviderKey();
+      renderImageKey();
       window.NeoChatAuth.signOut();
     });
 
@@ -3399,7 +3793,9 @@
       message.classList.remove('is-complete');
       message.classList.add('is-pending');
       closeAsk();
-      setThinkingState(message,'Regenerating');
+      const imageGen=isImageModel(request.manual_model_id)?startImageGeneration(message):null;
+      if(imageGen)message.querySelector('.chat-text').replaceChildren();
+      else setThinkingState(message,'Regenerating');
       setSending(true);
       const thinkingStartedAt=performance.now();
       const stream=createSmoothMessageStream(message);
@@ -3412,12 +3808,12 @@
       activeAbort=controller;
       // The new version brings its own timing and web activity.
       message.querySelectorAll('.chat-copy > .thought-time').forEach(function(element){element.remove()});
-      const thought=thoughtTracker(message,thinkingStartedAt);
+      const thought=imageGen?silentThought:thoughtTracker(message,thinkingStartedAt);
 
       try{
-        const response=await fetch(isIncognito?'/chat/stream':'/chat/regenerate/stream',{
+        const response=await apiFetch(isIncognito?'/chat/stream':'/chat/regenerate/stream',{
           method:'POST',
-          headers:chatHeaders(),
+          headers:chatHeaders(request),
           body:JSON.stringify(request),
           signal:controller.signal
         });
@@ -3450,14 +3846,16 @@
             terminalData=data;
             message.classList.remove('is-pending');
             thought.done(data);
-            stream.replace(data.response_text||(data.questionnaire?'':'The server returned an empty response.'));
+            const madeImages=Array.isArray(data.images)&&data.images.length>0;
+            if(imageGen)imageGen.finish(data.images);
+            stream.replace(data.response_text||(data.questionnaire||madeImages?'':'The server returned an empty response.'));
           }
         });
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
         if(isIncognito){
-          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null}]);
-          incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||'',questionnaire:terminalData.questionnaire||undefined};
+          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[]}]);
+          incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images),questionnaire:terminalData.questionnaire||undefined};
         }else{
           message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
         }
@@ -3468,6 +3866,7 @@
         updateAskState(true);
         if(!isIncognito){if(activeProject)refreshActiveProject();else loadConversations(false)}
       }catch(error){
+        if(imageGen)imageGen.cancel();
         stream.cancel();
         message.classList.remove('is-pending');
         if(controller.signal.aborted&&receivedText){
@@ -3527,7 +3926,9 @@
       updateAskState(false);
       const pending=appendMessage('assistant','');
       pending.classList.add('is-pending','is-latest-response');
-      setThinkingState(pending);
+      // An image model gets the dot field instead of "Thinking".
+      const imageGen=isImageModel(request.manual_model_id)?startImageGeneration(pending):null;
+      if(!imageGen)setThinkingState(pending);
       chatLog.scrollTop=Math.max(0,userMessage.offsetTop-12);
       const thinkingStartedAt=performance.now();
       if(answers===null){
@@ -3546,12 +3947,12 @@
       let liveActivity=[];
       const controller=new AbortController();
       activeAbort=controller;
-      const thought=thoughtTracker(pending,thinkingStartedAt);
+      const thought=imageGen?silentThought:thoughtTracker(pending,thinkingStartedAt);
 
       try{
         const response=await apiFetch('/chat/stream',{
           method:'POST',
-          headers:chatHeaders(),
+          headers:chatHeaders(request),
           body:JSON.stringify(request),
           signal:controller.signal
         });
@@ -3599,23 +4000,26 @@
             }
             pending.classList.remove('is-pending');
             thought.done(data);
-            stream.replace(data.response_text||(data.questionnaire?'':'The server returned an empty response.'));
+            const madeImages=Array.isArray(data.images)&&data.images.length>0;
+            if(imageGen)imageGen.finish(data.images);
+            stream.replace(data.response_text||(data.questionnaire||madeImages?'':'The server returned an empty response.'));
           }
         });
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(signedInUser()!==session){stream.cancel();return}
         await stream.finish();
-        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null}];
+        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[]}];
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
         renderAskCard(pending);
         updateAskState(true);
         if(activeChatIncognito&&!terminalData.blocked){
-          incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:terminalData.response_text||'',questionnaire:terminalData.questionnaire||undefined});
+          incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images),questionnaire:terminalData.questionnaire||undefined});
         }else if(!activeChatIncognito){
           if(activeProject)refreshActiveProject();else loadConversations(false);
         }
       }catch(error){
+        if(imageGen)imageGen.cancel();
         if(controller.signal.aborted){
           // Stopped by the user: keep everything that arrived. The server
           // stored the same partial reply, so the thread stays in sync.

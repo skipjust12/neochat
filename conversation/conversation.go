@@ -58,6 +58,10 @@ type Attachment struct {
 	MIME string `json:"mime"`
 	Kind string `json:"kind"` // "image" | "document" | "text"
 	Size int64  `json:"size"`
+	// Width and Height are a generated picture's size (ResponseVersion.
+	// Images), so the client can hold its space before it loads.
+	Width  int `json:"width,omitempty"`
+	Height int `json:"height,omitempty"`
 }
 
 const MaxRegenerationAttempts = 10
@@ -79,6 +83,10 @@ type ResponseVersion struct {
 	// user questions (the ask_user tool); the answers come back as the
 	// user's next message.
 	Questionnaire *Questionnaire `json:"questionnaire,omitempty"`
+
+	// Images are the pictures an image model made for this answer, kept
+	// with the chat's files (server/image.go).
+	Images []Attachment `json:"images,omitempty"`
 }
 
 // Questionnaire is a set of questions the model put to the user, shown as

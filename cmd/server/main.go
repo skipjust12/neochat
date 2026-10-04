@@ -26,6 +26,7 @@ import (
 	"neochat/costlog"
 	"neochat/db"
 	"neochat/idempotency"
+	"neochat/imagegen"
 	"neochat/internal/envfile"
 	"neochat/limits"
 	"neochat/moderation"
@@ -306,7 +307,10 @@ func main() {
 		// kept per chat (db/migrations/0009_web_pages.sql); searches run on
 		// Polza's web plugin through WEB_SEARCH_MODEL (a catalog model id;
 		// default: the cheapest current one).
-		Fetcher:          &webfetch.Fetcher{},
+		Fetcher: &webfetch.Fetcher{},
+		// Image models (kind "image" in configs/models.json) make pictures
+		// through Polza's Media API on the user's own image key.
+		Images:           &imagegen.Client{},
 		Pages:            pagestore.NewPostgresStore(pgDB),
 		WebSearchModelID: os.Getenv("WEB_SEARCH_MODEL"),
 		IPRateLimiter:    ipRateLimiter,

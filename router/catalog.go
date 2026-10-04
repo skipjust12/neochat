@@ -27,9 +27,27 @@ func LoadCatalog(path string) (Catalog, error) {
 		if err := validateTaskScores(model.ID, "task_intent_scores", model.TaskIntentScores, knownTaskIntents); err != nil {
 			return Catalog{}, err
 		}
+		if err := validateKind(model); err != nil {
+			return Catalog{}, err
+		}
 	}
 
 	return catalog, nil
+}
+
+// validateKind checks what an image model needs: a price per image, since
+// its token rates say nothing about what a picture costs.
+func validateKind(model Model) error {
+	switch model.Kind {
+	case "":
+		return nil
+	case KindImage:
+		if model.CostPerImageUSD <= 0 {
+			return fmt.Errorf("router: image model %q needs a positive cost_per_image_usd", model.ID)
+		}
+		return nil
+	}
+	return fmt.Errorf("router: model %q has unknown kind %q", model.ID, model.Kind)
 }
 
 func validateTaskScores(modelID, field string, scores map[string]float64, knownValues map[string]bool) error {

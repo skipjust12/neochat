@@ -122,6 +122,9 @@ type webAnswer struct {
 	// Questionnaire: the model ended the answer by asking the user
 	// questions (ask_user).
 	Questionnaire *conversation.Questionnaire
+	// Images an image model made (imageAnswer), and what they cost.
+	Images       []conversation.Attachment
+	ImageCostUSD float64
 }
 
 // webRun answers one message, running web tools as the model asks.

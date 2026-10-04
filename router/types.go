@@ -53,6 +53,9 @@ type ClassifierOutput struct {
 }
 
 // Model describes a single entry in the model catalog (models.json).
+// KindImage marks an image-generation model (Model.Kind).
+const KindImage = "image"
+
 type Model struct {
 	ID string `json:"id"`
 
@@ -89,6 +92,20 @@ type Model struct {
 	// while still letting Manual mode select it directly -- used for
 	// models the router's task scores were never calibrated against.
 	ManualOnly bool `json:"manual_only,omitempty"`
+
+	// Kind is KindImage for an image-generation model: it answers with a
+	// picture made through Polza's Media API (server/image.go) rather than
+	// with chat completions. Empty means a chat model. Image models price
+	// per image, not per token; automatic routing reaches them only for a
+	// request that expects an image (SupportsOutputFormats "image").
+	Kind string `json:"kind,omitempty"`
+
+	// CostPerImageUSD is what one generated image costs (image models only).
+	CostPerImageUSD float64 `json:"cost_per_image_usd,omitempty"`
+
+	// MaxReferenceImages is how many input images an image model accepts
+	// alongside the prompt (images to edit or take after).
+	MaxReferenceImages int `json:"max_reference_images,omitempty"`
 
 	Provider          string   `json:"provider"`
 	Modes             []string `json:"modes"`

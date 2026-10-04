@@ -119,3 +119,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+## highlight.js 11.12.0
+
+`server/assets/highlight/highlight.min.js` is the Highlight.js common build with the `dockerfile` and `powershell` grammars appended, from `@highlightjs/cdn-assets` 11.12.0. BSD 3-Clause License, Copyright (c) 2006, Ivan Sagalaev; full text in `server/assets/highlight/LICENSE`.
