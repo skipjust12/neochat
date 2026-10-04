@@ -33,6 +33,7 @@ import (
 	"neochat/provider"
 	"neochat/ratelimit"
 	"neochat/router"
+	"neochat/settings"
 	"neochat/summarizer"
 	"neochat/tokenizer"
 	"neochat/webfetch"
@@ -232,6 +233,10 @@ type Server struct {
 	// BalanceURL is Polza's balance endpoint for GET /account/balance
 	// (workspace.go); empty means the real one.
 	BalanceURL string
+
+	// Settings keeps each user's preferences for GET/PUT /account/settings
+	// (compact.go). Nil: settings stay in each browser.
+	Settings settings.Store
 }
 
 // providerKeyHeader carries the user's own Polza AI key on chat requests.
@@ -426,6 +431,9 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
 	mux.HandleFunc("GET /conversations/search", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleConversationSearch)))))
 	mux.HandleFunc("DELETE /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectDelete))))))
+	mux.HandleFunc("GET /account/settings", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleSettingsGet)))))
+	mux.HandleFunc("PUT /account/settings", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleSettingsPut)))))
+	mux.HandleFunc("POST /conversations/{conversation_id}/compact", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationCompact))))))
 	mux.HandleFunc("GET /account/balance", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleBalance)))))
 	// Not through recovered: its X-Frame-Options: DENY would stop the
 	// app's own artifact viewer from framing this page.
@@ -463,9 +471,11 @@ type conversationListResponse struct {
 }
 
 type conversationHistoryResponse struct {
-	NextCursor     int64                  `json:"next_cursor,omitempty"`
-	ConversationID string                 `json:"conversation_id"`
-	Messages       []conversation.Message `json:"messages"`
+	NextCursor int64 `json:"next_cursor,omitempty"`
+	// CompactedThroughID: messages up to this one are summarized ("Compact").
+	CompactedThroughID int64                  `json:"compacted_through_id,omitempty"`
+	ConversationID     string                 `json:"conversation_id"`
+	Messages           []conversation.Message `json:"messages"`
 }
 
 type conversationUpdateRequest struct {
@@ -661,7 +671,7 @@ func (s *Server) handleConversationHistory(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
-	response := conversationHistoryResponse{ConversationID: conversationID, Messages: page.Messages, NextCursor: page.NextCursor}
+	response := conversationHistoryResponse{ConversationID: conversationID, Messages: page.Messages, NextCursor: page.NextCursor, CompactedThroughID: s.compactedThroughID(r, identity.UserID, conversationID)}
 	data, err := json.Marshal(response)
 	if err != nil {
 		http.Error(w, "could not encode history", http.StatusInternalServerError)

@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=18" />
+<link rel="stylesheet" href="/assets/fluid.css?v=19" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -44,6 +44,14 @@
     <button type="button" class="artifact-close" id="artifactClose" aria-label="Close"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button>
   </div>
   <iframe class="artifact-frame" id="artifactFrame" title="Artifact" sandbox="allow-scripts allow-modals allow-popups"></iframe>
+</div>
+<!-- Yes/no questions (Compact). -->
+<div class="confirm-backdrop" id="confirmDialog" hidden>
+  <div class="confirm-dialog" role="alertdialog" aria-modal="true" aria-labelledby="confirmTitle" aria-describedby="confirmText">
+    <h2 id="confirmTitle"></h2>
+    <p id="confirmText"></p>
+    <div class="confirm-actions"><button type="button" class="confirm-no" id="confirmNo">Cancel</button><button type="button" class="confirm-yes" id="confirmYes">Yes</button></div>
+  </div>
 </div>
 <!-- "Ask" on text selected in an answer: quotes it in the composer. -->
 <button type="button" class="selection-ask" id="selectionAsk" hidden><svg class="lucide lucide-message-square-quote" data-lucide-icon="message-square-quote" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14a2 2 0 0 0 2-2V8h-2" /><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /><path d="M8 14a2 2 0 0 0 2-2V8H8" /></svg><span>Ask</span></button>
@@ -190,6 +198,10 @@
                   <span class="row-symbol"><svg class="lucide lucide-notebook-tabs" data-lucide-icon="notebook-tabs" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" /><rect width="16" height="20" x="4" y="2" rx="2" /><path d="M15 2v20" /><path d="M15 7h5" /><path d="M15 12h5" /><path d="M15 17h5" /></svg></span>
                   <span class="row-copy"><strong>Skills</strong><span>Reuse specialized skills to handle specific tasks reliably</span></span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                </button>
+                <button class="attach-row" id="compactRow" role="menuitem">
+                  <span class="row-symbol"><svg class="lucide lucide-fold-vertical" data-lucide-icon="fold-vertical" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-6" /><path d="M12 8V2" /><path d="M4 12H2" /><path d="M10 12H8" /><path d="M16 12h-2" /><path d="M22 12h-2" /><path d="m15 19-3-3-3 3" /><path d="m15 5-3 3-3-3" /></svg></span>
+                  <span class="row-copy"><strong>Compact</strong><span>Summarize this chat so far to save context</span></span>
                 </button>
                 <button class="attach-row" id="webSearchRow" role="menuitem" aria-label="Web search">
                   <span class="row-symbol"><svg class="lucide lucide-globe" data-lucide-icon="globe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></svg></span>
@@ -1396,8 +1408,9 @@
 
     const greetingPool=greetingPoolForHour(new Date().getHours());
     const selectedGreeting=greetingPool[Math.floor(Math.random()*greetingPool.length)];
+    // In incognito the greeting stays and reads "Incognito mode".
     function renderHomeGreeting(){
-      homeGreeting.textContent=selectedGreeting.replace('NICK_OF_SETTINGS',nameInput.value.trim()||'skipjust');
+      homeGreeting.textContent=document.getElementById('incognitoState').checked?'Incognito mode':selectedGreeting.replace('NICK_OF_SETTINGS',nameInput.value.trim()||'skipjust');
     }
 
     const suggestionPool=[
@@ -1484,6 +1497,12 @@
     const conversationList=document.getElementById('conversationList');
     const mainPanel=document.querySelector('.main');
     const incognitoState=document.getElementById('incognitoState');
+    function syncIncognitoGreeting(){
+      if(activeProject)return;
+      homeGreeting.classList.remove('is-ready');
+      setTimeout(function(){renderHomeGreeting();homeGreeting.classList.add('is-ready')},160);
+    }
+    incognitoState.addEventListener('change',syncIncognitoGreeting);
     const topNewChat=document.querySelector('.top-new-chat');
     const chatActionsTrigger=document.querySelector('.chat-actions-trigger');
     const chatActionsPanel=document.querySelector('.chat-actions-panel');
@@ -1681,15 +1700,45 @@
       });
     }
 
+    // Preferences follow the user between devices: on sign-in the saved ones
+    // win (a first device uploads its own), and each change is saved, a
+    // moment after the last edit.
+    let settingsTimer=null;
+    let settingsReady=false;
+    async function syncSettings(){
+      settingsReady=false;
+      try{
+        const response=await apiFetch('/account/settings',{});
+        if(!response.ok)return;
+        const saved=await response.json();
+        if(saved&&typeof saved==='object'&&Object.keys(saved).length){
+          if(JSON.stringify(saved)!==JSON.stringify(window.NeoChatPreferences.current()))window.NeoChatPreferences.apply(saved);
+        }else{
+          saveSettingsNow(window.NeoChatPreferences.current());
+        }
+        settingsReady=true;
+      }catch(error){}
+    }
+    function saveSettingsNow(preferences){
+      return apiFetch('/account/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(preferences)}).catch(function(){});
+    }
+    document.addEventListener('preferences:change',function(event){
+      if(!sessionUser||!settingsReady)return;
+      clearTimeout(settingsTimer);
+      settingsTimer=setTimeout(function(){saveSettingsNow(event.detail)},800);
+    });
+
     function switchSession(userID){
       if(userID===sessionUser)return;
       sessionUser=userID;
+      if(userID&&window.NeoChatPreferences)syncSettings();
       conversationID='';
       currentConversationTitle='New chat';
       currentConversationPinned=false;
       activeChatIncognito=false;
       incognitoMessages=[];
       incognitoState.checked=false;
+      syncIncognitoGreeting();
       chatLog.replaceChildren();
       chatContent.classList.remove('has-chat');
       if(window.NeoChatAttachments)window.NeoChatAttachments.clear();
@@ -2134,6 +2183,28 @@
       }
     }
 
+    // While a model thinks, the label is one of these, a new one every 10s.
+    const thinkingPhrases=['Fabrication','Hallucinating','Deep thinking','Thinking','Overthinking','Pondering','Calculating'];
+    function nextThinkingPhrase(current){
+      const others=thinkingPhrases.filter(function(phrase){return phrase!==current});
+      return others[Math.floor(Math.random()*others.length)];
+    }
+    function thinkingPhrase(message){
+      if(!message.thinkingPhrase)message.thinkingPhrase=nextThinkingPhrase('');
+      return message.thinkingPhrase;
+    }
+    setInterval(function(){
+      document.querySelectorAll('.chat-message [data-phrase]').forEach(function(label){
+        const message=label.closest('.chat-message');
+        message.thinkingPhrase=nextThinkingPhrase(message.thinkingPhrase);
+        label.textContent=message.thinkingPhrase;
+        label.dataset.text=message.thinkingPhrase;
+        label.classList.remove('is-swapping');
+        void label.offsetWidth;
+        label.classList.add('is-swapping');
+      });
+    },10000);
+
     function setThinkingState(message,labelText){
       const body=message.querySelector('.chat-text');
       body.replaceChildren();
@@ -2141,8 +2212,9 @@
       state.className='thinking-state';
       const label=document.createElement('span');
       label.className='thinking-label';
-      label.textContent=labelText||'Thinking';
+      label.textContent=labelText||thinkingPhrase(message);
       label.dataset.text=label.textContent;
+      if(!labelText)label.dataset.phrase='1';
       const dot=document.createElement('span');
       dot.className='thinking-dot';dot.setAttribute('aria-hidden','true');
       state.append(dot,label);body.append(state);
@@ -2364,12 +2436,13 @@
       const label=block.querySelector('.thought-label');
       let text;
       if(running.length)text=webStepLabel(running[running.length-1]);
-      else if(live)text='Thinking';
+      else if(live)text=thinkingPhrase(message);
       else if(seconds)text='Thought for '+plural(seconds,'second','seconds');
       else text=activity.some(function(step){return !webStepFailed(step)})?'Searched the web':activity.length?'Web search unavailable':'Sources';
       label.textContent=text;
       label.dataset.text=text;
       label.classList.toggle('thinking-label',live);
+      if(live&&!running.length)label.dataset.phrase='1';else delete label.dataset.phrase;
 
       const done=activity.filter(function(step){return !step.pending&&!step.error});
       const searches=done.filter(function(step){return step.tool==='web_search'}).length;
@@ -3501,6 +3574,7 @@
       activeChatIncognito=false;
       incognitoMessages=[];
       incognitoState.checked=false;
+      syncIncognitoGreeting();
       storeValue(localStorage,currentConversationStorageKey,'');
       chatLog.replaceChildren();
       chatContent.classList.remove('has-chat');
@@ -3649,6 +3723,63 @@
       });
     }
 
+    /* ---------- yes / no ---------- */
+    const confirmDialog=document.getElementById('confirmDialog');
+    function askYesNo(title,text,yesLabel){
+      return new Promise(function(resolve){
+        document.getElementById('confirmTitle').textContent=title;
+        document.getElementById('confirmText').textContent=text;
+        const yes=document.getElementById('confirmYes'),no=document.getElementById('confirmNo');
+        yes.textContent=yesLabel||'Yes';
+        confirmDialog.hidden=false;
+        yes.focus();
+        function done(answer){
+          confirmDialog.hidden=true;
+          yes.removeEventListener('click',onYes);no.removeEventListener('click',onNo);
+          confirmDialog.removeEventListener('click',onBackdrop);document.removeEventListener('keydown',onKey,true);
+          resolve(answer);
+        }
+        function onYes(){done(true)}
+        function onNo(){done(false)}
+        function onBackdrop(event){if(event.target===confirmDialog)done(false)}
+        function onKey(event){if(event.key==='Escape'){event.preventDefault();event.stopPropagation();done(false)}}
+        yes.addEventListener('click',onYes);no.addEventListener('click',onNo);
+        confirmDialog.addEventListener('click',onBackdrop);document.addEventListener('keydown',onKey,true);
+      });
+    }
+
+    /* ---------- compact ---------- */
+    // "+" -> Compact: GPT-6 Luna folds everything but the last exchange into
+    // the chat's summary (server/compact.go); later turns send the summary
+    // instead. The thread shows where that happened.
+    function compactDivider(){
+      const divider=document.createElement('div');
+      divider.className='compact-divider';
+      divider.setAttribute('role','separator');
+      divider.innerHTML='<span>'+'<svg class="lucide lucide-fold-vertical" data-lucide-icon="fold-vertical" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-6" /><path d="M12 8V2" /><path d="M4 12H2" /><path d="M10 12H8" /><path d="M16 12h-2" /><path d="M22 12h-2" /><path d="m15 19-3-3-3 3" /><path d="m15 5-3 3-3-3" /></svg>'+'Context compacted: earlier messages are summarized</span>';
+      return divider;
+    }
+    document.getElementById('compactRow').addEventListener('click',async function(){
+      document.getElementById('attachBtn').click();
+      if(sending){toast('Wait for the current response.');return}
+      if(activeChatIncognito||!conversationID){toast('Compact works on a saved chat with a few messages in it.');return}
+      if(!providerKey()){toast('Add your Polza AI API key in Settings → Account.');return}
+      const yes=await askYesNo('Compact this chat?','GPT-6 Luna will summarize the conversation so far, except the last exchange. Later answers use that summary instead of the full history: cheaper and faster, but they may miss fine details. The messages stay on screen.','Compact');
+      if(!yes)return;
+      const id=conversationID;
+      toast('Compacting…');
+      try{
+        const response=await apiFetch('/conversations/'+encodeURIComponent(id)+'/compact',{method:'POST',headers:{'X-Provider-Key':providerKey()}});
+        if(!response.ok)throw new Error((await response.text()).trim()||'Could not compact the chat.');
+        if(conversationID!==id)return;
+        chatLog.querySelectorAll('.compact-divider').forEach(function(element){element.remove()});
+        const users=chatLog.querySelectorAll('.chat-message.user');
+        const lastUser=users[users.length-1];
+        if(lastUser)chatLog.insertBefore(compactDivider(),lastUser);
+        toast('Chat compacted.');
+      }catch(error){toast(error.message)}
+    });
+
     /* ---------- search ---------- */
     // The sidebar search looks through every chat's title and messages on
     // the server; clearing it brings the usual list back.
@@ -3740,12 +3871,15 @@
         activeChatIncognito=false;
         incognitoMessages=[];
         incognitoState.checked=false;
+        syncIncognitoGreeting();
+      syncIncognitoGreeting();
         storeValue(localStorage,currentConversationStorageKey,conversationID);
         clearComposerQuote();
         chatLog.replaceChildren();
         (Array.isArray(data.messages)?data.messages:[]).forEach(function(message){
           if(message.is_summary)return;
           appendMessage(message.role,message.content+(message.truncated?'\n[Message truncated]':''),message);
+          if(data.compacted_through_id&&message.id===data.compacted_through_id)chatLog.append(compactDivider());
         });
         showOlderMessagesButton(id,data.next_cursor,session);
         if(!chatLog.children.length)chatContent.classList.remove('has-chat');
@@ -4901,9 +5035,23 @@
         webSearch:webSearchState.textContent.trim()
       };
       try{localStorage.setItem(storageKey,JSON.stringify(preferences))}catch(error){}
+      if(!applying)document.dispatchEvent(new CustomEvent('preferences:change',{detail:preferences}));
     }
 
-    const preferences=loadPreferences();
+    // Settings sync (main script): preferences saved on the server are put
+    // in place here, without echoing them straight back.
+    let applying=false;
+    function applyPreferences(preferences){
+      applying=true;
+      try{applyPreferencesNow(preferences)}finally{applying=false}
+      savePreferences();
+    }
+    window.NeoChatPreferences={
+      current:function(){return loadPreferences()},
+      apply:applyPreferences
+    };
+
+    function applyPreferencesNow(preferences){
     if(typeof preferences.displayName==='string'){
       displayName.value=preferences.displayName;
       displayName.dispatchEvent(new Event('input'));
@@ -4940,6 +5088,9 @@
     if(['Auto','On','Off'].includes(preferences.webSearch)){
       while(webSearchState.textContent.trim()!==preferences.webSearch)webSearchRow.click();
     }
+    }
+    applying=true;
+    try{applyPreferencesNow(loadPreferences())}finally{applying=false}
 
     displayName.addEventListener('input',savePreferences);
     instructions.addEventListener('input',savePreferences);

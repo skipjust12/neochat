@@ -638,18 +638,6 @@ html[data-theme="dark"] #incognitoState:checked ~ .main::after {
   pointer-events: auto;
 }
 
-#incognitoState:checked ~ .main .default-hero {
-  opacity: 0;
-  transform: translate3d(0,-14px,0) scale(.982);
-  pointer-events: none;
-}
-
-#incognitoState:checked ~ .main .incognito-hero {
-  opacity: 1;
-  transform: translate3d(0,0,0) scale(1);
-  pointer-events: auto;
-}
-
 h1 {
   margin: 0;
 }
@@ -8128,4 +8116,123 @@ html.artifact-open body {
 /* Delete project: press twice. */
 .project-delete {
   margin-top: 18px;
+}
+
+/* A new thinking phrase slides in. */
+.thinking-label.is-swapping {
+  animation: thinking-swap .4s var(--ease-out);
+}
+
+@keyframes thinking-swap {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* "Context compacted" in the thread. */
+.compact-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 8px 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.compact-divider::before,
+.compact-divider::after {
+  content: "";
+  flex: 1;
+  border-top: 1px dashed var(--line-strong);
+}
+
+.compact-divider span {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.compact-divider svg {
+  width: 14px;
+  height: 14px;
+}
+
+/* Yes/no dialog. */
+.confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1250;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  background: rgb(0 0 0 / .45);
+  -webkit-backdrop-filter: blur(3px);
+  backdrop-filter: blur(3px);
+  animation: confirm-fade .16s ease;
+}
+
+.confirm-backdrop[hidden] {
+  display: none;
+}
+
+.confirm-dialog {
+  width: min(420px, 100%);
+  padding: 22px;
+  border-radius: 16px;
+  background: var(--surface-2);
+  box-shadow: var(--shadow-lg);
+  animation: confirm-in .22s var(--ease-out);
+}
+
+.confirm-dialog h2 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 650;
+}
+
+.confirm-dialog p {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.confirm-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+}
+
+.confirm-actions button {
+  height: 36px;
+  padding: 0 16px;
+  border: 0;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 560;
+  cursor: pointer;
+}
+
+.confirm-no {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.confirm-yes {
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+@keyframes confirm-fade {
+  from { opacity: 0; }
+}
+
+@keyframes confirm-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(.98);
+  }
 }

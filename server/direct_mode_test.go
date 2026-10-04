@@ -65,6 +65,11 @@ func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(p.errBody))
 		return
 	}
+	if stream, _ := body["stream"].(bool); !stream {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"choices":[{"message":{"role":"assistant","content":%q}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`, p.reply)
+		return
+	}
 	w.Header().Set("Content-Type", "text/event-stream")
 	flusher := w.(http.Flusher)
 	for _, chunk := range p.chunks {

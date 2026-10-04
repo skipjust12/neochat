@@ -35,6 +35,7 @@ import (
 	"neochat/ratelimit"
 	"neochat/router"
 	"neochat/server"
+	"neochat/settings"
 	"neochat/summarizer"
 	"neochat/webfetch"
 )
@@ -310,7 +311,10 @@ func main() {
 		Fetcher: &webfetch.Fetcher{},
 		// Image models (kind "image" in configs/models.json) make pictures
 		// through Polza's Media API on the user's own image key.
-		Images:           &imagegen.Client{},
+		Images: &imagegen.Client{},
+		// Preferences follow the user between devices
+		// (db/migrations/0012_user_settings.sql).
+		Settings:         settings.NewPostgresStore(pgDB),
 		Pages:            pagestore.NewPostgresStore(pgDB),
 		WebSearchModelID: os.Getenv("WEB_SEARCH_MODEL"),
 		IPRateLimiter:    ipRateLimiter,
