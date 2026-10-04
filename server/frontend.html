@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=24" />
+<link rel="stylesheet" href="/assets/fluid.css?v=25" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -69,6 +69,20 @@
     <div class="sketch-actions">
       <button type="button" class="sketch-cancel" id="sketchCancel">Cancel</button>
       <button type="button" class="sketch-confirm" id="sketchConfirm" disabled><svg class="lucide lucide-forward" data-lucide-icon="forward" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 17 5-5-5-5" /><path d="M4 18v-2a4 4 0 0 1 4-4h12" /></svg>Confirm</button>
+    </div>
+  </div>
+</div>
+<!-- A text file's contents: a long paste waiting in the composer, or a
+     text attachment in the thread. -->
+<div class="sketch-backdrop" id="textPreview" hidden>
+  <div class="sketch-dialog text-preview" role="dialog" aria-modal="true" aria-labelledby="textPreviewTitle">
+    <div class="text-preview-head"><h2 class="sketch-title" id="textPreviewTitle">Pasted text</h2><span class="text-preview-meta" id="textPreviewMeta"></span></div>
+    <pre class="text-preview-body" id="textPreviewBody" tabindex="0"></pre>
+    <div class="sketch-actions">
+      <button type="button" class="sketch-cancel" id="textPreviewCopy">Copy</button>
+      <button type="button" class="sketch-cancel" id="textPreviewDownload">Download</button>
+      <button type="button" class="sketch-cancel" id="textPreviewClose">Close</button>
+      <button type="button" class="sketch-confirm" id="textPreviewInline">Paste as text</button>
     </div>
   </div>
 </div>
@@ -3134,13 +3148,24 @@
       return (bytes/1024/1024).toFixed(1).replace(/\.0$/,'')+' MB';
     }
 
+    // A text file (a long paste, say) opens in a preview; other files
+    // download.
     async function openAttachment(file){
       try{
         const url=await attachmentURL(file.id);
         if(file.kind==='image'){window.open(url,'_blank','noopener');return}
-        const link=document.createElement('a');
-        link.href=url;link.download=file.name||'file';
-        document.body.append(link);link.click();link.remove();
+        const download=function(){
+          const link=document.createElement('a');
+          link.href=url;link.download=file.name||'file';
+          document.body.append(link);link.click();link.remove();
+        };
+        if(file.kind==='text'&&window.NeoChatTextPreview){
+          const response=await apiFetch('/files/'+encodeURIComponent(file.id),{});
+          if(!response.ok)throw new Error('HTTP '+response.status);
+          window.NeoChatTextPreview.open({title:file.name||'Text',text:await response.text(),onDownload:download});
+          return;
+        }
+        download();
       }catch(error){toast('That file is no longer available.')}
     }
 
@@ -3154,7 +3179,7 @@
         item.type='button';
         item.className='message-attachment'+(file.kind==='image'?' is-image':'');
         item.title=file.name||'';
-        item.setAttribute('aria-label',(file.kind==='image'?'Open image ':'Download ')+(file.name||'file'));
+        item.setAttribute('aria-label',(file.kind==='image'?'Open image ':file.kind==='text'?'View ':'Download ')+(file.name||'file'));
         if(file.kind==='image'){
           const image=document.createElement('img');
           image.alt=file.name||'';
@@ -3611,6 +3636,38 @@
       message.prepend(block);
     }
 
+    // A long message in the thread shows its first lines; "Show more" opens
+    // the rest. Only messages long enough to need it are measured, once
+    // per frame for a whole chat loading at once.
+    const collapseQueue=new Set();
+    let collapseFrame=0;
+    function collapseLongMessage(message,text){
+      if(text.length<700&&text.split('\n').length<12)return;
+      message.classList.add('is-long');
+      collapseQueue.add(message);
+      if(collapseFrame)return;
+      collapseFrame=requestAnimationFrame(function(){
+        collapseFrame=0;
+        collapseQueue.forEach(function(item){
+          const body=item.querySelector('.chat-text');
+          if(!item.isConnected||!body||body.scrollHeight<=body.clientHeight+40){item.classList.remove('is-long');return}
+          const toggle=document.createElement('button');
+          toggle.type='button';
+          toggle.className='message-expand';
+          toggle.setAttribute('aria-expanded','false');
+          toggle.innerHTML='<span>Show more</span><svg class="lucide lucide-chevron-down" data-lucide-icon="chevron-down" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>';
+          toggle.addEventListener('click',function(){
+            const open=item.classList.toggle('is-expanded');
+            toggle.setAttribute('aria-expanded',String(open));
+            toggle.querySelector('span').textContent=open?'Show less':'Show more';
+            if(!open&&item.getBoundingClientRect().top<chatLog.getBoundingClientRect().top)item.scrollIntoView({block:'start'});
+          });
+          body.after(toggle);
+        });
+        collapseQueue.clear();
+      });
+    }
+
     function appendMessage(role,text,messageDetails){
       chatContent.classList.add('has-chat');
       const message=document.createElement('article');
@@ -3636,6 +3693,7 @@
       }else if(role==='user'){
         const pairs=parseAnswersText(text);
         if(pairs)renderAnswers(body,pairs);
+        else collapseLongMessage(message,String(text||''));
         renderMessageAttachments(message,messageDetails&&messageDetails.attachments);
         renderMessageQuote(message,messageDetails&&messageDetails.quote);
         if(!String(text||'').trim()&&message.querySelector('.message-attachments'))message.classList.add('is-attachment-only');
@@ -4305,6 +4363,44 @@
         :'Lost the connection to NeoChat.';
     }
 
+    // New text fades in over STREAM_FADE_MS instead of popping up. Each tick
+    // rebuilds the message, so the pieces still fading are wrapped again,
+    // with a negative delay that picks each fade up where it was. fades are
+    // ranges of the rendered text: {from, to, at}.
+    const STREAM_FADE_MS=240;
+    const calmMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
+    function fadeNewText(body,fades,length,now){
+      if(!fades.length||calmMotion.matches)return;
+      const walker=document.createTreeWalker(body,NodeFilter.SHOW_TEXT);
+      let last=body;
+      while(last.lastChild)last=last.lastChild;
+      walker.currentNode=last;
+      let node=last.nodeType===Node.TEXT_NODE?last:walker.previousNode();
+      let end=length;
+      const earliest=Math.min.apply(null,fades.map(function(fade){return fade.from}));
+      while(node&&end>earliest){
+        const start=end-node.data.length;
+        const previous=walker.previousNode();
+        const parent=node.parentElement;
+        if(parent&&!parent.closest('.katex,svg,math,button,.code-head')){
+          for(let i=fades.length-1;i>=0;i--){
+            const from=Math.max(start,fades[i].from)-start,to=Math.min(end,fades[i].to)-start;
+            if(from>=to||!/\S/.test(node.data.slice(from,to)))continue;
+            let piece=node;
+            if(to<piece.data.length)piece.splitText(to);
+            if(from>0)piece=piece.splitText(from);
+            const span=document.createElement('span');
+            span.className='stream-fade';
+            span.style.animationDelay=Math.round(fades[i].at-now)+'ms';
+            piece.replaceWith(span);
+            span.append(piece);
+          }
+        }
+        end=start;
+        node=previous;
+      }
+    }
+
     function createSmoothMessageStream(message){
       const body=message.querySelector('.chat-text');
       let visibleText='';
@@ -4313,6 +4409,8 @@
       let finishing=false;
       let cancelled=false;
       let lastTick=performance.now();
+      let renderedLength=0;
+      let fades=[];
       let resolveFinished=function(){};
       const finished=new Promise(function(resolve){resolveFinished=resolve});
 
@@ -4330,11 +4428,17 @@
         if(backlog){
           const rate=finishing
             ?Math.min(5000,Math.max(240,Math.ceil(backlog/1.8)))
-            :Math.min(1200,120+backlog*1.4);
+            :Math.min(1800,160+backlog*2.5);
           const count=Math.max(1,Math.min(backlog,Math.ceil(rate*elapsed/1000)));
           visibleText+=queuedCharacters.splice(0,count).join('');
           const stayAtBottom=chatLog.scrollHeight-chatLog.scrollTop-chatLog.clientHeight<96;
           renderMarkdown(body,visibleText);
+          const length=body.textContent.length;
+          fades=fades.filter(function(fade){return now-fade.at<STREAM_FADE_MS&&fade.from<length});
+          fades.forEach(function(fade){fade.to=Math.min(fade.to,length)});
+          if(length>renderedLength)fades.push({from:renderedLength,to:length,at:now});
+          renderedLength=length;
+          fadeNewText(body,fades,length,now);
           if(stayAtBottom)chatLog.scrollTop=chatLog.scrollHeight;
         }
         if(queuedCharacters.length){schedule();return}
@@ -5326,6 +5430,64 @@
     function emitChange(){document.dispatchEvent(new CustomEvent('attachments:change'))}
     function isImageFile(file){return /^image\/(png|jpeg|gif|webp)$/.test(file.type)}
 
+    // One dialog shows a text file: a long paste waiting in the composer
+    // ("Paste as text" puts it back in the box) or a text attachment in the
+    // thread (Copy, Download).
+    const textPreview=(function(){
+      const backdrop=document.getElementById('textPreview');
+      const title=document.getElementById('textPreviewTitle');
+      const meta=document.getElementById('textPreviewMeta');
+      const body=document.getElementById('textPreviewBody');
+      const copyButton=document.getElementById('textPreviewCopy');
+      const downloadButton=document.getElementById('textPreviewDownload');
+      const closeButton=document.getElementById('textPreviewClose');
+      const inlineButton=document.getElementById('textPreviewInline');
+      let current=null;
+      let returnFocus=null;
+      function close(){
+        if(backdrop.hidden)return;
+        backdrop.hidden=true;
+        body.textContent='';
+        current=null;
+        document.removeEventListener('keydown',onKey,true);
+        if(returnFocus&&returnFocus.isConnected)returnFocus.focus({preventScroll:true});
+      }
+      function onKey(event){
+        if(event.key!=='Escape')return;
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+      }
+      backdrop.addEventListener('click',function(event){if(event.target===backdrop)close()});
+      closeButton.addEventListener('click',close);
+      copyButton.addEventListener('click',function(){
+        if(!current)return;
+        navigator.clipboard.writeText(current.text).then(function(){notify('Copied.')},function(){notify("Couldn't copy the text.")});
+      });
+      downloadButton.addEventListener('click',function(){if(current&&current.onDownload)current.onDownload()});
+      inlineButton.addEventListener('click',function(){
+        const onInline=current&&current.onInline;
+        close();
+        if(onInline)onInline();
+      });
+      return {open:function(options){
+        current=options;
+        returnFocus=document.activeElement;
+        title.textContent=options.title||'Text';
+        const bytes=new Blob([options.text]).size;
+        meta.textContent=lineCount(options.text)+' · '+(bytes<1024?bytes+' B':Math.round(bytes/1024).toLocaleString('en-US')+' KB');
+        body.textContent=options.text;
+        inlineButton.hidden=!options.onInline;
+        copyButton.hidden=Boolean(options.onInline);
+        downloadButton.hidden=!options.onDownload;
+        backdrop.hidden=false;
+        body.scrollTop=0;
+        document.addEventListener('keydown',onKey,true);
+        (options.onInline?inlineButton:closeButton).focus({preventScroll:true});
+      }};
+    })();
+    window.NeoChatTextPreview=textPreview;
+
     function canvasBlob(canvas,type,quality){
       return new Promise(function(resolve){canvas.toBlob(resolve,type,quality)});
     }
@@ -5364,18 +5526,34 @@
 
     function renderChip(item){
       const chip=item.chip;
+      const name=item.pasted?'Pasted text':item.name;
       chip.classList.toggle('is-uploading',item.status==='uploading');
       chip.classList.toggle('is-error',item.status==='error');
-      chip.title=item.status==='error'?item.name+': '+item.error:item.status==='uploading'?'Uploading '+item.name+'…':item.name;
-      chip.querySelector('span').textContent=item.name;
+      chip.title=item.status==='error'?name+': '+item.error:item.status==='uploading'?'Uploading '+name+'…':item.pasted?'Pasted text: click to view':name;
+      chip.querySelector('span').textContent=name;
     }
 
     function makeChip(item){
       const chip=document.createElement('div');
-      chip.className='chip';
-      chip.innerHTML=(item.preview?'<img alt="" />':fileIcon)+'<span></span><button type="button" aria-label="Remove attachment">'+removeIcon+'</button>';
+      chip.className='chip'+(item.pasted?' is-pasted':'');
+      chip.innerHTML=(item.preview?'<img alt="" />':fileIcon)+'<span></span>'+(item.pasted?'<small></small>':'')+'<button type="button" aria-label="Remove attachment">'+removeIcon+'</button>';
       if(item.preview)chip.querySelector('img').src=item.preview;
-      chip.querySelector('button').addEventListener('click',function(){removeItem(item,true)});
+      chip.querySelector('button').addEventListener('click',function(event){event.stopPropagation();removeItem(item,true)});
+      if(item.pasted){
+        chip.querySelector('small').textContent=lineCount(item.pasted);
+        chip.tabIndex=0;
+        chip.setAttribute('role','button');
+        const view=function(){
+          textPreview.open({title:'Pasted text',text:item.pasted,onInline:function(){
+            removeItem(item,true);
+            insertText(item.pasted);
+          }});
+        };
+        chip.addEventListener('click',view);
+        chip.addEventListener('keydown',function(event){
+          if(event.target===chip&&(event.key==='Enter'||event.key===' ')){event.preventDefault();view()}
+        });
+      }
       item.chip=chip;
       renderChip(item);
       attachmentsInner.appendChild(chip);
@@ -5426,13 +5604,13 @@
       emitChange();
     }
 
-    function addFile(file){
+    function addFile(file,pasted){
       if(!file)return;
       if(items.length>=MAX_FILES){notify('You can attach up to '+MAX_FILES+' files to one message.');return}
       const image=isImageFile(file);
       if(file.size>MAX_FILE_BYTES){notify(file.name+' is larger than 20 MB.');return}
       if(!window.NeoChatAuth||!window.NeoChatAuth.isSignedIn()){notify('Sign in to attach files.');return}
-      const item={name:file.name||'file',size:file.size,image:image,status:'uploading',id:'',kind:'',preview:image?URL.createObjectURL(file):'',controller:new AbortController()};
+      const item={name:file.name||'file',size:file.size,image:image,status:'uploading',id:'',kind:'',preview:image?URL.createObjectURL(file):'',controller:new AbortController(),pasted:pasted||''};
       items.push(item);
       makeChip(item);
       emitChange();
@@ -5440,7 +5618,7 @@
     }
 
     window.NeoChatAttachments={
-      add:addFile,
+      add:function(file){addFile(file)},
       uploading:function(){return items.some(function(item){return item.status==='uploading'})},
       failed:function(){return items.filter(function(item){return item.status==='error'})},
       ready:function(){return items.filter(function(item){return item.status==='ready'})},
@@ -5457,7 +5635,7 @@
     };
 
     fileInput.addEventListener('change',function(){
-      Array.from(fileInput.files||[]).forEach(addFile);
+      Array.from(fileInput.files||[]).forEach(function(file){addFile(file)});
       fileInput.value='';
       closePanel();
     });
@@ -5470,12 +5648,39 @@
       });
     });
 
-    // Pasting a screenshot attaches it; pasting text stays plain text.
+    // Pasting a screenshot attaches it. A long paste (a log, an article)
+    // becomes a "Pasted text" attachment instead of a wall of text in the
+    // box; the server inlines it into the message, so every model reads it
+    // the same. Shorter text stays plain text.
+    const LONG_PASTE_CHARS=3000;
+    const LONG_PASTE_LINES=50;
+    function lineCount(text){
+      const lines=text.replace(/\n+$/,'').split('\n').length;
+      return lines===1?'1 line':lines.toLocaleString('en-US')+' lines';
+    }
+    function insertText(text){
+      textarea.focus();
+      textarea.setRangeText(text,textarea.selectionStart,textarea.selectionEnd,'end');
+      textarea.dispatchEvent(new Event('input',{bubbles:true}));
+    }
+    function addPastedText(text){
+      const others=items.filter(function(item){return item.pasted}).length;
+      const name=others?'Pasted text ('+(others+1)+').txt':'Pasted text.txt';
+      addFile(new File([text],name,{type:'text/plain'}),text);
+    }
     textarea.addEventListener('paste',function(event){
       const data=event.clipboardData;
-      if(!data||!data.files||!data.files.length||data.getData('text/plain'))return;
+      if(!data)return;
+      const text=data.getData('text/plain');
+      if(data.files&&data.files.length&&!text){
+        event.preventDefault();
+        Array.from(data.files).forEach(function(file){addFile(file)});
+        return;
+      }
+      const long=text.length>=LONG_PASTE_CHARS||text.split('\n').length>=LONG_PASTE_LINES;
+      if(!long||items.length>=MAX_FILES||!window.NeoChatAuth||!window.NeoChatAuth.isSignedIn())return;
       event.preventDefault();
-      Array.from(data.files).forEach(addFile);
+      addPastedText(text);
     });
 
     // Files dropped anywhere on the chat attach instead of the browser
@@ -5501,7 +5706,7 @@
       event.preventDefault();
       dragDepth=0;
       composer.classList.remove('is-dragover');
-      Array.from(event.dataTransfer.files||[]).forEach(addFile);
+      Array.from(event.dataTransfer.files||[]).forEach(function(file){addFile(file)});
     });
 
     /* ---------- web search toggle ---------- */

@@ -136,6 +136,8 @@ type polzaContentPart struct {
 	Text     string             `json:"text,omitempty"`
 	ImageURL *polzaImageURL     `json:"image_url,omitempty"`
 	File     *polzaFileContents `json:"file,omitempty"`
+	// CacheControl marks a prompt cache point (Claude; see cache.go).
+	CacheControl *cacheControl `json:"cache_control,omitempty"`
 }
 
 type polzaImageURL struct {
@@ -216,9 +218,14 @@ type polzaStreamOptions struct {
 }
 
 type polzaUsage struct {
-	PromptTokens     int `json:"prompt_tokens"`
-	CompletionTokens int `json:"completion_tokens"`
-	ServerToolUse    *struct {
+	PromptTokens        int                 `json:"prompt_tokens"`
+	CompletionTokens    int                 `json:"completion_tokens"`
+	PromptTokensDetails *polzaPromptDetails `json:"prompt_tokens_details"`
+	// CostRUB is what Polza charged for the call, in rubles; Cost is the
+	// same figure under its older name.
+	CostRUB       looseNumber `json:"cost_rub"`
+	Cost          looseNumber `json:"cost"`
+	ServerToolUse *struct {
 		WebSearchRequests int `json:"web_search_requests"`
 	} `json:"server_tool_use"`
 }
@@ -317,6 +324,9 @@ func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messa
 		}
 		req.Messages = append(req.Messages, msg)
 	}
+	if cachesExplicitly(apiModelID) {
+		markCacheBreakpoints(req.Messages)
+	}
 	return req
 }
 
@@ -396,22 +406,19 @@ func (c *PolzaClient) Generate(ctx context.Context, apiModelID string, messages 
 	}
 	result := GenerateResult{
 		Text:         text,
-		InputTokens:  resp.Usage.PromptTokens,
-		OutputTokens: resp.Usage.CompletionTokens,
 		Citations:    parseCitations(choice.Message.Annotations),
 		FinishReason: choice.FinishReason,
 		Reasoning:    choice.Message.Reasoning,
 	}
+	resp.Usage.applyTo(&result)
 	for _, call := range choice.Message.ToolCalls {
 		result.ToolCalls = append(result.ToolCalls, ToolCall{ID: call.ID, Name: call.Function.Name, Arguments: call.Function.Arguments})
 	}
 	var details reasoningDetails
 	details.add(choice.ReasoningDetails)
 	result.ReasoningDetails = details.raw()
-	if use := resp.Usage.ServerToolUse; use != nil {
-		result.WebSearches = use.WebSearchRequests
-	}
 	logWebPlugin(ctx, apiModelID, resp.Provider, result)
+	logCache(apiModelID, result)
 	return result, nil
 }
 
@@ -483,7 +490,7 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 		}()
 
 		var text strings.Builder
-		var inputTokens, outputTokens int
+		var usage *polzaUsage
 		var final GenerateResult
 		var servedBy string
 		var reasoning strings.Builder
@@ -566,11 +573,7 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 				}
 			}
 			if chunk.Usage != nil {
-				inputTokens = chunk.Usage.PromptTokens
-				outputTokens = chunk.Usage.CompletionTokens
-				if use := chunk.Usage.ServerToolUse; use != nil {
-					final.WebSearches = use.WebSearchRequests
-				}
+				usage = chunk.Usage
 			}
 		}
 		if err := scanner.Err(); err != nil {
@@ -582,9 +585,13 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 			acc := calls[index]
 			final.ToolCalls = append(final.ToolCalls, ToolCall{ID: acc.id, Name: acc.name, Arguments: acc.arguments.String()})
 		}
-		final.Text, final.InputTokens, final.OutputTokens = text.String(), inputTokens, outputTokens
+		if usage != nil {
+			usage.applyTo(&final)
+		}
+		final.Text = text.String()
 		final.Reasoning, final.ReasoningDetails = reasoning.String(), details.raw()
 		logWebPlugin(ctx, apiModelID, servedBy, final)
+		logCache(apiModelID, final)
 		send(StreamChunk{Done: true, Final: final})
 	}()
 

@@ -101,7 +101,7 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 		if result.InputTokens < 0 || result.OutputTokens < 0 || (amount > 0 && (result.InputTokens == 0 || (result.Text != "" && result.OutputTokens == 0))) {
 			return result, fmt.Errorf("provider returned missing or invalid usage; reservation retained")
 		}
-		actual = router.ComputeCostUSDRates(inputRate, outputRate, result.InputTokens, result.OutputTokens) + float64(result.WebSearches)*webPluginFeeUSD
+		actual = callCostUSD(inputRate, outputRate, result)
 	}
 	billCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
@@ -109,6 +109,20 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 		return result, fmt.Errorf("settle spend: %w", err)
 	}
 	return result, callErr
+}
+
+// callCostUSD is what a vendor call cost: what Polza charged for it when
+// it says -- prompt cache discounts and server tools included -- else the
+// list price of its tokens, with cache writes at Claude's 1.25x (the most
+// any vendor charges for them; reads are counted in full) plus the web
+// plugin fee.
+func callCostUSD(inputRate, outputRate float64, result provider.GenerateResult) float64 {
+	if result.CostRUB > 0 {
+		return result.CostRUB / rubPerUSD
+	}
+	cost := router.ComputeCostUSDRates(inputRate, outputRate, result.InputTokens, result.OutputTokens)
+	cost += 0.25 * router.ComputeCostUSDRates(inputRate, 0, result.CacheWriteTokens, 0)
+	return cost + float64(result.WebSearches)*webPluginFeeUSD
 }
 
 // auxiliaryClient is local to a request; no shared Server fields are mutated.

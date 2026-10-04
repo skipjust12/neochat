@@ -113,7 +113,7 @@ func Classify(name string, data []byte) (kind, mime string, err error) {
 		return "", "", ErrUnsupportedType
 	}
 	if limit := MaxBytes(kind); len(data) > limit {
-		return "", "", fmt.Errorf("%w: %s files are limited to %d MB", ErrTooLarge, kind, limit>>20)
+		return "", "", fmt.Errorf("%w: %s files are limited to %s", ErrTooLarge, kind, sizeLabel(limit))
 	}
 	return kind, mime, nil
 }
@@ -126,6 +126,14 @@ func MaxBytes(kind string) int {
 		return MaxTextBytes
 	}
 	return MaxUploadBytes
+}
+
+// sizeLabel is a byte limit for an error message: "20 MB", "512 KB".
+func sizeLabel(bytes int) string {
+	if bytes >= 1<<20 && bytes%(1<<20) == 0 {
+		return fmt.Sprintf("%d MB", bytes>>20)
+	}
+	return fmt.Sprintf("%d KB", bytes>>10)
 }
 
 func isText(data []byte) bool {

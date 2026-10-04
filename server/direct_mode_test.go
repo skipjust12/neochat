@@ -44,6 +44,8 @@ type polzaStandIn struct {
 	rejectStatus int
 	// thinking is streamed as delta.reasoning before the reply.
 	thinking []string
+	// usage replaces the default usage object ({"prompt_tokens":10,...}).
+	usage string
 }
 
 func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -67,9 +69,13 @@ func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(p.errBody))
 		return
 	}
+	usage := p.usage
+	if usage == "" {
+		usage = `{"prompt_tokens":10,"completion_tokens":5}`
+	}
 	if stream, _ := body["stream"].(bool); !stream {
 		w.Header().Set("Content-Type", "application/json")
-		fmt.Fprintf(w, `{"choices":[{"message":{"role":"assistant","content":%q}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`, p.reply)
+		fmt.Fprintf(w, `{"choices":[{"message":{"role":"assistant","content":%q}}],"usage":%s}`, p.reply, usage)
 		return
 	}
 	w.Header().Set("Content-Type", "text/event-stream")
@@ -94,7 +100,7 @@ func (p *polzaStandIn) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	fmt.Fprint(w, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":5}}\n\ndata: [DONE]\n\n")
+	fmt.Fprintf(w, "data: {\"choices\":[],\"usage\":%s}\n\ndata: [DONE]\n\n", usage)
 }
 
 func (p *polzaStandIn) lastBody(t *testing.T) map[string]any {

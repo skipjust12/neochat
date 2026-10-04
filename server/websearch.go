@@ -128,6 +128,23 @@ type webAnswer struct {
 	// Reasoning is the model's thinking for this answer (streamed answers
 	// only), kept with it.
 	Reasoning string
+	calls     int
+}
+
+// add counts one more model call's usage into the answer's. What Polza
+// charged only adds up while every call says; one that doesn't leaves the
+// answer priced by its tokens (callCostUSD).
+func (a *webAnswer) add(res provider.GenerateResult) {
+	a.InputTokens += res.InputTokens
+	a.OutputTokens += res.OutputTokens
+	a.CachedTokens += res.CachedTokens
+	a.CacheWriteTokens += res.CacheWriteTokens
+	if a.calls == 0 || (a.CostRUB > 0 && res.CostRUB > 0) {
+		a.CostRUB += res.CostRUB
+	} else {
+		a.CostRUB = 0
+	}
+	a.calls++
 }
 
 // webRun answers one message, running web tools as the model asks.
@@ -220,8 +237,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 			return out, err
 		}
 		out.Text += res.Text
-		out.InputTokens += res.InputTokens
-		out.OutputTokens += res.OutputTokens
+		out.add(res)
 		out.WebSearches += res.WebSearches
 		out.Citations = append(out.Citations, res.Citations...)
 		if len(res.ToolCalls) == 0 {

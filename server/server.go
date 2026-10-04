@@ -1441,7 +1441,7 @@ func (s *Server) recordAuxCostLog(ctx context.Context, userID, requestID, mode, 
 		Mode:         mode,
 		InputTokens:  usage.InputTokens,
 		OutputTokens: usage.OutputTokens,
-		CostUSD:      router.ComputeCostUSDRates(costInputPerMTok, costOutputPerMTok, usage.InputTokens, usage.OutputTokens),
+		CostUSD:      callCostUSD(costInputPerMTok, costOutputPerMTok, *usage),
 		Timestamp:    time.Now(),
 	}
 	if err := s.CostLog.Record(ctx, entry); err != nil {
@@ -1712,7 +1712,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		return chatResponse{}, err
 	}
 
-	actualCost := router.ComputeCostUSD(model, genResult.InputTokens, genResult.OutputTokens) + answer.ImageCostUSD
+	actualCost := callCostUSD(model.CostInputPerMTok, model.CostOutputPerMTok, genResult) + answer.ImageCostUSD
 	// Best-effort like Conversations.Append above: the request already
 	// succeeded and the user already has their answer, so a logging
 	// failure here shouldn't fail the request -- it just means this one
@@ -1720,7 +1720,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	// checklist item 7), not from the spend store already settled by billedCall,
 	// which is what actually gates the Thinking+Max cap.
 	entry := router.NewCostLogEntry(req.UserID, prepared.requestID, model, result.SelectedMode, genResult.InputTokens, genResult.OutputTokens, now)
-	entry.CostUSD += answer.ImageCostUSD
+	entry.CostUSD = actualCost
 	if err := s.CostLog.Record(ctx, entry); err != nil {
 		log.Printf("server: failed to record cost log entry for request_id=%s: %v", prepared.requestID, err)
 	}

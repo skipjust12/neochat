@@ -235,7 +235,7 @@ Things worth baking in early because retrofitting them on a live system later is
 Known, not all resolved:
 
 - **OpenRouter as a single point of failure.** No direct vendor contracts yet as an emergency fallback if the whole platform goes down.
-- **Prompt caching vs. routing conflict.** Vendor-side context caching breaks when the model changes mid-session — not fully reconciled with auto-routing yet.
+- **Prompt caching vs. routing conflict.** Caching works per model (Claude through explicit cache points, the others on their own), and switching models mid-chat starts a fresh cache — not reconciled with auto-routing yet, which could switch every turn.
 - **Context window mismatch** — addressed via the tokenizer + summarization work above.
 - **Prompt injection against the system prompt.** Users can try to extract it and figure out which model is actually answering — undermines the "don't think about models" positioning if it becomes common, though not a security issue per se.
 - **Cost-based abuse** — addressed: output token caps, request body size limits, per-IP/per-user rate limiting, and authenticated `user_id` (no more resetting spend history by fabricating a new one).
@@ -270,6 +270,9 @@ Known, not all resolved:
 - Settings sync: tone, instructions, language, theme, the default model and web search follow the user between devices (`GET/PUT /account/settings`, table `user_settings`). API keys never leave the browser.
 - "+" → Compact: after a yes/no confirmation, GPT-6 Luna (on the user's key) folds everything but the last exchange into the chat's summary (`POST /conversations/{id}/compact`); later turns send the summary instead, and the thread marks where it happened.
 - Incognito keeps the home greeting, reading "Incognito mode"; the thinking label rotates every 10s through Fabrication, Hallucinating, Deep thinking, Thinking, Overthinking, Pondering and Calculating.
+- Prompt caching: Claude requests mark three cache points (the end of the system messages, and the last two user messages; `provider/cache.go`), so a long chat re-reads its history from Polza's cache at a tenth of the price; OpenAI, DeepSeek, Gemini and Grok cache on their own. Spend is settled on what Polza says it charged (`usage.cost_rub`, cache discounts included), with cache reads and writes in the server log.
+- Streamed answers fade in as they arrive (240 ms per piece, off with reduced motion), at the stream's own pace.
+- A long paste (3000+ characters or 50+ lines) becomes a "Pasted text" attachment instead of filling the message box; a click previews it, with "Paste as text" to put it back. In the thread, text files open in the same preview (Copy, Download), and long messages fold to their first lines behind "Show more".
 - Code blocks show their language and a Copy button and are highlighted by a vendored highlight.js.
 - Quoting: select words in an answer and press Ask, and the selection lands in the composer as a quote card. The next message goes out with it (`"quote"`), the model reads it as a `>` blockquote in front of the question, and the thread shows it above the user's message, history and regenerations included.
 - Questionnaires: on open-ended requests a model can ask a few questions first (`ask_user`). They open as a panel above the composer (in its place on phones), with single and multiple choice and a field for the user's own answer on every question, and go back to the model as a `Q: … / A: …` message.

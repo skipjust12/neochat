@@ -45,12 +45,12 @@ func TestClassifyRejects(t *testing.T) {
 		t.Errorf("plain zip: err = %v, want ErrUnsupportedType", err)
 	}
 	big := bytes.Repeat([]byte("a"), MaxTextBytes+1)
-	if _, _, err := Classify("big.txt", big); !errors.Is(err, ErrTooLarge) {
-		t.Errorf("oversized text: err = %v, want ErrTooLarge", err)
+	if _, _, err := Classify("big.txt", big); !errors.Is(err, ErrTooLarge) || !strings.HasSuffix(err.Error(), "text files are limited to 512 KB") {
+		t.Errorf("oversized text: err = %v, want ErrTooLarge naming 512 KB", err)
 	}
 	bigImage := append(append([]byte(nil), pngBytes...), make([]byte, MaxUploadBytes)...)
-	if _, _, err := Classify("big.png", bigImage); !errors.Is(err, ErrTooLarge) {
-		t.Errorf("oversized image: err = %v, want ErrTooLarge", err)
+	if _, _, err := Classify("big.png", bigImage); !errors.Is(err, ErrTooLarge) || !strings.HasSuffix(err.Error(), "image files are limited to 20 MB") {
+		t.Errorf("oversized image: err = %v, want ErrTooLarge naming 20 MB", err)
 	}
 }
 

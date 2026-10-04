@@ -69,6 +69,14 @@ type GenerateResult struct {
 	InputTokens  int
 	OutputTokens int
 
+	// CachedTokens and CacheWriteTokens are the part of InputTokens read
+	// from and written to the vendor's prompt cache (see cache.go).
+	// CostRUB is what Polza charged for the call, cache discounts and
+	// server tools included; 0 when it didn't say.
+	CachedTokens     int
+	CacheWriteTokens int
+	CostRUB          float64
+
 	// ToolCalls are the functions the model asked to call (FinishReason
 	// "tool_calls"); the caller runs them and continues the conversation.
 	// Reasoning/ReasoningDetails come back with them -- see Message.
