@@ -212,7 +212,8 @@ Implemented (`auth/`, wired into `server.Mux()`). Every `user_id`/`plan_id` that
 - `Authorization: Bearer <api-key>` on every chat call, checked by middleware between the per-IP rate limiter and the handler (so a garbage token is rejected cheaply before it drives a database lookup). `chatRequest.UserID`/`PlanID` are `json:"-"` — client-supplied values are silently ignored.
 - `auth.Authenticator` is the one method (`Authenticate(ctx, token) (Identity, error)`) `server.Server` actually depends on, so a future real auth system is a new implementation of this interface, not a pipeline rewrite.
 - `auth.PostgresStore`, backed by an `api_keys` table storing only a token's SHA-256 hash — a leaked table dump doesn't hand out working credentials.
-- Issuance is a manual CLI for now (`go run ./cmd/issuekey`), not a signup flow — there's no login/registration UI yet.
+- Issuance is a manual CLI for now (`go run ./cmd/issuekey`), not a signup flow — there's no registration UI yet.
+- The web UI doesn't keep the key: signing in trades it for a browser session (`POST /auth/session`, `auth.SessionStore`, `web_sessions` table, hashes only) carried in an `HttpOnly`, `SameSite=Strict` cookie (`__Host-` and `Secure` over HTTPS). Every endpoint accepts that cookie in place of the header, but only together with `X-NeoChat-Request: 1`, which other sites can't send. A session lasts 30 days from its last use, survives closing the tab or browser, ends on Log out (`DELETE /auth/session`) and dies with its API key.
 - Rate limiting is two-keyed: per-IP (catches callers with no valid key) and per-user (catches one key driving traffic from many source addresses). Both fail open if Redis is unreachable — a degraded throttle is a bounded loss, a self-inflicted outage isn't.
 - Not done: key revocation/expiry (a leaked key is invalidated by hand today).
 
@@ -261,7 +262,7 @@ Known, not all resolved:
 - Streaming: implemented (`POST /chat/stream`), sharing the full pipeline with the non-streaming path.
 - Circuit breaker: implemented and wired into failover.
 - Conversation storage, tokenizer/context estimation, long-conversation summarization, idempotency, per-request cost logging: all implemented and Postgres/Redis-backed.
-- Authentication and per-user rate limiting: implemented — API-key auth, no self-serve signup yet.
+- Authentication and per-user rate limiting: implemented — API-key auth, browser sessions that keep the web UI signed in for 30 days, no self-serve signup yet.
 - Local dev infrastructure: Docker Compose (Postgres + Redis + the server itself), migrations auto-applied on startup, documented in `docs/running-locally.md`.
 
 What's *not* here, deliberately: a production deployment, a payments integration, a signup flow, or a UI. This is the backend/engineering half of the idea, built far enough to be a real demonstration of the pattern — not a shipped product, for the reasons above.

@@ -398,9 +398,10 @@ func withAttachmentNotes(messages []conversation.Message) []conversation.Message
 //     abandoned files forever;
 //   - stored web pages older than pagestore.TTL, pages of chats that were
 //     never stored or are gone, and the oldest pages beyond
-//     PageStoreMaxBytes.
+//     PageStoreMaxBytes;
+//   - expired browser sessions, and sessions whose API key was deleted.
 func (s *Server) RunCleanup(ctx context.Context, interval time.Duration) {
-	if s.Attachments == nil && s.Pages == nil {
+	if s.Attachments == nil && s.Pages == nil && s.Sessions == nil {
 		return
 	}
 	timer := time.NewTimer(time.Minute)
@@ -437,6 +438,14 @@ func (s *Server) cleanupOnce(ctx context.Context) {
 			log.Printf("server: web page sweep: %v", err)
 		} else if deleted > 0 {
 			log.Printf("server: web page sweep deleted %d pages", deleted)
+		}
+	}
+	if s.Sessions != nil {
+		deleted, err := s.Sessions.SweepSessions(sweepCtx, now)
+		if err != nil {
+			log.Printf("server: session sweep: %v", err)
+		} else if deleted > 0 {
+			log.Printf("server: session sweep deleted %d sessions", deleted)
 		}
 	}
 }

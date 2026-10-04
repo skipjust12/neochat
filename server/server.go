@@ -196,6 +196,12 @@ type Server struct {
 	// layer to be skippable by a nil field.
 	Auth auth.Authenticator
 
+	// Sessions keeps the web UI signed in: POST /auth/session trades an
+	// API key for a session cookie, which every endpoint then accepts in
+	// place of the Authorization header (see session.go). Nil disables
+	// browser sign-in; API keys keep working.
+	Sessions auth.SessionStore
+
 	// RouterDisabled switches the pipeline to direct mode: only Manual
 	// requests are accepted (anything else fails with errRouterDisabled),
 	// classify/moderate are skipped entirely, and the chosen model is
@@ -393,6 +399,9 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.Handle("GET /assets/", http.FileServer(http.FS(frontendAssets)))
 	// Browsers ask for /favicon.ico on their own, whatever the page links.
 	mux.HandleFunc("GET /favicon.ico", serveFavicon)
+	mux.HandleFunc("POST /auth/session", recovered(s.rateLimited(s.handleSessionCreate)))
+	mux.HandleFunc("GET /auth/session", recovered(s.rateLimited(s.handleSessionGet)))
+	mux.HandleFunc("DELETE /auth/session", recovered(s.rateLimited(s.handleSessionDelete)))
 	mux.HandleFunc("POST /chat", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChat)))))
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
@@ -787,11 +796,31 @@ type identityHandler func(w http.ResponseWriter, r *http.Request, identity auth.
 // finding #1). A missing/malformed header and a token s.Auth doesn't
 // recognize both get the same 401 with the same message -- see
 // auth.ErrInvalidToken's doc comment for why they're not distinguished.
+//
+// A request without an Authorization header may instead be signed in
+// with the web UI's session cookie (see session.go), which then also
+// needs sessionHeader.
 func (s *Server) authenticated(next identityHandler) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		if s.RequireHTTPS && r.TLS == nil && !(s.trustedProxy(clientIP(r)) && r.Header.Get("X-Forwarded-Proto") == "https") {
+		if s.RequireHTTPS && !s.requestIsHTTPS(r) {
 			http.Error(w, "HTTPS is required", http.StatusBadRequest)
 			return
+		}
+		if r.Header.Get("Authorization") == "" && s.Sessions != nil {
+			if token := s.sessionToken(r); token != "" {
+				if !hasSessionHeader(w, r) {
+					return
+				}
+				session, ok := s.resumeSession(w, r, token)
+				if !ok {
+					return
+				}
+				if session.Extended {
+					s.setSessionCookie(w, r, token, session.ExpiresAt)
+				}
+				next(w, r, session.Identity)
+				return
+			}
 		}
 		token, ok := bearerToken(r)
 		if !ok {

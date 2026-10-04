@@ -254,6 +254,7 @@ func main() {
 	summaryClient := summarizer.New(retryingClient, summarizerModelID, summarizerSystemPrompt)
 	summaryClient.CostInputPerMTok = getenvFloatDefault("SUMMARIZER_COST_INPUT_PER_MTOK", classifierCostInputPerMTok)
 	summaryClient.CostOutputPerMTok = getenvFloatDefault("SUMMARIZER_COST_OUTPUT_PER_MTOK", classifierCostOutputPerMTok)
+	authStore := auth.NewPostgresStore(pgDB)
 	srv := &server.Server{
 		TrustedProxies: trustedProxies,
 		RequireHTTPS:   os.Getenv("REQUIRE_HTTPS") == "true",
@@ -313,8 +314,10 @@ func main() {
 		// Postgres-backed -- see auth.Store's doc comment and audit.md
 		// finding #1. Keys are minted out of band via `go run
 		// ./cmd/issuekey` (see docs/running-locally.md); there is no HTTP
-		// signup endpoint yet.
-		Auth: auth.NewPostgresStore(pgDB),
+		// signup endpoint yet. The web UI signs in with a key and then
+		// rides a session cookie (db/migrations/0010_web_sessions.sql).
+		Auth:     authStore,
+		Sessions: authStore,
 	}
 
 	addr := os.Getenv("ADDR")

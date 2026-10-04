@@ -57,7 +57,7 @@ func (s *Server) requestIP(r *http.Request) string {
 }
 
 func (s *Server) frontend(w http.ResponseWriter, r *http.Request) {
-	if s.RequireHTTPS && r.TLS == nil && !(s.trustedProxy(clientIP(r)) && r.Header.Get("X-Forwarded-Proto") == "https") {
+	if s.RequireHTTPS && !s.requestIsHTTPS(r) {
 		http.Error(w, "HTTPS is required", http.StatusBadRequest)
 		return
 	}

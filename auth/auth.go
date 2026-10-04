@@ -20,6 +20,10 @@
 // that they're trustworthy by the time they see them. Swapping
 // Authenticator implementations in cmd/server/main.go is the entire
 // migration.
+//
+// The web UI signs in with the same keys but doesn't hold on to them: it
+// trades a key for a browser session (SessionStore, session.go) carried
+// in an HttpOnly cookie.
 package auth
 
 import (

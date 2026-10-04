@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 )
 
 func TestInMemoryStore_IssueThenAuthenticateResolvesIdentity(t *testing.T) {
@@ -91,4 +92,13 @@ func TestInMemoryStore_IssueKeyRequiresUserIDAndPlanID(t *testing.T) {
 // PostgresStore against.
 func TestInMemoryStore_ImplementsStore(t *testing.T) {
 	var _ Store = NewInMemoryStore()
+}
+
+func TestInMemoryStore_Sessions(t *testing.T) {
+	store := NewInMemoryStore()
+	testSessionStore(t, sessionStoreUnderTest{
+		store:     store,
+		setNow:    func(now time.Time) { store.now = func() time.Time { return now } },
+		revokeKey: store.RevokeKey,
+	})
 }

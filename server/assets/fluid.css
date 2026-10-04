@@ -6226,6 +6226,7 @@ h1 {
   border: 0;
   border-radius: 8px;
   background: var(--surface-4);
+  color: var(--text);
   box-shadow: var(--shadow-lg);
   font-size: 13px;
 }

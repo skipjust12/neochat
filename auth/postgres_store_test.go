@@ -6,6 +6,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	"neochat/internal/dbtest"
 )
@@ -62,4 +63,19 @@ func TestPostgresStore_RawTokenNeverStored(t *testing.T) {
 	if count != 0 {
 		t.Error("raw token found stored verbatim in api_keys.token_hash -- should only ever hold hashToken's output")
 	}
+}
+
+func TestPostgresStore_Sessions(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "api_keys", "web_sessions")
+	store := NewPostgresStore(pgDB)
+	testSessionStore(t, sessionStoreUnderTest{
+		store:  store,
+		setNow: func(now time.Time) { store.now = func() time.Time { return now } },
+		revokeKey: func(token string) {
+			if _, err := pgDB.Exec(`DELETE FROM api_keys WHERE token_hash = $1`, hashToken(token)); err != nil {
+				t.Fatal(err)
+			}
+		},
+	})
 }
