@@ -318,6 +318,10 @@ type chatRequest struct {
 	// attachments, Message may be empty.
 	Attachments []string `json:"attachments,omitempty"`
 
+	// Quote is the part of an earlier answer this message asks about (see
+	// quote.go). It doesn't count as a message on its own.
+	Quote string `json:"quote,omitempty"`
+
 	// providerKey is the user's own vendor key, read from the
 	// X-Provider-Key header (never from the body, never persisted).
 	providerKey string
@@ -326,6 +330,7 @@ type chatRequest struct {
 type incognitoMessage struct {
 	Role    string `json:"role"`
 	Content string `json:"content"`
+	Quote   string `json:"quote,omitempty"`
 	// Questionnaire is what an assistant turn asked (ask_user), so the
 	// model sees it in later turns of a private chat too.
 	Questionnaire *conversation.Questionnaire `json:"questionnaire,omitempty"`
@@ -875,6 +880,7 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 	req.UserID = identity.UserID
 	req.PlanID = identity.PlanID
 	req.providerKey = strings.TrimSpace(r.Header.Get(providerKeyHeader))
+	req.Quote = cleanQuote(req.Quote)
 
 	if req.Message == "" && len(req.Attachments) == 0 {
 		http.Error(w, "message is required", http.StatusBadRequest)
@@ -1068,6 +1074,7 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		UserID: identity.UserID, PlanID: identity.PlanID,
 		ConversationID: input.ConversationID, Message: history[len(history)-2].Content,
 		Attachments:   attachmentIDs(history[len(history)-2].Attachments),
+		Quote:         history[len(history)-2].Quote,
 		RequestedMode: input.RequestedMode, ManualModelID: input.ManualModelID,
 		IdempotencyKey: input.IdempotencyKey, Persona: input.Persona,
 		ProjectID:           input.ProjectID,
@@ -1306,6 +1313,9 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 		tail = make([]conversation.Message, 0, len(req.IncognitoHistory))
 		for _, message := range req.IncognitoHistory {
 			m := conversation.Message{Role: conversation.Role(message.Role), Content: message.Content}
+			if m.Role == conversation.RoleUser {
+				m.Quote = cleanQuote(message.Quote)
+			}
 			if q := boundQuestionnaire(message.Questionnaire); q != nil && m.Role == conversation.RoleAssistant {
 				m.Versions = []conversation.ResponseVersion{{Content: m.Content, Questionnaire: q}}
 			}
@@ -1356,7 +1366,7 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 		history[i] = s.historyMessage(ctx, req.UserID, tail[i], &historyBudget)
 	}
 	messages = append(messages, history...)
-	messages = append(messages, userMessage(req.Message, files, nil))
+	messages = append(messages, userMessage(withQuote(req.Quote, req.Message), files, nil))
 
 	// tokenizer.EstimateMessages replaces chatRequest.EstimatedContextTokens
 	// as the number Route actually filters/prices against -- computed from
@@ -1477,7 +1487,7 @@ func (s *Server) maybeSummarize(ctx context.Context, userID, conversationID stri
 
 	windowAsMessages := make([]provider.Message, len(window))
 	for i, m := range window {
-		windowAsMessages[i] = provider.Message{Role: string(m.Role), Content: m.Content}
+		windowAsMessages[i] = provider.Message{Role: string(m.Role), Content: withQuote(m.Quote, m.Content)}
 	}
 	if tokenizer.EstimateMessages(windowAsMessages) < s.SummaryTriggerTokens {
 		return window, state.Text
@@ -1489,7 +1499,7 @@ func (s *Server) maybeSummarize(ctx context.Context, userID, conversationID stri
 	// state.CoversThrough needed the way there was when this received the
 	// full history.
 	tailStart := len(window) - s.SummaryTailMessages
-	toFold := withAttachmentNotes(window[:tailStart])
+	toFold := summaryInput(window[:tailStart])
 
 	newSummary, err := s.Summarizer.Summarize(ctx, state.Text, toFold)
 	if err != nil {
@@ -1698,7 +1708,7 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 			return regenerated, fmt.Errorf("persist regenerated response: %w", err)
 		}
 	} else {
-		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, Attachments: prepared.attachments, CreatedAt: now}); err != nil {
+		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, Attachments: prepared.attachments, Quote: req.Quote, CreatedAt: now}); err != nil {
 			log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
 		}
 		if len(prepared.attachments) > 0 && s.Attachments != nil {

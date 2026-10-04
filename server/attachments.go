@@ -264,8 +264,11 @@ func (s *Server) historyMessage(ctx context.Context, userID string, m conversati
 	if m.Role == conversation.RoleAssistant {
 		return provider.Message{Role: string(m.Role), Content: assistantHistoryContent(m)}
 	}
-	if m.Role != conversation.RoleUser || len(m.Attachments) == 0 {
+	if m.Role != conversation.RoleUser {
 		return provider.Message{Role: string(m.Role), Content: m.Content}
+	}
+	if len(m.Attachments) == 0 {
+		return provider.Message{Role: string(m.Role), Content: withQuote(m.Quote, m.Content)}
 	}
 	var files []attachment.File
 	var notes []string
@@ -285,7 +288,7 @@ func (s *Server) historyMessage(ctx context.Context, userID string, m conversati
 		*budget -= file.Size
 		files = append(files, file)
 	}
-	return userMessage(m.Content, files, notes)
+	return userMessage(withQuote(m.Quote, m.Content), files, notes)
 }
 
 func attachmentRefs(files []attachment.File) []conversation.Attachment {
@@ -371,13 +374,15 @@ func attachmentIDs(refs []conversation.Attachment) []string {
 	return ids
 }
 
-// withAttachmentNotes gives the summarizer a mention of each file, since it
-// only ever sees text: without it a message that was just a file would
+// summaryInput is messages as the summarizer gets them: with the quote a
+// message asked about, and a mention of each file, since the summarizer
+// only ever sees text -- without it a message that was just a file would
 // fold into the summary as nothing.
-func withAttachmentNotes(messages []conversation.Message) []conversation.Message {
+func summaryInput(messages []conversation.Message) []conversation.Message {
 	out := make([]conversation.Message, len(messages))
 	for i, m := range messages {
 		out[i] = m
+		out[i].Content = withQuote(m.Quote, m.Content)
 		if len(m.Attachments) == 0 {
 			continue
 		}
@@ -385,7 +390,7 @@ func withAttachmentNotes(messages []conversation.Message) []conversation.Message
 		for j, a := range m.Attachments {
 			names[j] = a.Name
 		}
-		out[i].Content = strings.TrimSpace(m.Content + "\n[Attached: " + strings.Join(names, ", ") + "]")
+		out[i].Content = strings.TrimSpace(out[i].Content + "\n[Attached: " + strings.Join(names, ", ") + "]")
 	}
 	return out
 }

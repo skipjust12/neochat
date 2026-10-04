@@ -49,7 +49,7 @@ func (s *PostgresStore) HistoryPage(ctx context.Context, userID, conversationID 
 	}
 	// Bound both row count and large legacy message values at the database.
 	rows, err := s.db.QueryContext(ctx, `
- SELECT id,role,LEFT(content,$5),model_id,is_summary,created_at,LENGTH(content)>$5,versions,attachments
+ SELECT id,role,LEFT(content,$5),model_id,is_summary,created_at,LENGTH(content)>$5,versions,attachments,quote
  FROM conversation_messages
  WHERE user_id=$1 AND conversation_id=$2 AND ($3::bigint=0 OR id<$3)
  ORDER BY id DESC LIMIT $4
@@ -66,7 +66,7 @@ func (s *PostgresStore) HistoryPage(ctx context.Context, userID, conversationID 
 		}
 		var msg Message
 		var encoded, encodedAttachments []byte
-		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &msg.ModelID, &msg.IsSummary, &msg.CreatedAt, &msg.Truncated, &encoded, &encodedAttachments); err != nil {
+		if err := rows.Scan(&msg.ID, &msg.Role, &msg.Content, &msg.ModelID, &msg.IsSummary, &msg.CreatedAt, &msg.Truncated, &encoded, &encodedAttachments, &msg.Quote); err != nil {
 			return Page{}, err
 		}
 		if len(encoded) > 0 {

@@ -45,6 +45,10 @@ type Message struct {
 	// Attachments lists the files sent with a user message. Only metadata
 	// lives here; the bytes are in the attachment store, keyed by ID.
 	Attachments []Attachment `json:"attachments,omitempty"`
+
+	// Quote is the part of an earlier answer a user message asks about
+	// (selected in the UI and sent with "Ask"); empty for most messages.
+	Quote string `json:"quote,omitempty"`
 }
 
 // Attachment is the stored reference to one file sent with a message.

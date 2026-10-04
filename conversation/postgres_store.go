@@ -35,9 +35,9 @@ func (s *PostgresStore) Append(ctx context.Context, userID, conversationID strin
 		return err
 	}
 	_, err = s.db.ExecContext(ctx, `
-		INSERT INTO conversation_messages (user_id, conversation_id, role, content, model_id, is_summary, created_at, versions, attachments)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`, userID, conversationID, msg.Role, msg.Content, msg.ModelID, msg.IsSummary, msg.CreatedAt, versions, attachments)
+		INSERT INTO conversation_messages (user_id, conversation_id, role, content, model_id, is_summary, created_at, versions, attachments, quote)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+	`, userID, conversationID, msg.Role, msg.Content, msg.ModelID, msg.IsSummary, msg.CreatedAt, versions, attachments, msg.Quote)
 	return err
 }
 
@@ -106,7 +106,7 @@ func (s *PostgresStore) History(ctx context.Context, userID, conversationID stri
 	// stay meaningful. The (user_id, conversation_id, id) index in
 	// db/migrations/0002_conversation.sql covers this scan.
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT id, role, content, model_id, is_summary, created_at, versions, attachments
+		SELECT id, role, content, model_id, is_summary, created_at, versions, attachments, quote
 		FROM conversation_messages
 		WHERE user_id = $1 AND conversation_id = $2
 		ORDER BY id
@@ -124,7 +124,7 @@ func (s *PostgresStore) History(ctx context.Context, userID, conversationID stri
 	for rows.Next() {
 		var m Message
 		var encoded, encodedAttachments []byte
-		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.ModelID, &m.IsSummary, &m.CreatedAt, &encoded, &encodedAttachments); err != nil {
+		if err := rows.Scan(&m.ID, &m.Role, &m.Content, &m.ModelID, &m.IsSummary, &m.CreatedAt, &encoded, &encodedAttachments, &m.Quote); err != nil {
 			return nil, err
 		}
 		if len(encoded) > 0 {

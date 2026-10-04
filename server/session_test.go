@@ -80,10 +80,10 @@ func TestSessionSignInSetsAProtectedCookie(t *testing.T) {
 		t.Fatalf("status = %d %s", rec.Code, rec.Body)
 	}
 	var body sessionResponse
-	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || body.UserID != "u1" {
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil || !body.SignedIn || body.UserID != "u1" || body.ExpiresAt == nil {
 		t.Fatalf("body = %s, %v", rec.Body, err)
 	}
-	if d := time.Until(body.ExpiresAt); d < auth.SessionTTL-time.Minute || d > auth.SessionTTL {
+	if d := time.Until(*body.ExpiresAt); d < auth.SessionTTL-time.Minute || d > auth.SessionTTL {
 		t.Fatalf("expires_at = %v", body.ExpiresAt)
 	}
 	cookie := responseCookie(t, rec, sessionCookieName)
@@ -170,12 +170,14 @@ func TestSessionCookieAuthenticatesRequests(t *testing.T) {
 func TestSessionCheckAndLogOut(t *testing.T) {
 	srv, _, key := newSessionTestServer(t)
 
-	if rec := (sessionCall{method: "GET", path: "/auth/session"}).do(srv); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("GET /auth/session signed out: %d", rec.Code)
+	// Not being signed in is an answer, not an error: every landing page
+	// visit asks.
+	if rec := (sessionCall{method: "GET", path: "/auth/session"}).do(srv); rec.Code != http.StatusOK || strings.TrimSpace(rec.Body.String()) != `{"signed_in":false}` {
+		t.Fatalf("GET /auth/session signed out: %d %s", rec.Code, rec.Body)
 	}
 	cookie := signIn(t, srv, key)
 	rec := sessionCall{method: "GET", path: "/auth/session", cookie: cookie}.do(srv)
-	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"user_id":"u1"`) {
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"signed_in":true,"user_id":"u1"`) {
 		t.Fatalf("GET /auth/session: %d %s", rec.Code, rec.Body)
 	}
 	if again := responseCookie(t, rec, sessionCookieName); again.Value != cookie.Value || again.MaxAge <= 0 || !again.HttpOnly {
@@ -216,8 +218,12 @@ func TestSessionSignInAgainReplacesTheOldSession(t *testing.T) {
 	if second.Value == first.Value {
 		t.Fatal("sign in reused the session")
 	}
-	if rec := (sessionCall{method: "GET", path: "/auth/session", cookie: first}).do(srv); rec.Code != http.StatusUnauthorized {
-		t.Fatalf("replaced session still works: %d", rec.Code)
+	rec = sessionCall{method: "GET", path: "/auth/session", cookie: first}.do(srv)
+	if rec.Code != http.StatusOK || !strings.Contains(rec.Body.String(), `"signed_in":false`) {
+		t.Fatalf("replaced session still works: %d %s", rec.Code, rec.Body)
+	}
+	if cleared := responseCookie(t, rec, sessionCookieName); cleared.MaxAge >= 0 {
+		t.Fatalf("dead session's cookie not cleared: %+v", cleared)
 	}
 	if rec := (sessionCall{method: "GET", path: "/auth/session", cookie: second}).do(srv); rec.Code != http.StatusOK {
 		t.Fatalf("new session: %d", rec.Code)

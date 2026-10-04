@@ -7386,3 +7386,174 @@ html.is-asking .ask-card.is-pending .ask-card-action {
     display: none;
   }
 }
+
+/* "Ask" on text selected in an answer. */
+.selection-ask {
+  position: fixed;
+  z-index: 70;
+  top: 0;
+  left: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px 0 10px;
+  border: 0;
+  border-radius: 10px;
+  background: var(--surface-4);
+  box-shadow: var(--shadow-lg);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 560;
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  animation: selection-ask-in .16s var(--ease-out);
+}
+
+.selection-ask[hidden] {
+  display: none;
+}
+
+.selection-ask:hover {
+  background: color-mix(in srgb, var(--surface-4), var(--text) 6%);
+}
+
+.selection-ask svg {
+  width: 15px;
+  height: 15px;
+  color: var(--muted);
+}
+
+@keyframes selection-ask-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px) scale(.96);
+  }
+}
+
+/* The quote in the composer, before any files. */
+.attachments-inner {
+  align-items: flex-start;
+}
+
+.quote-card {
+  display: flex;
+  flex-direction: column;
+  width: 168px;
+  border-radius: 10px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-2);
+  overflow: hidden;
+  opacity: 0;
+  transform: translateY(6px) scale(.96);
+  animation: chip-in .3s var(--ease-out) forwards;
+}
+
+.quote-card-text {
+  height: calc(2.8em + 12px);
+  margin: 4px 4px 0;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: var(--hover);
+  color: var(--muted-strong);
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+/* Clamped on an inner box: the padding above would show the next line. */
+.quote-card-text span {
+  display: -webkit-box;
+  max-height: 2.8em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.quote-card-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 5px 4px 9px;
+  color: var(--muted);
+  font-size: 11px;
+}
+
+.quote-card-foot svg {
+  width: 13px;
+  height: 13px;
+  flex: none;
+}
+
+.quote-card-foot span {
+  flex: 1;
+}
+
+.quote-card-foot button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex: none;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: background .16s ease, color .16s ease;
+}
+
+.quote-card-foot button:hover {
+  background: var(--btn-hover);
+  color: var(--text);
+}
+
+.quote-card-foot button svg {
+  width: 11px;
+  height: 11px;
+}
+
+/* The quote a sent message asked about, above its bubble. */
+.message-quote {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  max-width: 85%;
+  margin-bottom: 6px;
+  padding: 0 4px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+}
+
+.message-quote svg {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  margin-top: 2px;
+}
+
+.message-quote span {
+  display: -webkit-box;
+  max-height: 2.9em;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.message-quote.is-expanded span {
+  display: block;
+  max-height: none;
+}

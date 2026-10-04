@@ -268,7 +268,11 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 // web plugin searches for the user's message before the model answers.
 func (r *webRun) searchFirst(ctx context.Context, messages []provider.Message) (webAnswer, error) {
 	step := r.start(conversation.ToolActivity{Tool: "web_search", Query: clipRunes(strings.TrimSpace(r.req.Message), 200)})
-	callCtx := provider.WithWebPlugin(ctx, provider.WebPlugin{Engine: "yandex", MaxResults: webSearchResults, SearchPrompt: clipRunes(r.req.Message, 400)})
+	searchPrompt := clipRunes(r.req.Message, 400)
+	if r.req.Quote != "" {
+		searchPrompt += "\n(about: " + clipRunes(r.req.Quote, 200) + ")"
+	}
+	callCtx := provider.WithWebPlugin(ctx, provider.WebPlugin{Engine: "yandex", MaxResults: webSearchResults, SearchPrompt: searchPrompt})
 	// The search runs before the model, so it is over by the first text.
 	callCtx = withFirstDelta(callCtx, func() { r.finish(step, func(*conversation.ToolActivity) {}) })
 	res, err := r.generate(callCtx, withSystemNote(messages, webPluginNote))

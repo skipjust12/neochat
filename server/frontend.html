@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=14" />
+<link rel="stylesheet" href="/assets/fluid.css?v=15" />
 <link rel="stylesheet" href="/assets/landing/landing.css?v=1" />
 <script>try{if(!localStorage.getItem('neochat-signed-in')&&!sessionStorage.getItem('neochat-api-key'))document.documentElement.classList.add('is-guest')}catch(error){document.documentElement.classList.add('is-guest')}</script>
 </head>
@@ -31,6 +31,8 @@
 <div id="landing-root"></div>
 <!-- Outside .app so a toast still shows over the landing page (e.g. "session expired"). -->
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
+<!-- "Ask" on text selected in an answer: quotes it in the composer. -->
+<button type="button" class="selection-ask" id="selectionAsk" hidden><svg class="lucide lucide-message-square-quote" data-lucide-icon="message-square-quote" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14a2 2 0 0 0 2-2V8h-2" /><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /><path d="M8 14a2 2 0 0 0 2-2V8H8" /></svg><span>Ask</span></button>
 <div class="app" id="app">
   <input class="state-toggle" type="checkbox" id="sidebarState" aria-label="Sidebar state" />
   <input class="state-toggle" type="checkbox" id="incognitoState" aria-label="Incognito mode" />
@@ -1627,6 +1629,7 @@
       chatLog.replaceChildren();
       chatContent.classList.remove('has-chat');
       if(window.NeoChatAttachments)window.NeoChatAttachments.clear();
+      clearComposerQuote();
       updateChatModeControls();
       loadConversations(true);
     }
@@ -1651,7 +1654,7 @@
       async function signedInAs(response){
         let data={};
         try{data=await response.json()}catch(error){}
-        setSignedIn(String(data.user_id||'')||'signed-in');
+        setSignedIn(data.signed_in?String(data.user_id||'')||'signed-in':'');
       }
       async function signIn(value){
         const key=String(value||'').trim();
@@ -1688,7 +1691,6 @@
         try{response=await fetch('/auth/session',{credentials:'same-origin',headers:{'X-NeoChat-Request':'1'}})}catch(error){}
         if(started!==generation)return;
         if(response&&response.ok){checkDelay=1000;await signedInAs(response);return}
-        if(response&&response.status===401){setSignedIn('');return}
         if(isSignedIn())setConversationListMessage('Could not reach NeoChat. Retrying…');
         setTimeout(check,checkDelay);
         checkDelay=Math.min(checkDelay*2,30000);
@@ -2777,6 +2779,151 @@
       return '';
     }
 
+    /* ---------- quoting a selection ---------- */
+    // Text selected in a finished answer gets an "Ask" button. It puts the
+    // selection in the composer as a quote card, and the next message goes
+    // out with it (request.quote): a question about exactly that part.
+    const maxQuoteLength=4000;
+    const quoteIcon='<svg class="lucide lucide-message-square-quote" data-lucide-icon="message-square-quote" viewBox="0 0 24 24" aria-hidden="true"><path d="M14 14a2 2 0 0 0 2-2V8h-2" /><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z" /><path d="M8 14a2 2 0 0 0 2-2V8H8" /></svg>';
+    const selectionAsk=document.getElementById('selectionAsk');
+    const quoteTrayWrap=document.getElementById('attachments');
+    const quoteTray=document.getElementById('attachmentsInner');
+    const quoteComposerWrap=document.querySelector('.composer-wrap');
+    const coarsePointer=window.matchMedia('(pointer: coarse)');
+    let composerQuote='';
+    let quoteCard=null;
+    let selectionQuote='';
+    let selectionTimer=null;
+    let pointerHeld=false;
+
+    function cleanQuoteText(text){
+      return String(text||'').replace(/\r\n?/g,'\n').replace(/[ \t\u00a0]+\n/g,'\n').replace(/\n{3,}/g,'\n\n').trim();
+    }
+
+    // The current selection, when it lies inside one finished answer.
+    function answerSelection(){
+      const selection=window.getSelection();
+      if(!selection||!selection.rangeCount||selection.isCollapsed)return null;
+      const range=selection.getRangeAt(0);
+      let node=range.commonAncestorContainer;
+      if(node&&node.nodeType!==1)node=node.parentElement;
+      const body=node&&node.closest('.chat-message.assistant .chat-text');
+      if(!body||body.closest('.chat-message').classList.contains('is-pending'))return null;
+      const text=cleanQuoteText(selection.toString());
+      return text?{range:range,text:text}:null;
+    }
+
+    function hideSelectionAsk(){
+      clearTimeout(selectionTimer);
+      selectionAsk.hidden=true;
+      selectionQuote='';
+    }
+
+    // Above the selection with a mouse; below it on touch screens, where
+    // the system's own selection menu takes the space above. Only the part
+    // of the selection on screen counts, and one that fills the whole view
+    // gets the button pinned to the edge.
+    function placeSelectionAsk(){
+      const found=answerSelection();
+      const area=chatLog.getBoundingClientRect();
+      const bottomLimit=Math.min(area.bottom,quoteComposerWrap.getBoundingClientRect().top);
+      const rects=found?Array.from(found.range.getClientRects()).filter(function(rect){
+        return rect.width>0&&rect.height>0&&rect.bottom>area.top&&rect.top<bottomLimit;
+      }):[];
+      if(!rects.length){hideSelectionAsk();return}
+      const first=rects[0],last=rects[rects.length-1];
+      selectionAsk.hidden=false;
+      const width=selectionAsk.offsetWidth,height=selectionAsk.offsetHeight;
+      const fits=function(top){return top>=area.top+4&&top+height<=bottomLimit-4};
+      const above={rect:first,top:first.top-height-8};
+      const below={rect:last,top:last.bottom+(coarsePointer.matches?30:8)};
+      let spot=coarsePointer.matches?below:above;
+      if(!fits(spot.top))spot=spot===above?below:above;
+      if(!fits(spot.top))spot={rect:spot.rect,top:coarsePointer.matches?bottomLimit-height-8:area.top+8};
+      const left=Math.max(area.left+8,Math.min(spot.rect.left+spot.rect.width/2-width/2,area.right-width-8));
+      selectionAsk.style.left=Math.round(left)+'px';
+      selectionAsk.style.top=Math.round(spot.top)+'px';
+      selectionQuote=found.text;
+    }
+
+    function scheduleSelectionAsk(delay){
+      clearTimeout(selectionTimer);
+      selectionTimer=setTimeout(placeSelectionAsk,delay);
+    }
+
+    // While a mouse button is down the selection is still being made: show
+    // the button once it's released. Touch selection handles send no
+    // pointer events, so there the selection has to settle for a moment.
+    document.addEventListener('pointerdown',function(event){
+      if(event.target.closest&&event.target.closest('#selectionAsk'))return;
+      pointerHeld=true;
+    },true);
+    ['pointerup','pointercancel'].forEach(function(type){
+      document.addEventListener(type,function(){
+        if(!pointerHeld)return;
+        pointerHeld=false;
+        scheduleSelectionAsk(10);
+      },true);
+    });
+    document.addEventListener('selectionchange',function(){
+      if(!selectionAsk.hidden&&!answerSelection()){scheduleSelectionAsk(80);return}
+      if(!pointerHeld)scheduleSelectionAsk(coarsePointer.matches?250:120);
+    });
+    chatLog.addEventListener('scroll',function(){if(!selectionAsk.hidden)placeSelectionAsk()},{passive:true});
+    window.addEventListener('resize',function(){if(!selectionAsk.hidden)placeSelectionAsk()});
+
+    // Pressing the button must not take the selection (or the focus) away.
+    selectionAsk.addEventListener('pointerdown',function(event){event.preventDefault()});
+    selectionAsk.addEventListener('mousedown',function(event){event.preventDefault()});
+    function askAboutSelection(){
+      const text=selectionQuote;
+      if(!text)return;
+      setComposerQuote(text);
+      const selection=window.getSelection();
+      if(selection)selection.removeAllRanges();
+      hideSelectionAsk();
+      textarea.focus();
+    }
+    // A tap can clear the selection before its click arrives, so touch
+    // acts on pointerup.
+    selectionAsk.addEventListener('pointerup',function(event){if(event.pointerType!=='mouse')askAboutSelection()});
+    selectionAsk.addEventListener('click',askAboutSelection);
+
+    function setComposerQuote(text){
+      const chars=Array.from(text);
+      composerQuote=chars.length>maxQuoteLength?chars.slice(0,maxQuoteLength).join('')+'…':text;
+      if(!quoteCard){
+        quoteCard=document.createElement('div');
+        quoteCard.className='quote-card';
+        quoteCard.innerHTML='<p class="quote-card-text"><span></span></p><div class="quote-card-foot">'+quoteIcon+'<span>Quote</span><button type="button" aria-label="Remove quote"><svg class="lucide lucide-x" data-lucide-icon="x" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18" /><path d="m6 6 12 12" /></svg></button></div>';
+        quoteCard.querySelector('button').addEventListener('click',function(){clearComposerQuote();textarea.focus()});
+      }
+      quoteCard.querySelector('.quote-card-text span').textContent=composerQuote;
+      quoteCard.title=composerQuote;
+      quoteTray.prepend(quoteCard);
+      quoteTrayWrap.classList.add('is-open');
+    }
+
+    function clearComposerQuote(){
+      composerQuote='';
+      if(quoteCard){quoteCard.remove();quoteCard=null}
+      if(!quoteTray.children.length)quoteTrayWrap.classList.remove('is-open');
+    }
+
+    // The quote a sent message asked about, above its bubble: two lines,
+    // the rest on click.
+    function renderMessageQuote(message,quote){
+      if(!quote)return;
+      const block=document.createElement('button');
+      block.type='button';
+      block.className='message-quote';
+      block.setAttribute('aria-expanded','false');
+      block.innerHTML='<svg class="lucide lucide-corner-down-right" data-lucide-icon="corner-down-right" viewBox="0 0 24 24" aria-hidden="true"><path d="m15 10 5 5-5 5" /><path d="M4 4v7a4 4 0 0 0 4 4h12" /></svg><span></span>';
+      block.querySelector('span').textContent=quote;
+      block.addEventListener('click',function(){block.setAttribute('aria-expanded',String(block.classList.toggle('is-expanded')))});
+      message.prepend(block);
+    }
+
     function appendMessage(role,text,messageDetails){
       chatContent.classList.add('has-chat');
       const message=document.createElement('article');
@@ -2802,6 +2949,7 @@
         const pairs=parseAnswersText(text);
         if(pairs)renderAnswers(body,pairs);
         renderMessageAttachments(message,messageDetails&&messageDetails.attachments);
+        renderMessageQuote(message,messageDetails&&messageDetails.quote);
         if(!String(text||'').trim()&&message.querySelector('.message-attachments'))message.classList.add('is-attachment-only');
         appendUserMessageMeta(message,String(text||''),messageDetails);
       }
@@ -2813,6 +2961,7 @@
 
     function resetConversation(){
       closeAsk();
+      clearComposerQuote();
       conversationID='';
       currentConversationTitle='New chat';
       currentConversationPinned=false;
@@ -2980,6 +3129,7 @@
         incognitoMessages=[];
         incognitoState.checked=false;
         storeValue(localStorage,currentConversationStorageKey,conversationID);
+        clearComposerQuote();
         chatLog.replaceChildren();
         (Array.isArray(data.messages)?data.messages:[]).forEach(function(message){
           if(message.is_summary)return;
@@ -3227,6 +3377,7 @@
       const mode=(selectedMode?selectedMode.value:'Auto').toLowerCase();
       const request=isIncognito?{
         message:incognitoMessages.length>=2?incognitoMessages[incognitoMessages.length-2].content:'',
+        quote:incognitoMessages.length>=2?incognitoMessages[incognitoMessages.length-2].quote:undefined,
         incognito:true,
         incognito_history:incognitoMessages.slice(0,-2),
         requested_mode:mode,
@@ -3353,7 +3504,8 @@
       if(files&&files.uploading()){toast('Wait for the files to finish uploading.');return}
       if(files&&files.failed().length){toast('Remove the files that failed to upload first.');return}
       const readyFiles=files?files.ready():[];
-      if(!request.message&&!readyFiles.length){toast('Type something first.');return}
+      if(answers===null&&composerQuote)request.quote=composerQuote;
+      if(!request.message&&!readyFiles.length){toast(request.quote?'Ask something about the quote first.':'Type something first.');return}
       if(!session){promptForSignIn();return}
       if(readyFiles.length&&request.incognito){toast("Files can't be attached in incognito chats yet.");return}
       if(!readyToSend(request))return;
@@ -3370,7 +3522,7 @@
       sentFiles.forEach(function(file){if(file.preview)attachmentURLs.set(file.id,Promise.resolve(file.preview))});
 
       chatLog.querySelectorAll('.is-latest-response').forEach(function(message){message.classList.remove('is-latest-response')});
-      const userMessage=appendMessage('user',request.message,{attachments:sentFiles});
+      const userMessage=appendMessage('user',request.message,{attachments:sentFiles,quote:request.quote});
       // Anything sent after a questionnaire answers or passes over it.
       updateAskState(false);
       const pending=appendMessage('assistant','');
@@ -3379,6 +3531,7 @@
       chatLog.scrollTop=Math.max(0,userMessage.offsetTop-12);
       const thinkingStartedAt=performance.now();
       if(answers===null){
+        clearComposerQuote();
         textarea.value='';
         document.dispatchEvent(new CustomEvent('plugin:clear'));
         textarea.style.height='auto';
@@ -3458,7 +3611,7 @@
         renderAskCard(pending);
         updateAskState(true);
         if(activeChatIncognito&&!terminalData.blocked){
-          incognitoMessages.push({role:'user',content:request.message},{role:'assistant',content:terminalData.response_text||'',questionnaire:terminalData.questionnaire||undefined});
+          incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:terminalData.response_text||'',questionnaire:terminalData.questionnaire||undefined});
         }else if(!activeChatIncognito){
           if(activeProject)refreshActiveProject();else loadConversations(false);
         }
@@ -3483,7 +3636,7 @@
           note.textContent='Stopped';
           body.append(note);
           if(activeChatIncognito&&receivedText){
-            incognitoMessages.push({role:'user',content:request.message},{role:'assistant',content:receivedText});
+            incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:receivedText});
           }else if(!activeChatIncognito&&receivedText){
             refreshAfterStop();
           }

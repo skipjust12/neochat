@@ -13,8 +13,8 @@ import (
 
 // Browser sessions: how the web UI stays signed in (see auth/session.go).
 // POST /auth/session trades an API key for a session cookie, GET reports
-// whom the cookie signs in (and re-sends it with its current expiry),
-// DELETE logs out. Every other endpoint takes the cookie in place of an
+// whom the cookie signs in, if anyone (and re-sends it with its current
+// expiry), DELETE logs out. Every other endpoint takes the cookie in place of an
 // Authorization header -- see authenticated.
 //
 // The cookie is HttpOnly, so no script in the page can read it;
@@ -38,9 +38,13 @@ type sessionCreateRequest struct {
 	APIKey string `json:"api_key"`
 }
 
+// sessionResponse answers POST and GET /auth/session. A browser without a
+// (live) session gets {"signed_in": false} from GET -- a normal answer for
+// every visitor of the landing page, so not an error status either.
 type sessionResponse struct {
-	UserID    string    `json:"user_id"`
-	ExpiresAt time.Time `json:"expires_at"`
+	SignedIn  bool       `json:"signed_in"`
+	UserID    string     `json:"user_id,omitempty"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 
 // requestIsHTTPS reports whether the browser reached us over HTTPS:
@@ -153,11 +157,18 @@ func (s *Server) handleSessionGet(w http.ResponseWriter, r *http.Request) {
 	}
 	token := s.sessionToken(r)
 	if token == "" {
-		http.Error(w, "not signed in", http.StatusUnauthorized)
+		writeSignedOut(w)
 		return
 	}
-	session, ok := s.resumeSession(w, r, token)
-	if !ok {
+	session, err := s.Sessions.ResumeSession(r.Context(), token)
+	if errors.Is(err, auth.ErrInvalidToken) {
+		s.clearSessionCookie(w, r)
+		writeSignedOut(w)
+		return
+	}
+	if err != nil {
+		log.Printf("server: resume session: %v", err)
+		http.Error(w, "temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
 	// Re-sent on every check, not only when the session was extended, so
@@ -203,8 +214,17 @@ func (s *Server) resumeSession(w http.ResponseWriter, r *http.Request, token str
 }
 
 func writeSessionResponse(w http.ResponseWriter, session auth.Session) {
+	expiresAt := session.ExpiresAt.UTC()
+	writeSessionJSON(w, sessionResponse{SignedIn: true, UserID: session.UserID, ExpiresAt: &expiresAt})
+}
+
+func writeSignedOut(w http.ResponseWriter) {
+	writeSessionJSON(w, sessionResponse{})
+}
+
+func writeSessionJSON(w http.ResponseWriter, body sessionResponse) {
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(sessionResponse{UserID: session.UserID, ExpiresAt: session.ExpiresAt.UTC()}); err != nil {
+	if err := json.NewEncoder(w).Encode(body); err != nil {
 		log.Printf("server: encode session: %v", err)
 	}
 }
