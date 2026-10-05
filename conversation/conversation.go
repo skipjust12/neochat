@@ -56,12 +56,14 @@ type Attachment struct {
 	ID   string `json:"id"`
 	Name string `json:"name"`
 	MIME string `json:"mime"`
-	Kind string `json:"kind"` // "image" | "document" | "text"
+	Kind string `json:"kind"` // "image" | "document" | "text" | "video"
 	Size int64  `json:"size"`
-	// Width and Height are a generated picture's size (ResponseVersion.
-	// Images), so the client can hold its space before it loads.
-	Width  int `json:"width,omitempty"`
-	Height int `json:"height,omitempty"`
+	// Width and Height are a generated picture's or video's size
+	// (ResponseVersion.Images, Videos), so the client can hold its space
+	// before it loads; Seconds is a generated video's length.
+	Width   int     `json:"width,omitempty"`
+	Height  int     `json:"height,omitempty"`
+	Seconds float64 `json:"seconds,omitempty"`
 }
 
 const MaxRegenerationAttempts = 10
@@ -84,9 +86,11 @@ type ResponseVersion struct {
 	// user's next message.
 	Questionnaire *Questionnaire `json:"questionnaire,omitempty"`
 
-	// Images are the pictures an image model made for this answer, kept
-	// with the chat's files (server/image.go).
+	// Images are the pictures an image model made for this answer, and
+	// Videos the clip a video model made, kept with the chat's files
+	// (server/image.go, server/video.go).
 	Images []Attachment `json:"images,omitempty"`
+	Videos []Attachment `json:"videos,omitempty"`
 
 	// Reasoning is the model's thinking before and while it wrote this
 	// version, for models that share it; the client shows it on request.

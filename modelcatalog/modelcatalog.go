@@ -392,7 +392,7 @@ func fromLive(c LiveModel) (router.Model, bool) {
 	m.CostOutputPerMTok = round4(out / RUBPerUSD)
 	m.ContextWindow = firstPositive(c.ContextLength, tp.ContextLength)
 	m.MaxOutputTokens = firstPositive(c.MaxCompletionTokens, tp.MaxCompletionTokens)
-	for _, kind := range []string{"text", "image", "file"} {
+	for _, kind := range []string{"text", "image", "file", "video"} {
 		if contains(c.Architecture.InputModalities, kind) {
 			m.InputModalities = append(m.InputModalities, kind)
 		}

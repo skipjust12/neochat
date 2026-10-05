@@ -90,7 +90,7 @@ func (s *Server) imageAnswer(ctx context.Context, req chatRequest, prepared prep
 	case errors.Is(genErr, context.Canceled) || errors.As(genErr, &timedOut):
 	default:
 		log.Printf("server: retained reservation %s user_id=%s model=%s for an uncertain image generation: %v", reservation.ID, req.UserID, model.ID, genErr)
-		return webAnswer{}, imageError(genErr)
+		return webAnswer{}, mediaError(genErr, "image")
 	}
 	billCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
@@ -98,14 +98,14 @@ func (s *Server) imageAnswer(ctx context.Context, req chatRequest, prepared prep
 		return webAnswer{}, fmt.Errorf("settle spend: %w", err)
 	}
 	if genErr != nil {
-		return webAnswer{}, imageError(genErr)
+		return webAnswer{}, mediaError(genErr, "image")
 	}
 
 	refs, err := s.storeImages(ctx, req.UserID, made.Images)
 	if err != nil {
 		return webAnswer{}, err
 	}
-	return webAnswer{GenerateResult: provider.GenerateResult{Text: made.Text}, Images: refs, ImageCostUSD: actual}, nil
+	return webAnswer{GenerateResult: provider.GenerateResult{Text: made.Text}, Images: refs, MediaCostUSD: actual}, nil
 }
 
 // imageReferences loads what the model works from: the message's own
@@ -174,30 +174,33 @@ func imageExtension(mime string) string {
 	return ".png"
 }
 
-// imageError turns a failed generation into what the user is told. The
-// key, balance and limit cases name the image key, since that's the one
-// to check; Polza's own explanation of a failed generation (a content
-// policy refusal, say) is shown as is.
-func imageError(err error) error {
+// mediaError turns a failed generation of an "image" or a "video" into
+// what the user is told. The key, balance and limit cases name the image
+// key, since that's the one to check; Polza's own explanation of a failed
+// generation (a content policy refusal, say) is shown as is.
+func mediaError(err error, what string) error {
 	var statusErr *provider.StatusError
 	var failed *imagegen.FailedError
 	var timedOut *imagegen.TimeoutError
 	switch {
 	case errors.Is(err, imagegen.ErrMissingKey):
+		if what == "video" {
+			return errMissingVideoKey
+		}
 		return errMissingImageKey
 	case errors.As(err, &failed):
 		if failed.Message == "" {
-			return userError{text: "The image couldn't be made. Try rephrasing the request."}
+			return userErrorf("The %s couldn't be made. Try rephrasing the request.", what)
 		}
-		return userErrorf("The image couldn't be made: %s", clipRunes(failed.Message, 300))
+		return userErrorf("The %s couldn't be made: %s", what, clipRunes(failed.Message, 300))
 	case errors.As(err, &timedOut):
-		return userError{text: "The image is taking too long. Try again in a moment."}
+		return userErrorf("The %s is taking too long. Try again in a moment.", what)
 	case errors.As(err, &statusErr) && statusErr.StatusCode < 500:
 		switch statusErr.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:
 			return userError{text: "Polza AI rejected your Image API key. Check it in Settings → Account."}
 		case http.StatusPaymentRequired:
-			return userError{text: "The balance behind your Image API key is too low for this image. Top it up on polza.ai."}
+			return userErrorf("The balance behind your Image API key is too low for this %s. Top it up on polza.ai.", what)
 		case http.StatusTooManyRequests:
 			return userError{text: "Polza AI is rate limiting your Image API key. Wait a moment and try again."}
 		}

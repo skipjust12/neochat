@@ -18,6 +18,7 @@ import (
 	"regexp"
 	"strings"
 
+	"neochat/attachment"
 	"neochat/provider"
 )
 
@@ -89,6 +90,12 @@ const (
 	tokensPerImage  = 1600
 	tokensPerPage   = 2500
 	bytesPerPDFPage = 50 << 10 // fallback when pages can't be counted
+
+	// Gemini reads a video as a frame a second (258 tokens) plus its sound
+	// (32 tokens a second). Without a duration in the file, it is taken
+	// from the size at a low bitrate, which overestimates.
+	tokensPerVideoSecond = 300
+	videoBytesPerSecond  = 64 << 10
 )
 
 var pdfPageMarker = regexp.MustCompile(`/Type\s*/Page[^s]`)
@@ -111,6 +118,12 @@ func EstimateAttachment(p provider.Part) int {
 		}
 		// DOCX is zipped XML: compressed size is a fair proxy for text.
 		return max(len(p.Data)/4, 500)
+	case provider.PartVideo:
+		seconds, ok := attachment.VideoDuration(p.Data)
+		if !ok {
+			seconds = float64(len(p.Data)) / videoBytesPerSecond
+		}
+		return int(math.Ceil(seconds))*tokensPerVideoSecond + 1000
 	}
 	return 0
 }

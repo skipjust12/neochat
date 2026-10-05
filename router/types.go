@@ -53,8 +53,53 @@ type ClassifierOutput struct {
 }
 
 // Model describes a single entry in the model catalog (models.json).
-// KindImage marks an image-generation model (Model.Kind).
-const KindImage = "image"
+// KindImage marks an image-generation model (Model.Kind); KindVideo a
+// video-generation one.
+const (
+	KindImage = "image"
+	KindVideo = "video"
+)
+
+// VideoOptions is what a video model can be asked for, and what each
+// choice costs.
+type VideoOptions struct {
+	Durations    []string `json:"durations"`     // seconds, e.g. "4"
+	Resolutions  []string `json:"resolutions"`   // e.g. "720p"
+	AspectRatios []string `json:"aspect_ratios"` // e.g. "16:9"
+	// MaxReferenceVideos is how many videos it takes to edit or continue;
+	// a video counts as two pictures against MaxReferenceImages.
+	MaxReferenceVideos int `json:"max_reference_videos,omitempty"`
+	// Prices are Polza's price tiers: a tier applies when every one of its
+	// conditions holds, and the one with the most conditions wins.
+	Prices []VideoPrice `json:"prices"`
+}
+
+// VideoPrice is one price tier. When names choices as "duration",
+// "resolution" and "has_video" ("true" or "false").
+type VideoPrice struct {
+	When map[string]string `json:"when,omitempty"`
+	RUB  float64           `json:"rub"`
+}
+
+// PriceRUB is what a video with these choices costs, by the most specific
+// tier that applies; false when none does.
+func (o VideoOptions) PriceRUB(choice map[string]string) (float64, bool) {
+	best, found := -1, false
+	var price float64
+	for _, tier := range o.Prices {
+		matches := true
+		for key, value := range tier.When {
+			if choice[key] != value {
+				matches = false
+				break
+			}
+		}
+		if matches && len(tier.When) > best {
+			best, price, found = len(tier.When), tier.RUB, true
+		}
+	}
+	return price, found
+}
 
 type Model struct {
 	ID string `json:"id"`
@@ -99,10 +144,15 @@ type Model struct {
 
 	// Kind is KindImage for an image-generation model: it answers with a
 	// picture made through Polza's Media API (server/image.go) rather than
-	// with chat completions. Empty means a chat model. Image models price
-	// per image, not per token; automatic routing reaches them only for a
-	// request that expects an image (SupportsOutputFormats "image").
+	// with chat completions. KindVideo answers with a video the same way
+	// (server/video.go). Empty means a chat model. Image models price per
+	// image and video models per clip, not per token; automatic routing
+	// reaches image models only for a request that expects an image
+	// (SupportsOutputFormats "image"), and video models never.
 	Kind string `json:"kind,omitempty"`
+
+	// Video is a video model's choices and prices (video models only).
+	Video *VideoOptions `json:"video,omitempty"`
 
 	// CostPerImageUSD is what one generated image costs (image models only).
 	CostPerImageUSD float64 `json:"cost_per_image_usd,omitempty"`

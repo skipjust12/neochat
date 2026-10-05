@@ -35,8 +35,9 @@ func LoadCatalog(path string) (Catalog, error) {
 	return catalog, nil
 }
 
-// validateKind checks what an image model needs: a price per image, since
-// its token rates say nothing about what a picture costs.
+// validateKind checks what a media model needs, since its token rates say
+// nothing about what it costs: an image model a price per image, a video
+// model its choices and their prices.
 func validateKind(model Model) error {
 	switch model.Kind {
 	case "":
@@ -44,6 +45,23 @@ func validateKind(model Model) error {
 	case KindImage:
 		if model.CostPerImageUSD <= 0 {
 			return fmt.Errorf("router: image model %q needs a positive cost_per_image_usd", model.ID)
+		}
+		return nil
+	case KindVideo:
+		v := model.Video
+		if v == nil || len(v.Durations) == 0 || len(v.Resolutions) == 0 || len(v.AspectRatios) == 0 {
+			return fmt.Errorf("router: video model %q needs video durations, resolutions and aspect_ratios", model.ID)
+		}
+		if _, ok := v.PriceRUB(map[string]string{}); !ok {
+			return fmt.Errorf("router: video model %q needs a default price tier (one without conditions)", model.ID)
+		}
+		for _, tier := range v.Prices {
+			if tier.RUB <= 0 {
+				return fmt.Errorf("router: video model %q has a price tier that isn't positive", model.ID)
+			}
+		}
+		if !model.ManualOnly {
+			return fmt.Errorf("router: video model %q must be manual_only", model.ID)
 		}
 		return nil
 	}

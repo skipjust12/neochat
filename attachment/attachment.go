@@ -19,13 +19,15 @@ import (
 	"unicode/utf8"
 )
 
-// Kinds decide how a file reaches the model: images and documents go as
-// native multimodal parts (the model must support them), text is inlined
-// into the message, so every model can read it.
+// Kinds decide how a file reaches the model: images, documents and videos
+// go as native multimodal parts (the model must support them), text is
+// inlined into the message, so every model can read it. A video is also
+// what a video model works from (server/video.go).
 const (
 	KindImage    = "image"
 	KindDocument = "document"
 	KindText     = "text"
+	KindVideo    = "video"
 )
 
 // Per-kind size ceilings. An uploaded image may be up to MaxUploadBytes,
@@ -36,9 +38,12 @@ const (
 	MaxImageBytes    = 5 << 20
 	MaxDocumentBytes = 20 << 20
 	MaxTextBytes     = 512 << 10
+	// MaxVideoBytes keeps a clip small enough to go to a model inline
+	// (base64 in the request) -- about a minute at 1080p from a phone.
+	MaxVideoBytes = 50 << 20
 
 	// MaxUploadBytes is the largest file any kind accepts.
-	MaxUploadBytes = MaxDocumentBytes
+	MaxUploadBytes = MaxVideoBytes
 
 	// MaxPerMessage bounds how many files one message can carry.
 	MaxPerMessage = 10
@@ -55,7 +60,7 @@ const docxMIME = "application/vnd.openxmlformats-officedocument.wordprocessingml
 
 var (
 	ErrNotFound        = errors.New("attachment: not found")
-	ErrUnsupportedType = errors.New("unsupported file type: send images (PNG, JPEG, GIF, WebP), PDF, DOCX, or text and code files")
+	ErrUnsupportedType = errors.New("unsupported file type: send images (PNG, JPEG, GIF, WebP), videos (MP4, MOV, WebM), PDF, DOCX, or text and code files")
 	ErrTooLarge        = errors.New("file is too large")
 )
 
@@ -106,6 +111,11 @@ func Classify(name string, data []byte) (kind, mime string, err error) {
 			kind, mime = KindDocument, docxMIME
 		}
 	}
+	if kind == "" {
+		if video := VideoMIME(data); video != "" {
+			kind, mime = KindVideo, video
+		}
+	}
 	if kind == "" && isText(data) {
 		kind, mime = KindText, "text/plain"
 	}
@@ -122,10 +132,35 @@ func Classify(name string, data []byte) (kind, mime string, err error) {
 // after upload (NormalizeImage), so they may arrive larger than they are
 // stored.
 func MaxBytes(kind string) int {
-	if kind == KindText {
+	switch kind {
+	case KindText:
 		return MaxTextBytes
+	case KindVideo:
+		return MaxVideoBytes
 	}
-	return MaxUploadBytes
+	return MaxDocumentBytes
+}
+
+// VideoMIME recognizes the video containers models take, from the bytes:
+// MP4 and QuickTime (ISO base media, an "ftyp" box first) and WebM. ""
+// for anything else, including the still-image (HEIC, AVIF) and audio-only
+// (M4A) members of the ISO family.
+func VideoMIME(data []byte) string {
+	if len(data) >= 12 && string(data[4:8]) == "ftyp" {
+		switch brand := string(data[8:12]); {
+		case brand == "qt  ":
+			return "video/quicktime"
+		case strings.HasPrefix(brand, "3gp") || strings.HasPrefix(brand, "3g2"):
+			return "video/3gpp"
+		case brand == "heic", brand == "heix", brand == "hevc", brand == "hevx", brand == "mif1", brand == "msf1", brand == "avif", brand == "avis", brand == "M4A ", brand == "M4B ", brand == "M4P ":
+			return ""
+		}
+		return "video/mp4"
+	}
+	if len(data) >= 4 && bytes.Equal(data[:4], []byte{0x1A, 0x45, 0xDF, 0xA3}) && bytes.Contains(data[:min(len(data), 64)], []byte("webm")) {
+		return "video/webm"
+	}
+	return ""
 }
 
 // sizeLabel is a byte limit for an error message: "20 MB", "512 KB".

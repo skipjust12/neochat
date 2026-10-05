@@ -346,6 +346,10 @@ type chatRequest struct {
 	// quote.go). It doesn't count as a message on its own.
 	Quote string `json:"quote,omitempty"`
 
+	// Video is the length, resolution and shape asked of a video model
+	// (video.go); empty fields take the model's defaults.
+	Video *videoChoice `json:"video,omitempty"`
+
 	// providerKey is the user's own vendor key, read from the
 	// X-Provider-Key header (never from the body, never persisted).
 	providerKey string
@@ -403,8 +407,10 @@ type chatResponse struct {
 	// Questionnaire: the answer ends with questions for the user (see
 	// ResponseVersion.Questionnaire).
 	Questionnaire *conversation.Questionnaire `json:"questionnaire,omitempty"`
-	// Images: pictures an image model made (see ResponseVersion.Images).
+	// Images and Videos: what an image or video model made (see
+	// ResponseVersion.Images, Videos).
 	Images []conversation.Attachment `json:"images,omitempty"`
+	Videos []conversation.Attachment `json:"videos,omitempty"`
 	// Reasoning: the model's thinking (see ResponseVersion.Reasoning).
 	Reasoning string `json:"reasoning,omitempty"`
 
@@ -1105,6 +1111,8 @@ type regenerateRequest struct {
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 	Instructions    string `json:"instructions,omitempty"`
 	WebSearch       string `json:"web_search,omitempty"`
+	// Video: the length, resolution and shape asked of a video model.
+	Video *videoChoice `json:"video,omitempty"`
 }
 
 func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
@@ -1158,6 +1166,7 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		ReasoningEffort:     input.ReasoningEffort,
 		Instructions:        input.Instructions,
 		WebSearch:           input.WebSearch,
+		Video:               input.Video,
 		providerKey:         strings.TrimSpace(r.Header.Get(providerKeyHeader)),
 		imageKey:            strings.TrimSpace(r.Header.Get(imageKeyHeader)),
 		regenerateMessageID: target.ID, regenerationHistoryDrop: 2,
@@ -1675,6 +1684,13 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 			}
 			return result, model, answer, nil
 		}
+		if model.Kind == router.KindVideo {
+			answer, err := s.videoAnswer(ctx, req, prepared, result, model)
+			if err != nil {
+				return result, model, answer, fmt.Errorf("generate video: %w", err)
+			}
+			return result, model, answer, nil
+		}
 		gen, ok := s.Generators[model.Provider]
 		if !ok {
 			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("no provider.Client configured for provider %q (model %q)", model.Provider, model.ID)
@@ -1726,9 +1742,9 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	version := conversation.ResponseVersion{
 		Content: genResult.Text, ModelID: model.ID, CreatedAt: now,
 		Activity: answer.Activity, Sources: webLinks(genResult.Citations), ThoughtMS: thought.Milliseconds(),
-		Questionnaire: answer.Questionnaire, Images: answer.Images, Reasoning: answer.Reasoning,
+		Questionnaire: answer.Questionnaire, Images: answer.Images, Videos: answer.Videos, Reasoning: answer.Reasoning,
 	}
-	if len(version.Images) > 0 {
+	if len(version.Images) > 0 || len(version.Videos) > 0 {
 		version.ThoughtMS = 0 // a picture isn't "thought for N seconds"
 	}
 	regenerated, err := s.persistTurn(ctx, req, prepared, model, version)
@@ -1736,7 +1752,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		return chatResponse{}, err
 	}
 
-	actualCost := callCostUSD(model.CostInputPerMTok, model.CostOutputPerMTok, genResult) + answer.ImageCostUSD
+	actualCost := callCostUSD(model.CostInputPerMTok, model.CostOutputPerMTok, genResult) + answer.MediaCostUSD
 	// Best-effort like Conversations.Append above: the request already
 	// succeeded and the user already has their answer, so a logging
 	// failure here shouldn't fail the request -- it just means this one
@@ -1762,6 +1778,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		ThoughtMS:        version.ThoughtMS,
 		Questionnaire:    version.Questionnaire,
 		Images:           version.Images,
+		Videos:           version.Videos,
 		Reasoning:        version.Reasoning,
 	}
 	if req.regenerateMessageID > 0 {
@@ -1804,15 +1821,11 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 			log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
 		}
 	}
-	// Generated pictures join the chat's files only now that the answer
-	// showing them is stored, the same order uploads follow.
-	if len(version.Images) > 0 && s.Attachments != nil {
-		ids := make([]string, len(version.Images))
-		for i, image := range version.Images {
-			ids[i] = image.ID
-		}
-		if err := s.Attachments.Claim(ctx, req.UserID, prepared.conversationID, ids); err != nil {
-			log.Printf("server: claim generated images for conversation_id=%s: %v", prepared.conversationID, err)
+	// Generated pictures and videos join the chat's files only now that the
+	// answer showing them is stored, the same order uploads follow.
+	if made := append(attachmentIDs(version.Images), attachmentIDs(version.Videos)...); len(made) > 0 && s.Attachments != nil {
+		if err := s.Attachments.Claim(ctx, req.UserID, prepared.conversationID, made); err != nil {
+			log.Printf("server: claim generated media for conversation_id=%s: %v", prepared.conversationID, err)
 		}
 	}
 	if req.ProjectID != "" {
@@ -1862,8 +1875,8 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
 		// every circuit open) -- nothing was sent, so nothing was billed.
 		return
 	}
-	if model.Kind == router.KindImage {
-		// imageAnswer settled (or retained) the picture's price itself.
+	if model.Kind == router.KindImage || model.Kind == router.KindVideo {
+		// imageAnswer and videoAnswer settled (or retained) the price themselves.
 		return
 	}
 

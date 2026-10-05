@@ -7576,6 +7576,374 @@ html.is-asking .ask-card.is-pending .ask-card-action {
   font-size: 13px;
 }
 
+/* Videos: a clip a video model made (in the answer) or one attached to a
+   message, played in place. Until it is loaded, a play button with its
+   length stands in for the first frame. */
+.generated-image.is-tall {
+  width: min(100%, 260px);
+}
+
+.generated-video {
+  position: relative;
+  width: min(100%, 440px);
+  margin: 0;
+  overflow: hidden;
+  border-radius: 16px;
+  background: #0d0d0f;
+}
+
+.generated-video.is-tall {
+  width: min(100%, 260px);
+}
+
+.generated-video.is-generating {
+  background: #120f17;
+}
+
+.generated-video video {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  background: transparent;
+  opacity: 0;
+  transition: opacity .6s ease;
+}
+
+.generated-video.is-ready video {
+  opacity: 1;
+}
+
+.generated-video.is-ready .dot-field-canvas,
+.generated-video.is-ready .dot-field-glow {
+  opacity: 0;
+}
+
+.video-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+.video-play svg {
+  box-sizing: content-box;
+  width: 18px;
+  height: 18px;
+  padding: 13px 12px 13px 14px;
+  border-radius: 50%;
+  background: rgb(255 255 255 / .16);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  fill: currentColor;
+  transition: transform .18s var(--ease-out),background-color .18s ease;
+}
+
+.video-play:hover svg {
+  transform: scale(1.06);
+  background: rgb(255 255 255 / .24);
+}
+
+.video-play-meta {
+  color: rgb(255 255 255 / .7);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.video-play-meta:empty {
+  display: none;
+}
+
+.generated-video.is-loading .video-play svg {
+  animation: video-loading 1.1s ease-in-out infinite;
+}
+
+@keyframes video-loading {
+  50% {
+    opacity: .45;
+  }
+}
+
+.generated-video.is-missing .video-play {
+  display: none;
+}
+
+.generated-video.is-unplayable video {
+  display: none;
+}
+
+.generated-video.is-unplayable .video-play svg {
+  display: none;
+}
+
+.generated-video.is-missing::after {
+  content: "Video unavailable";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: rgb(255 255 255 / .6);
+  font-size: 13px;
+}
+
+.generated-video-actions {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity .16s ease;
+}
+
+.generated-video:hover .generated-video-actions,
+.generated-video-actions:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .generated-video-actions {
+    opacity: 1;
+  }
+}
+
+.generated-video.is-generating .generated-video-actions,
+.generated-video.is-missing .generated-video-actions {
+  display: none;
+}
+
+.generated-video-actions button {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 9px;
+  background: rgb(0 0 0 / .55);
+  color: #fff;
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  cursor: pointer;
+}
+
+.generated-video-actions svg {
+  width: 16px;
+  height: 16px;
+}
+
+.video-gen-elapsed {
+  position: absolute;
+  left: 12px;
+  bottom: 10px;
+  color: rgb(255 255 255 / .55);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.message-attachment.is-video {
+  display: block;
+  width: min(260px, 60vw);
+  max-width: none;
+  padding: 0;
+  cursor: default;
+}
+
+.message-attachment.is-video.is-missing {
+  height: auto;
+}
+
+.message-attachment.is-video.is-tall {
+  width: min(150px, 40vw);
+}
+
+.message-attachment.is-video:hover {
+  filter: none;
+}
+
+.message-attachment.is-video .video-play svg {
+  width: 14px;
+  height: 14px;
+  padding: 10px 9px 10px 11px;
+}
+
+/* The composer's video settings: a pill next to the model, and a panel
+   with the length, quality and shape. */
+.video-options {
+  position: relative;
+  flex: none;
+  margin-right: auto;
+}
+
+.mode-wrap:has(+ .video-options:not([hidden])) {
+  margin-right: 0;
+}
+
+.video-options-trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 650;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background .18s ease,color .18s ease;
+}
+
+.video-options-trigger:hover,
+.video-options.is-open .video-options-trigger {
+  background: var(--soft);
+  color: var(--text);
+}
+
+.video-options-trigger svg {
+  width: 15px;
+  height: 15px;
+  flex: none;
+}
+
+.video-options-panel {
+  position: absolute;
+  left: 0;
+  bottom: calc(100% + 10px);
+  z-index: 40;
+  display: grid;
+  gap: 10px;
+  width: 292px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--surface-3);
+  box-shadow: var(--shadow-lg);
+  opacity: 0;
+  transform: translateY(6px) scale(.97);
+  transform-origin: 24px 100%;
+  pointer-events: none;
+  visibility: hidden;
+  transition: opacity .12s ease,transform .2s var(--ease-in),visibility 0s .2s;
+}
+
+.video-options.is-open .video-options-panel {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+  visibility: visible;
+  transition: opacity .09s ease,transform .26s var(--ease-out),visibility 0s;
+}
+
+.video-option {
+  display: grid;
+  gap: 6px;
+}
+
+.video-option-name {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 550;
+}
+
+.video-option-values {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--hover);
+}
+
+.video-option-value {
+  display: flex;
+  flex: 1 1 0;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 550;
+  cursor: pointer;
+  transition: background .15s ease,color .15s ease;
+}
+
+.video-option-value:hover:not(:disabled) {
+  color: var(--text);
+}
+
+.video-option-value[aria-checked="true"] {
+  background: var(--surface-4);
+  box-shadow: var(--shadow-2);
+  color: var(--text);
+}
+
+.video-option.is-disabled .video-option-values {
+  opacity: .45;
+}
+
+.video-option-value:disabled {
+  cursor: default;
+}
+
+.video-shape {
+  width: 14px;
+  height: 8px;
+  border: 1.5px solid currentColor;
+  border-radius: 2px;
+}
+
+.video-shape.is-tall {
+  width: 8px;
+  height: 14px;
+}
+
+.video-options-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.video-options-note:empty {
+  display: none;
+}
+
+@media (max-width:640px), (pointer: coarse) and (max-width:899px) {
+  .video-options {
+    position: static;
+  }
+
+  .video-options-extra {
+    display: none;
+  }
+
+  .video-options-panel {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+}
+
 /* Code blocks: a header with the language and Copy, then the code, colored
    by highlight.js (vendored in /assets/highlight). Token colors follow
    GitHub's light and dark palettes. */

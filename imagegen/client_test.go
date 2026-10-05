@@ -41,6 +41,7 @@ type fakeMedia struct {
 	auth     string
 	gets     int
 	picture  []byte
+	video    []byte
 	postCode int
 }
 
@@ -52,6 +53,10 @@ func (f *fakeMedia) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	case r.URL.Path == "/picture.png":
 		w.Header().Set("Content-Type", "image/png")
 		w.Write(f.picture)
+		return
+	case r.URL.Path == "/clip.mp4":
+		w.Header().Set("Content-Type", "video/mp4")
+		w.Write(f.video)
 		return
 	case r.URL.Path == "/page.html":
 		w.Write([]byte("<html>not a picture</html>"))
@@ -207,7 +212,7 @@ func TestDownloadRefusesPrivateAndPlainAddresses(t *testing.T) {
 	if _, err := client.Generate(context.Background(), "k", Request{Model: "m", Prompt: "p"}); err == nil || !strings.Contains(err.Error(), "refusing to download") {
 		t.Fatalf("plain http result: %v", err)
 	}
-	if _, err := client.download(context.Background(), "https://127.0.0.1:1/x.png"); err == nil || !strings.Contains(err.Error(), "private or local") {
+	if _, err := client.download(context.Background(), "https://127.0.0.1:1/x.png", 1<<20); err == nil || !strings.Contains(err.Error(), "private or local") {
 		t.Fatalf("private result: %v", err)
 	}
 }

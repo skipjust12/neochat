@@ -144,10 +144,14 @@ func (s *Server) validateRequest(req chatRequest) error {
 		if req.RequestedMode != "manual" {
 			return errRouterDisabled
 		}
-		// An image model runs on the image key alone (image.go).
+		// Image and video models run on the image key alone (image.go,
+		// video.go).
 		model, found := s.router().Catalog.FindModel(req.ManualModelID)
 		switch {
-		case found && model.Kind == router.KindImage:
+		case found && (model.Kind == router.KindImage || model.Kind == router.KindVideo):
+			if req.imageKey == "" && model.Kind == router.KindVideo {
+				return errMissingVideoKey
+			}
 			if req.imageKey == "" {
 				return errMissingImageKey
 			}

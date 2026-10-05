@@ -36,6 +36,10 @@ type modelEntry struct {
 	Inputs      []string `json:"inputs"`
 	Legacy      bool     `json:"legacy,omitempty"`
 	New         bool     `json:"new,omitempty"`
+	// Video is a video model's choices and price tiers, for the composer;
+	// MaxReferences is how many pictures it takes (a video counts as two).
+	Video         *router.VideoOptions `json:"video,omitempty"`
+	MaxReferences int                  `json:"max_references,omitempty"`
 }
 
 type modelsResponse struct {
@@ -138,6 +142,9 @@ func modelEntries(catalog router.Catalog, retired map[string]bool, added map[str
 			inputs = []string{"text"}
 		}
 		entry := modelEntry{ID: m.ID, Name: modelName(m), Provider: m.Provider, Tier: modelTier(m), Kind: m.Kind, Inputs: inputs, Legacy: m.Legacy}
+		if m.Kind == router.KindVideo {
+			entry.Video, entry.MaxReferences = m.Video, m.MaxReferenceImages
+		}
 		if !m.Legacy {
 			entry.Description = m.Description
 		}

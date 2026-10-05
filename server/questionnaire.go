@@ -203,7 +203,7 @@ func questionnaireText(q *conversation.Questionnaire) string {
 
 // assistantHistoryContent is an assistant message as the model sees it in
 // history: its text, plus the questionnaire its latest version asked.
-// Pictures it made appear as a note (imageNote).
+// Pictures and videos it made appear as a note (imageNote, videoNote).
 func assistantHistoryContent(m conversation.Message) string {
 	if len(m.Versions) == 0 {
 		return m.Content
@@ -212,6 +212,9 @@ func assistantHistoryContent(m conversation.Message) string {
 	content := m.Content
 	if len(latest.Images) > 0 {
 		content = strings.TrimSpace(content + "\n\n" + imageNote(latest.Images))
+	}
+	if len(latest.Videos) > 0 {
+		content = strings.TrimSpace(content + "\n\n" + videoNote)
 	}
 	if latest.Questionnaire != nil {
 		content = strings.TrimSpace(content + "\n\n" + questionnaireText(latest.Questionnaire))

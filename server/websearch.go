@@ -122,9 +122,11 @@ type webAnswer struct {
 	// Questionnaire: the model ended the answer by asking the user
 	// questions (ask_user).
 	Questionnaire *conversation.Questionnaire
-	// Images an image model made (imageAnswer), and what they cost.
+	// Images an image model made (imageAnswer), or a video a video model
+	// made (videoAnswer), and what it cost.
 	Images       []conversation.Attachment
-	ImageCostUSD float64
+	Videos       []conversation.Attachment
+	MediaCostUSD float64
 	// Reasoning is the model's thinking for this answer (streamed answers
 	// only), kept with it.
 	Reasoning string

@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=26" />
+<link rel="stylesheet" href="/assets/fluid.css?v=27" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -424,6 +424,15 @@
               </div>
             </details>
           </div>
+          <div class="video-options" id="videoOptions" hidden>
+            <button type="button" class="video-options-trigger" id="videoOptionsTrigger" aria-haspopup="dialog" aria-expanded="false" aria-controls="videoOptionsPanel"><svg class="lucide lucide-clapperboard" data-lucide-icon="clapperboard" viewBox="0 0 24 24" aria-hidden="true"><path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z" /><path d="m6.2 5.3 3.1 3.9" /><path d="m12.4 3.4 3.1 4" /><path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z" /></svg><span class="video-options-label" id="videoOptionsLabel"></span></button>
+            <div class="video-options-panel" id="videoOptionsPanel" role="dialog" aria-label="Video settings">
+              <div class="video-option" data-option="duration"><span class="video-option-name">Length</span><div class="video-option-values" role="radiogroup" aria-label="Length"></div></div>
+              <div class="video-option" data-option="resolution"><span class="video-option-name">Quality</span><div class="video-option-values" role="radiogroup" aria-label="Quality"></div></div>
+              <div class="video-option" data-option="aspect_ratio"><span class="video-option-name">Shape</span><div class="video-option-values" role="radiogroup" aria-label="Shape"></div></div>
+              <p class="video-options-note" id="videoOptionsNote"></p>
+            </div>
+          </div>
           <button class="round-btn" aria-label="Microphone"><svg class="lucide lucide-mic" data-lucide-icon="mic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19v3" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><rect x="9" y="2" width="6" height="13" rx="3" /></svg></button>
           <button class="send" aria-label="Send"><svg class="lucide lucide-arrow-up send-arrow" data-lucide-icon="arrow-up" viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 7-7 7 7" /><path d="M12 19V5" /></svg><svg class="send-stop" viewBox="0 0 24 24" aria-hidden="true"><rect x="6" y="6" width="12" height="12" rx="2.5" fill="currentColor" stroke="none" /></svg></button>
         </div><div class="suggestions" aria-label="Prompt suggestions"></div>
@@ -565,7 +574,7 @@
         </div>
         <div class="set-sec" id="imageKeySec">
           <div class="set-sec-title"><svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>Image API</div>
-          <p class="set-note">A separate Polza AI key for image models (Nano Banana). NeoChat sends it only when you make a picture, so images are billed apart from chat. It stays in this browser and is never stored on the server.</p>
+          <p class="set-note">A separate Polza AI key for image and video models (Nano Banana, Gemini Omni). NeoChat sends it only when you make a picture or a video, so they are billed apart from chat. It stays in this browser and is never stored on the server.</p>
           <form class="set-row provider-key-row" id="imageKeyForm" autocomplete="off">
             <label class="label soft" for="imageKey">Image API key</label>
             <span class="val"><input class="api-key-input" id="imageKey" type="password" autocomplete="off" spellcheck="false" placeholder="pza_…" maxlength="512" /><button class="link-btn" type="submit">Save</button></span>
@@ -1075,6 +1084,10 @@
       row.dataset.modelId=model.id;
       row.dataset.inputs=(Array.isArray(model.inputs)&&model.inputs.length?model.inputs:['text']).join(',');
       if(model.kind)row.dataset.kind=model.kind;
+      if(model.kind==='video'&&model.video){
+        row.dataset.maxReferences=String(model.max_references||0);
+        row.dataset.maxVideos=String(model.video.max_reference_videos||0);
+      }
       const symbol=document.createElement('span');
       symbol.className='model-symbol';
       symbol.innerHTML=modelIcons[model.provider]||'';
@@ -1099,7 +1112,7 @@
       }
       const tier=document.createElement('span');
       tier.className='model-tier'+(model.description?'':' is-solo');
-      tier.textContent=(tierNames[model.tier]||'Instant')+(model.kind==='image'?'/image':'')+' tier';
+      tier.textContent=(tierNames[model.tier]||'Instant')+(model.kind==='image'?'/image':model.kind==='video'?'/video':'')+' tier';
       copy.append(tier);
       row.append(symbol,copy);
       return row;
@@ -1649,6 +1662,169 @@
       const row=modelRow(modelID);
       return Boolean(row&&row.dataset.kind==='image');
     }
+    function isVideoModel(modelID){
+      const row=modelRow(modelID);
+      return Boolean(row&&row.dataset.kind==='video');
+    }
+
+    /* ---------- video settings ---------- */
+    // A video model (Gemini Omni) is asked for a length, a quality and a
+    // shape. Once one is picked, a pill next to the model shows them and
+    // opens a small panel to change them, with what the clip costs on the
+    // Image API key (Polza's price tiers, sent with /models). The choice is
+    // kept per model in this browser. With a video attached the model edits
+    // it instead, and picks the length itself.
+    const videoSettings=(function(){
+      const root=document.getElementById('videoOptions');
+      const trigger=document.getElementById('videoOptionsTrigger');
+      const label=document.getElementById('videoOptionsLabel');
+      const panel=document.getElementById('videoOptionsPanel');
+      const note=document.getElementById('videoOptionsNote');
+      const manualState=document.getElementById('manualState');
+      const storagePrefix='neochat.video.';
+      const lists={duration:'durations',resolution:'resolutions',aspect_ratio:'aspect_ratios'};
+      let model=null;
+
+      function manualMode(){
+        const selected=document.querySelector('input[name="work-mode"]:checked');
+        return Boolean(selected&&selected.value==='Manual');
+      }
+      function videoModel(modelID){
+        const data=window.NeoChatModels&&window.NeoChatModels.current();
+        const models=data&&Array.isArray(data.models)?data.models:[];
+        return models.find(function(entry){return entry&&entry.id===modelID&&entry.kind==='video'&&entry.video})||null;
+      }
+      function editingVideo(){
+        const files=window.NeoChatAttachments;
+        return Boolean(files&&files.ready().some(function(file){return file.kind==='video'}));
+      }
+      // The saved choice, with anything the model doesn't offer (any more)
+      // replaced by its default: the shortest length, 720p, the first shape.
+      function choiceFor(entry){
+        const options=entry.video;
+        let saved={};
+        try{saved=JSON.parse(localStorage.getItem(storagePrefix+entry.id)||'{}')||{}}catch(error){}
+        const choice={};
+        Object.keys(lists).forEach(function(key){
+          const values=Array.isArray(options[lists[key]])?options[lists[key]]:[];
+          const fallback=key==='resolution'&&values.indexOf('720p')>-1?'720p':values[0]||'';
+          choice[key]=values.indexOf(saved[key])>-1?saved[key]:fallback;
+        });
+        return choice;
+      }
+      // The most specific of Polza's price tiers that applies (the server's
+      // router.VideoOptions.PriceRUB).
+      function priceRUB(entry,choice,hasVideo){
+        const facts={duration:choice.duration,resolution:choice.resolution,has_video:String(hasVideo)};
+        let best=-1,price=null;
+        (entry.video.prices||[]).forEach(function(tier){
+          const when=tier&&tier.when||{};
+          const keys=Object.keys(when);
+          if(keys.every(function(key){return facts[key]===when[key]})&&keys.length>best){best=keys.length;price=Number(tier.rub)}
+        });
+        return price;
+      }
+      function valueLabel(key,value){
+        if(key==='duration')return value+'s';
+        if(key==='resolution')return value==='4k'?'4K':value;
+        return value;
+      }
+      function rubles(value){return Math.round(value).toLocaleString('en-US')+' ₽'}
+
+      function render(){
+        const modelID=manualMode()?manualState.dataset.modelId||'':'';
+        model=modelID?videoModel(modelID):null;
+        root.hidden=!model;
+        if(!model){close();return}
+        const choice=choiceFor(model);
+        const editing=editingVideo();
+        Object.keys(lists).forEach(function(key){
+          const row=panel.querySelector('.video-option[data-option="'+key+'"]');
+          const group=row.querySelector('.video-option-values');
+          const values=Array.isArray(model.video[lists[key]])?model.video[lists[key]]:[];
+          const disabled=key==='duration'&&editing;
+          row.classList.toggle('is-disabled',disabled);
+          group.replaceChildren.apply(group,values.map(function(value){
+            const button=document.createElement('button');
+            button.type='button';
+            button.className='video-option-value';
+            button.setAttribute('role','radio');
+            button.setAttribute('aria-checked',String(value===choice[key]));
+            button.dataset.value=value;
+            button.disabled=disabled;
+            if(key==='aspect_ratio'){
+              const shape=document.createElement('span');
+              shape.className='video-shape'+(value==='9:16'?' is-tall':'');
+              shape.setAttribute('aria-hidden','true');
+              button.append(shape);
+            }
+            button.append(valueLabel(key,value));
+            button.addEventListener('click',function(){choose(key,value)});
+            return button;
+          }));
+        });
+        const price=priceRUB(model,choice,editing);
+        label.replaceChildren();
+        const main=document.createElement('span');
+        main.textContent=editing?'Edit':valueLabel('duration',choice.duration);
+        const extra=document.createElement('span');
+        extra.className='video-options-extra';
+        extra.textContent=' · '+valueLabel('resolution',choice.resolution)+(price!==null?' · '+rubles(price):'');
+        label.append(main,extra);
+        trigger.title='Video: '+(editing?'edit the attached clip':valueLabel('duration',choice.duration))+', '+valueLabel('resolution',choice.resolution)+', '+choice.aspect_ratio+(price!==null?', '+rubles(price):'');
+        note.textContent=(editing?'Edits the attached video (its first 10 seconds); the model picks the length. ':'')+(price!==null?rubles(price)+' per video, billed to your Image API key.':'');
+      }
+      function choose(key,value){
+        if(!model)return;
+        const choice=choiceFor(model);
+        choice[key]=value;
+        try{localStorage.setItem(storagePrefix+model.id,JSON.stringify(choice))}catch(error){}
+        render();
+      }
+
+      function open(){
+        if(root.hidden)return;
+        root.classList.add('is-open');
+        trigger.setAttribute('aria-expanded','true');
+        document.addEventListener('pointerdown',onOutside,true);
+        document.addEventListener('keydown',onKey,true);
+      }
+      function close(){
+        if(!root.classList.contains('is-open'))return;
+        root.classList.remove('is-open');
+        trigger.setAttribute('aria-expanded','false');
+        document.removeEventListener('pointerdown',onOutside,true);
+        document.removeEventListener('keydown',onKey,true);
+      }
+      function onOutside(event){if(!root.contains(event.target))close()}
+      function onKey(event){
+        if(event.key!=='Escape')return;
+        event.preventDefault();
+        event.stopPropagation();
+        close();
+        trigger.focus({preventScroll:true});
+      }
+      trigger.addEventListener('click',function(){
+        if(root.classList.contains('is-open'))close();else open();
+      });
+
+      document.querySelectorAll('input[name="work-mode"]').forEach(function(input){input.addEventListener('change',render)});
+      new MutationObserver(render).observe(manualState,{attributes:true,attributeFilter:['data-model-id']});
+      document.addEventListener('models:change',render);
+      document.addEventListener('attachments:change',render);
+      render();
+      return {
+        // What a request to modelID asks for, or null for other models.
+        request:function(modelID){
+          const entry=videoModel(modelID);
+          return entry?choiceFor(entry):null;
+        },
+        aspectRatio:function(modelID){
+          const entry=videoModel(modelID);
+          return entry?choiceFor(entry).aspect_ratio:'16:9';
+        }
+      };
+    })();
 
     function selectedReasoningEffort(){
       const index=Math.round(Number(reasoningRange.value));
@@ -1663,6 +1839,8 @@
       const instructions=document.getElementById('instructions').value.trim();
       if(instructions)request.instructions=instructions;
       if(request.requested_mode==='manual')request.manual_model_id=document.getElementById('manualState').dataset.modelId||'';
+      const video=request.manual_model_id?videoSettings.request(request.manual_model_id):null;
+      if(video)request.video=video;
       return request;
     }
 
@@ -1670,9 +1848,9 @@
     function readyToSend(request){
       if(request.requested_mode!=='manual'){toast(routerDisabledMessage);return false}
       if(!request.manual_model_id){toast('Pick a model in Manual mode first.');return false}
-      if(isImageModel(request.manual_model_id)){
+      if(isImageModel(request.manual_model_id)||isVideoModel(request.manual_model_id)){
         if(!imageKey()){
-          toast('Add your Image API key in Settings → Account to make images.');
+          toast('Add your Image API key in Settings → Account to make '+(isVideoModel(request.manual_model_id)?'videos.':'images.'));
           if(window.openSettings)window.openSettings('account');
           return false;
         }
@@ -1686,10 +1864,10 @@
       return true;
     }
 
-    // The image key goes only with requests to an image model.
+    // The image key goes only with requests to an image or video model.
     function chatHeaders(request){
       const headers={'Content-Type':'application/json','X-Provider-Key':providerKey()};
-      if(request&&isImageModel(request.manual_model_id)&&imageKey())headers['X-Image-Key']=imageKey();
+      if(request&&(isImageModel(request.manual_model_id)||isVideoModel(request.manual_model_id))&&imageKey())headers['X-Image-Key']=imageKey();
       return headers;
     }
 
@@ -3056,7 +3234,7 @@
       const version=versions[message.responseVersionIndex];
       message.dataset.messageText=version.content;
       renderMarkdown(message.querySelector('.chat-text'),version.content);
-      renderGeneratedImages(message,version.images);
+      renderGeneratedImages(message,version.images,version.videos);
       renderThought(message,{live:false,seconds:version.thought_ms?version.thought_ms/1000:0,activity:version.activity,sources:version.sources,reasoning:version.reasoning});
       renderAskCard(message);
       const navigation=message.querySelector('.response-versions');
@@ -3164,6 +3342,12 @@
       list.className='message-attachments';
       attachments.forEach(function(file){
         if(!file||!file.id)return;
+        if(file.kind==='video'){
+          const figure=document.createElement('figure');
+          figure.className='message-attachment is-video';
+          list.append(videoFigure(file,figure));
+          return;
+        }
         const item=document.createElement('button');
         item.type='button';
         item.className='message-attachment'+(file.kind==='image'?' is-image':'');
@@ -3200,7 +3384,17 @@
         if(other)return name+' works from pictures only. Remove '+other.name+', or pick a chat model for it.';
         return '';
       }
+      if(row.dataset.kind==='video'){
+        const other=files.find(function(file){return file.kind!=='image'&&file.kind!=='video'});
+        if(other)return name+' works from pictures and videos only. Remove '+other.name+', or pick a chat model for it.';
+        const videos=files.filter(function(file){return file.kind==='video'}).length;
+        const maxVideos=Number(row.dataset.maxVideos||0),maxReferences=Number(row.dataset.maxReferences||0);
+        if(videos>maxVideos)return maxVideos?name+' takes one video at a time.':name+" can't work from a video. Remove it, or pick another model.";
+        if(maxReferences&&files.length+videos>maxReferences)return name+' takes at most '+maxReferences+' pictures at a time, and a video counts as two.';
+        return '';
+      }
       for(const file of files){
+        if(file.kind==='video'&&inputs.indexOf('video')<0)return name+" can't watch videos. Pick a Gemini model, or remove "+file.name+'.';
         if(file.kind==='image'&&inputs.indexOf('image')<0)return name+" can't read images. Pick another model or remove "+file.name+'.';
         if(file.kind==='document'&&inputs.indexOf('file')<0)return name+" can't read PDF or DOCX files. Pick another model or remove "+file.name+'.';
       }
@@ -3214,6 +3408,7 @@
     // fades in in the field's place. Pictures are the chat's files, fetched
     // through apiFetch like attachments.
     const imagePhrases=['Making sketches.','Adding details','Adding a shadow','Almost finished','Finishing touches'];
+    const videoPhrases=['Setting the scene','Framing the shot','Rolling the camera','Animating the frames','Adding the sound','Rendering','Almost finished','Finishing touches'];
     const reducedMotion=window.matchMedia('(prefers-reduced-motion: reduce)');
     const downloadIcon='<svg class="lucide lucide-download" data-lucide-icon="download" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15V3" /><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><path d="m7 10 5 5 5-5" /></svg>';
 
@@ -3363,9 +3558,9 @@
     function downloadAttachment(file){
       attachmentURL(file.id).then(function(url){
         const link=document.createElement('a');
-        link.href=url;link.download=file.name||'image.png';
+        link.href=url;link.download=file.name||(file.kind==='video'?'video.mp4':'image.png');
         document.body.append(link);link.click();link.remove();
-      }).catch(function(){toast('That image is no longer available.')});
+      }).catch(function(){toast('That file is no longer available.')});
     }
 
     /* ---------- image viewer ---------- */
@@ -3570,21 +3765,116 @@
       return figure;
     }
 
-    function renderGeneratedImages(message,images){
+    /* ---------- videos ---------- */
+    // A video plays in place: an attached one in the user's message, a
+    // made one in the answer. Videos are big and the files endpoint needs
+    // apiFetch, so one already in this page (just uploaded or just made)
+    // shows its first frame, and any other loads when its play button is
+    // pressed. A made one can go back into the composer to be edited.
+    const playIcon='<svg class="lucide lucide-play" data-lucide-icon="play" viewBox="0 0 24 24" aria-hidden="true"><polygon points="6 3 20 12 6 21 6 3" /></svg>';
+    const attachIcon='<svg class="lucide lucide-paperclip" data-lucide-icon="paperclip" viewBox="0 0 24 24" aria-hidden="true"><path d="m16 6-8.414 8.586a2 2 0 0 0 2.829 2.829l8.414-8.586a4 4 0 1 0-5.657-5.657l-8.379 8.551a6 6 0 1 0 8.485 8.485l8.379-8.551" /></svg>';
+
+    function formatSeconds(seconds){
+      const total=Math.max(0,Math.round(Number(seconds)||0));
+      return Math.floor(total/60)+':'+String(total%60).padStart(2,'0');
+    }
+
+    // A player for file in figure (a new one unless given). options.load
+    // fetches it now instead of on play; options.actions adds Download and
+    // "Attach to message"; options.settled(ok) runs once it shows a frame
+    // or fails to.
+    function videoFigure(file,figure,options){
+      options=options||{};
+      figure=figure||document.createElement('figure');
+      figure.classList.add('generated-video');
+      figure.dataset.videoId=file.id;
+      const tall=file.width>0&&file.height>0?file.height>file.width:false;
+      figure.classList.toggle('is-tall',tall);
+      figure.style.aspectRatio=file.width>0&&file.height>0?file.width+' / '+file.height:'16 / 9';
+      const video=document.createElement('video');
+      video.playsInline=true;
+      video.preload='metadata';
+      video.setAttribute('aria-label',file.name||'Video');
+      const play=document.createElement('button');
+      play.type='button';
+      play.className='video-play';
+      play.setAttribute('aria-label','Play '+(file.name||'video'));
+      play.innerHTML=playIcon+'<span class="video-play-meta"></span>';
+      play.querySelector('.video-play-meta').textContent=[file.seconds>0?formatSeconds(file.seconds):'',formatFileSize(file.size)].filter(Boolean).join(' · ');
+      let state='idle';
+      // failure is 'missing' when the file is gone, 'unplayable' when this
+      // browser can't decode it (HEVC in Chrome, say): then the tile
+      // downloads it instead.
+      function settle(ok,failure){
+        if(state==='ready'||state==='failed')return;
+        state=ok?'ready':'failed';
+        figure.classList.remove('is-loading');
+        figure.classList.add(ok?'is-ready':'is-'+(failure||'missing'));
+        if(ok){video.controls=true;play.remove()}
+        if(failure==='unplayable'){
+          play.setAttribute('aria-label','Download '+(file.name||'video'));
+          play.querySelector('.video-play-meta').textContent="Can't play here · Download";
+          play.addEventListener('click',function(){downloadAttachment(file)});
+        }
+        if(options.settled)options.settled(ok);
+      }
+      video.addEventListener('loadeddata',function(){settle(true)});
+      video.addEventListener('loadedmetadata',function(){
+        if(video.videoWidth>0&&video.videoHeight>0){
+          figure.style.aspectRatio=video.videoWidth+' / '+video.videoHeight;
+          figure.classList.toggle('is-tall',video.videoHeight>video.videoWidth);
+        }
+      });
+      video.addEventListener('error',function(){settle(false,'unplayable')});
+      function load(autoplay){
+        if(state!=='idle')return;
+        state='loading';
+        figure.classList.add('is-loading');
+        attachmentURL(file.id).then(function(url){
+          video.src=url;
+          if(autoplay)video.play().catch(function(){});
+        }).catch(function(){settle(false)});
+      }
+      play.addEventListener('click',function(){if(state==='idle')load(true)});
+      figure.append(video,play);
+      if(options.actions){
+        const actions=document.createElement('div');
+        actions.className='generated-video-actions';
+        const attach=document.createElement('button');
+        attach.type='button';attach.setAttribute('aria-label','Attach to message');attach.title='Attach to message';
+        attach.innerHTML=attachIcon;
+        attach.addEventListener('click',function(){
+          if(window.NeoChatAttachments)window.NeoChatAttachments.addExisting(file);
+        });
+        const download=document.createElement('button');
+        download.type='button';download.setAttribute('aria-label','Download video');download.title='Download';
+        download.innerHTML=downloadIcon;
+        download.addEventListener('click',function(){downloadAttachment(file)});
+        actions.append(attach,download);
+        figure.append(actions);
+      }
+      if(options.load||attachmentURLs.has(file.id))load(false);
+      return figure;
+    }
+
+    function renderGeneratedImages(message,images,videos){
       const list=Array.isArray(images)?images.filter(function(image){return image&&image.id}):[];
-      const holder=generatedImagesHolder(message,list.length>0);
+      const clips=Array.isArray(videos)?videos.filter(function(video){return video&&video.id}):[];
+      const holder=generatedImagesHolder(message,list.length+clips.length>0);
       if(!holder)return;
-      if(!list.length){holder.remove();return}
-      const ids=list.map(function(image){return image.id}).join(',');
+      if(!list.length&&!clips.length){holder.remove();return}
+      const ids=list.concat(clips).map(function(file){return file.id}).join(',');
       // Already showing exactly these (say, the one that just faded in).
       if(holder.dataset.ids===ids&&!holder.classList.contains('is-generating'))return;
       holder.dataset.ids=ids;
       holder.classList.remove('is-generating');
-      holder.replaceChildren.apply(holder,list.map(function(image){return imageFigure(image)}));
+      holder.replaceChildren.apply(holder,list.map(function(image){return imageFigure(image)}).concat(clips.map(function(video){return videoFigure(video,null,{actions:true})})));
     }
 
-    // The field shown while a picture is made, and what it turns into.
-    function startImageGeneration(message){
+    // The field shown while a picture or a video is made, and what it turns
+    // into. A video's field takes the shape asked for and counts the time:
+    // a clip takes a few minutes.
+    function startImageGeneration(message,video){
       const holder=generatedImagesHolder(message,true);
       holder.classList.add('is-generating');
       delete holder.dataset.ids;
@@ -3593,9 +3883,20 @@
       phrase.setAttribute('aria-live','polite');
       const figure=document.createElement('figure');
       figure.className='generated-image is-generating';
-      figure.style.aspectRatio='1 / 1';
+      figure.style.aspectRatio=video?video.aspectRatio.replace(':',' / '):'1 / 1';
+      if(video&&video.aspectRatio==='9:16')figure.classList.add('is-tall');
       holder.replaceChildren(phrase,figure);
       const field=createDotField(figure);
+      const phrases=video?videoPhrases:imagePhrases;
+      const startedAt=Date.now();
+      let elapsed=null,clock=null;
+      if(video){
+        elapsed=document.createElement('span');
+        elapsed.className='video-gen-elapsed';
+        elapsed.textContent='0:00';
+        figure.append(elapsed);
+        clock=setInterval(function(){elapsed.textContent=formatSeconds((Date.now()-startedAt)/1000)},1000);
+      }
       let step=0;
       function say(text){
         const previous=phrase.querySelector('.image-gen-label:not(.is-leaving)');
@@ -3608,21 +3909,41 @@
         label.textContent=text;label.dataset.text=text;
         phrase.append(label);
       }
-      say(imagePhrases[0]);
+      say(phrases[0]);
       const timer=setInterval(function(){
-        if(step>=imagePhrases.length-1){clearInterval(timer);return}
+        if(step>=phrases.length-1){clearInterval(timer);return}
         step++;
-        say(imagePhrases[step]);
-      },10000);
+        say(phrases[step]);
+      },video?15000:10000);
       function cancel(){
         clearInterval(timer);
+        clearInterval(clock);
         field.destroy();
         holder.remove();
       }
       return {
         cancel:cancel,
-        finish:function(images){
+        finish:function(images,videos){
           clearInterval(timer);
+          clearInterval(clock);
+          const clips=Array.isArray(videos)?videos.filter(function(clip){return clip&&clip.id}):[];
+          if(clips.length){
+            // The clip takes the field's place, its first frame fading in
+            // over the dots.
+            if(elapsed)elapsed.remove();
+            figure.classList.remove('generated-image');
+            videoFigure(clips[0],figure,{load:true,actions:true,settled:function(ok){
+              phrase.classList.add('is-done');
+              setTimeout(function(){
+                field.destroy();
+                phrase.remove();
+                figure.classList.remove('is-generating');
+              },ok?700:0);
+            }});
+            holder.classList.remove('is-generating');
+            holder.dataset.ids=clips.map(function(clip){return clip.id}).join(',');
+            return;
+          }
           const list=Array.isArray(images)?images.filter(function(image){return image&&image.id}):[];
           if(!list.length){cancel();return}
           // The first picture takes the field's place: it fades in over the
@@ -3644,10 +3965,19 @@
 
     // An answer that made pictures, as an incognito chat's history carries
     // it (the same note the server writes for saved chats).
-    function imageHistoryNote(images){
+    function imageHistoryNote(images,videos){
+      if(Array.isArray(videos)&&videos.length)return '[You made a video for this request; the user sees it in the chat.]';
       const count=Array.isArray(images)?images.length:0;
       if(!count)return '';
       return count===1?'[You made an image for this request; the user sees it in the chat.]':'[You made '+count+' images for this request; the user sees them in the chat.]';
+    }
+
+    // The placeholder for a request to an image or video model; null for a
+    // chat model.
+    function startMediaGeneration(message,request){
+      if(isImageModel(request.manual_model_id))return startImageGeneration(message);
+      if(isVideoModel(request.manual_model_id))return startImageGeneration(message,{aspectRatio:request.video&&request.video.aspect_ratio||'16:9'});
+      return null;
     }
 
     const silentThought={activity:function(){},text:function(){},done:function(){},stop:function(){},reasoning:function(){},reasoningText:function(){return ''},ms:function(){return 0}};
@@ -3850,7 +4180,7 @@
         appendMessageActions(message);
         renderResponseVersion(message,message.responseVersionIndex);
         const latest=message.responseVersions[message.responseVersionIndex];
-        if(text||versionQuestionnaire(message)||(latest&&Array.isArray(latest.images)&&latest.images.length))message.classList.add('is-complete');
+        if(text||versionQuestionnaire(message)||(latest&&((Array.isArray(latest.images)&&latest.images.length)||(Array.isArray(latest.videos)&&latest.videos.length))))message.classList.add('is-complete');
       }else if(role==='user'){
         const pairs=parseAnswersText(text);
         if(pairs)renderAnswers(body,pairs);
@@ -4722,7 +5052,7 @@
       message.classList.remove('is-complete');
       message.classList.add('is-pending');
       closeAsk();
-      const imageGen=isImageModel(request.manual_model_id)?startImageGeneration(message):null;
+      const imageGen=startMediaGeneration(message,request);
       if(imageGen)message.querySelector('.chat-text').replaceChildren();
       else setThinkingState(message,'Regenerating');
       setSending(true);
@@ -4780,16 +5110,16 @@
             terminalData=data;
             message.classList.remove('is-pending');
             thought.done(data);
-            const madeImages=Array.isArray(data.images)&&data.images.length>0;
-            if(imageGen)imageGen.finish(data.images);
+            const madeImages=(Array.isArray(data.images)&&data.images.length>0)||(Array.isArray(data.videos)&&data.videos.length>0);
+            if(imageGen)imageGen.finish(data.images,data.videos);
             stream.replace(data.response_text||(data.questionnaire||madeImages?'':'The server returned an empty response.'));
           }
         }});
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
         if(isIncognito){
-          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],reasoning:terminalData.reasoning||''}]);
-          incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images),questionnaire:terminalData.questionnaire||undefined};
+          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],reasoning:terminalData.reasoning||''}]);
+          incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images,terminalData.videos),questionnaire:terminalData.questionnaire||undefined};
         }else{
           message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
         }
@@ -4871,8 +5201,8 @@
       updateAskState(false);
       const pending=appendMessage('assistant','');
       pending.classList.add('is-pending','is-latest-response');
-      // An image model gets the dot field instead of "Thinking".
-      const imageGen=isImageModel(request.manual_model_id)?startImageGeneration(pending):null;
+      // An image or video model gets the dot field instead of "Thinking".
+      const imageGen=startMediaGeneration(pending,request);
       if(!imageGen)setThinkingState(pending);
       chatLog.scrollTop=Math.max(0,userMessage.offsetTop-12);
       const thinkingStartedAt=performance.now();
@@ -4946,15 +5276,15 @@
             }
             pending.classList.remove('is-pending');
             thought.done(data);
-            const madeImages=Array.isArray(data.images)&&data.images.length>0;
-            if(imageGen)imageGen.finish(data.images);
+            const madeImages=(Array.isArray(data.images)&&data.images.length>0)||(Array.isArray(data.videos)&&data.videos.length>0);
+            if(imageGen)imageGen.finish(data.images,data.videos);
             stream.replace(data.response_text||(data.questionnaire||madeImages?'':'The server returned an empty response.'));
           }
         }});
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(signedInUser()!==session){stream.cancel();return}
         await stream.finish();
-        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],reasoning:terminalData.reasoning||''}];
+        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],reasoning:terminalData.reasoning||''}];
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
         openNewArtifact(pending);
@@ -4963,7 +5293,7 @@
         scheduleBalanceCheck();
         seenCurrentChat();
         if(activeChatIncognito&&!terminalData.blocked){
-          incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images),questionnaire:terminalData.questionnaire||undefined});
+          incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images,terminalData.videos),questionnaire:terminalData.questionnaire||undefined});
         }else if(!activeChatIncognito){
           if(activeProject)refreshActiveProject();else loadConversations(false);
         }
@@ -5589,6 +5919,7 @@
     // instant: the chat request only carries the ids the server returned.
     const MAX_FILES=10;
     const MAX_FILE_BYTES=20*1024*1024;
+    const MAX_VIDEO_BYTES=50*1024*1024;
     const IMAGE_MAX_SIDE=1568;
     const IMAGE_QUALITY=0.82;
     const items=[];
@@ -5598,6 +5929,9 @@
     function notify(text){if(window.toast)window.toast(text)}
     function emitChange(){document.dispatchEvent(new CustomEvent('attachments:change'))}
     function isImageFile(file){return /^image\/(png|jpeg|gif|webp)$/.test(file.type)}
+    function isVideoFile(file){return /^video\//.test(file.type)||/\.(mp4|m4v|mov|webm|3gp)$/i.test(file.name||'')}
+    function sizeLimit(video){return video?MAX_VIDEO_BYTES:MAX_FILE_BYTES}
+    const videoIcon='<svg class="lucide lucide-film" data-lucide-icon="film" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" /><path d="M7 3v18" /><path d="M3 7.5h4" /><path d="M3 12h18" /><path d="M3 16.5h4" /><path d="M17 3v18" /><path d="M17 7.5h4" /><path d="M17 16.5h4" /></svg>';
 
     // One dialog shows a text file: a long paste waiting in the composer
     // ("Paste as text" puts it back in the box) or a text attachment in the
@@ -5705,8 +6039,8 @@
     function makeChip(item){
       const chip=document.createElement('div');
       chip.className='chip'+(item.pasted?' is-pasted':'');
-      chip.innerHTML=(item.preview?'<img alt="" />':fileIcon)+'<span></span>'+(item.pasted?'<small></small>':'')+'<button type="button" aria-label="Remove attachment">'+removeIcon+'</button>';
-      if(item.preview)chip.querySelector('img').src=item.preview;
+      chip.innerHTML=(item.image&&item.preview?'<img alt="" />':item.video?videoIcon:fileIcon)+'<span></span>'+(item.pasted?'<small></small>':'')+'<button type="button" aria-label="Remove attachment">'+removeIcon+'</button>';
+      if(item.image&&item.preview)chip.querySelector('img').src=item.preview;
       chip.querySelector('button').addEventListener('click',function(event){event.stopPropagation();removeItem(item,true)});
       if(item.pasted){
         chip.querySelector('small').textContent=lineCount(item.pasted);
@@ -5754,7 +6088,7 @@
       try{
         if(item.image)file=await prepareImage(file);
         if(item.removed)return;
-        if(file.size>MAX_FILE_BYTES)throw new Error('file is larger than 20 MB');
+        if(file.size>sizeLimit(item.video))throw new Error('file is larger than '+(item.video?'50':'20')+' MB');
         const form=new FormData();
         form.append('file',file,file.name);
         const response=await fetch('/files',{method:'POST',credentials:'same-origin',headers:{'X-NeoChat-Request':'1'},body:form,signal:item.controller.signal});
@@ -5777,17 +6111,34 @@
       if(!file)return;
       if(items.length>=MAX_FILES){notify('You can attach up to '+MAX_FILES+' files to one message.');return}
       const image=isImageFile(file);
-      if(file.size>MAX_FILE_BYTES){notify(file.name+' is larger than 20 MB.');return}
+      const video=!image&&isVideoFile(file);
+      if(file.size>sizeLimit(video)){notify(file.name+' is larger than '+(video?'50':'20')+' MB.');return}
       if(!window.NeoChatAuth||!window.NeoChatAuth.isSignedIn()){notify('Sign in to attach files.');return}
-      const item={name:file.name||'file',size:file.size,image:image,status:'uploading',id:'',kind:'',preview:image?URL.createObjectURL(file):'',controller:new AbortController(),pasted:pasted||''};
+      // A video's preview is the file itself: the sent message plays it
+      // without fetching it back.
+      const item={name:file.name||'file',size:file.size,image:image,video:video,status:'uploading',id:'',kind:'',preview:image||video?URL.createObjectURL(file):'',controller:new AbortController(),pasted:pasted||''};
       items.push(item);
       makeChip(item);
       emitChange();
       upload(item,file);
     }
 
+    // A file already in the chat (a made video, to edit it) goes back into
+    // the composer without uploading it again.
+    function addExisting(file){
+      if(!file||!file.id)return;
+      if(items.some(function(item){return item.id===file.id})){textarea.focus();return}
+      if(items.length>=MAX_FILES){notify('You can attach up to '+MAX_FILES+' files to one message.');return}
+      const item={name:file.name||'file',size:file.size||0,image:false,video:file.kind==='video',status:'ready',id:file.id,kind:file.kind,mime:file.mime||'',preview:'',controller:new AbortController(),pasted:''};
+      items.push(item);
+      makeChip(item);
+      emitChange();
+      textarea.focus();
+    }
+
     window.NeoChatAttachments={
       add:function(file){addFile(file)},
+      addExisting:addExisting,
       uploading:function(){return items.some(function(item){return item.status==='uploading'})},
       failed:function(){return items.filter(function(item){return item.status==='error'})},
       ready:function(){return items.filter(function(item){return item.status==='ready'})},

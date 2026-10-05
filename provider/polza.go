@@ -135,6 +135,7 @@ type polzaContentPart struct {
 	Type     string             `json:"type"`
 	Text     string             `json:"text,omitempty"`
 	ImageURL *polzaImageURL     `json:"image_url,omitempty"`
+	VideoURL *polzaImageURL     `json:"video_url,omitempty"`
 	File     *polzaFileContents `json:"file,omitempty"`
 	// CacheControl marks a prompt cache point (Claude; see cache.go).
 	CacheControl *cacheControl `json:"cache_control,omitempty"`
@@ -150,7 +151,9 @@ type polzaFileContents struct {
 }
 
 // encodeParts turns Parts into Polza's OpenAI-style content array: images
-// as image_url with a base64 data URL, documents as file with file_data.
+// as image_url with a base64 data URL, documents as file with file_data,
+// videos as video_url (Gemini reads them) with a data URL in the MIME types
+// Gemini names (video/mov rather than video/quicktime).
 func encodeParts(parts []Part) []polzaContentPart {
 	out := make([]polzaContentPart, 0, len(parts))
 	for _, p := range parts {
@@ -159,6 +162,12 @@ func encodeParts(parts []Part) []polzaContentPart {
 			out = append(out, polzaContentPart{Type: "image_url", ImageURL: &polzaImageURL{URL: dataURL(p.MIME, p.Data)}})
 		case PartFile:
 			out = append(out, polzaContentPart{Type: "file", File: &polzaFileContents{Filename: p.Name, FileData: dataURL(p.MIME, p.Data)}})
+		case PartVideo:
+			mime := p.MIME
+			if mime == "video/quicktime" {
+				mime = "video/mov"
+			}
+			out = append(out, polzaContentPart{Type: "video_url", VideoURL: &polzaImageURL{URL: dataURL(mime, p.Data)}})
 		default:
 			out = append(out, polzaContentPart{Type: "text", Text: p.Text})
 		}

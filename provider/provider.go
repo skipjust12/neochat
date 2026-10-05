@@ -48,10 +48,12 @@ const (
 	PartText  = "text"
 	PartImage = "image"
 	PartFile  = "file"
+	PartVideo = "video"
 )
 
-// Part is one piece of a multimodal message. Text parts carry Text; image
-// and file parts carry the raw bytes plus their MIME type and file name.
+// Part is one piece of a multimodal message. Text parts carry Text; image,
+// file and video parts carry the raw bytes plus their MIME type and file
+// name.
 type Part struct {
 	Type string
 	Text string

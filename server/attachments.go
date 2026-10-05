@@ -37,10 +37,10 @@ func userErrorf(format string, args ...any) error {
 // first until maxHistoryAttachmentBytes, after which they are replaced by a
 // one-line note.
 const (
-	maxMessageAttachmentBytes = 30 << 20
+	maxMessageAttachmentBytes = 60 << 20 // a video at its limit, and a little more
 	maxHistoryAttachmentBytes = 30 << 20
 	maxUploadRequestBytes     = attachment.MaxUploadBytes + 64<<10 // multipart framing
-	uploadReadTimeout         = 3 * time.Minute
+	uploadReadTimeout         = 6 * time.Minute
 )
 
 type uploadResponse struct {
@@ -58,8 +58,8 @@ func (s *Server) handleFileUpload(w http.ResponseWriter, r *http.Request, identi
 		http.Error(w, "file uploads are not configured on this server", http.StatusServiceUnavailable)
 		return
 	}
-	// The server-wide ReadTimeout (30s) is sized for chat requests; a 20 MB
-	// upload on a slow connection needs longer.
+	// The server-wide ReadTimeout (30s) is sized for chat requests; a 50 MB
+	// video on a slow connection needs longer.
 	_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(uploadReadTimeout))
 	r.Body = http.MaxBytesReader(w, r.Body, maxUploadRequestBytes)
 
@@ -153,9 +153,10 @@ func readUploadedFile(r *http.Request) (string, []byte, error) {
 }
 
 // handleFileDownload returns one of the caller's own files. Only the four
-// raster image types are served inline (for thumbnails); everything else
-// is a forced download with a sandbox CSP, so an uploaded HTML or SVG file
-// can never run script on this origin.
+// raster image types (for thumbnails) and the video containers Classify
+// accepts (for the player) are served inline with their own type;
+// everything else is a forced download with a sandbox CSP, so an uploaded
+// HTML or SVG file can never run script on this origin.
 func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
 	if s.Attachments == nil {
 		http.NotFound(w, r)
@@ -178,7 +179,7 @@ func (s *Server) handleFileDownload(w http.ResponseWriter, r *http.Request, iden
 	}
 	disposition := "attachment"
 	contentType := "application/octet-stream"
-	if file.Kind == attachment.KindImage {
+	if file.Kind == attachment.KindImage || (file.Kind == attachment.KindVideo && attachment.VideoMIME(file.Data) == file.MIME) {
 		disposition, contentType = "inline", file.MIME
 	}
 	w.Header().Set("Content-Type", contentType)
@@ -244,6 +245,8 @@ func userMessage(text string, files []attachment.File, notes []string) provider.
 			parts = append(parts, provider.Part{Type: provider.PartImage, MIME: f.MIME, Name: f.Name, Data: f.Data})
 		case attachment.KindDocument:
 			parts = append(parts, provider.Part{Type: provider.PartFile, MIME: f.MIME, Name: f.Name, Data: f.Data})
+		case attachment.KindVideo:
+			parts = append(parts, provider.Part{Type: provider.PartVideo, MIME: f.MIME, Name: f.Name, Data: f.Data})
 		default:
 			addText(fmt.Sprintf("<file name=%q>\n%s\n</file>", f.Name, attachment.Text(f)))
 		}
@@ -308,7 +311,7 @@ func attachmentRefs(files []attachment.File) []conversation.Attachment {
 // model. Files from earlier turns degrade to a note instead, so switching
 // to a text-only model mid-chat still works.
 func adaptForModel(messages []provider.Message, model router.Model) ([]provider.Message, error) {
-	images, files := modelAccepts(model, "image"), modelAccepts(model, "file")
+	images, files, videos := modelAccepts(model, "image"), modelAccepts(model, "file"), modelAccepts(model, "video")
 	last := len(messages) - 1
 	var out []provider.Message
 	for i, m := range messages {
@@ -318,12 +321,15 @@ func adaptForModel(messages []provider.Message, model router.Model) ([]provider.
 		changed := false
 		parts := make([]provider.Part, 0, len(m.Parts))
 		for _, p := range m.Parts {
-			unsupported := (p.Type == provider.PartImage && !images) || (p.Type == provider.PartFile && !files)
+			unsupported := (p.Type == provider.PartImage && !images) || (p.Type == provider.PartFile && !files) || (p.Type == provider.PartVideo && !videos)
 			if !unsupported {
 				parts = append(parts, p)
 				continue
 			}
 			if i == last {
+				if p.Type == provider.PartVideo {
+					return nil, userErrorf("%s can't watch videos. Pick a Gemini model, or remove %s.", modelName(model), p.Name)
+				}
 				what := "images"
 				if p.Type == provider.PartFile {
 					what = "PDF or DOCX files"

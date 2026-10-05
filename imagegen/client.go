@@ -1,8 +1,9 @@
-// Package imagegen makes pictures through Polza's Media API: POST
-// /v1/media starts a generation, GET /v1/media/{id} is polled until it's
-// done, and the result is downloaded right away -- Polza keeps it for only
-// seven days, while a picture in a chat has to last as long as the chat
-// (server/image.go stores it with the chat's files).
+// Package imagegen makes pictures and videos through Polza's Media API:
+// POST /v1/media starts a generation, GET /v1/media/{id} is polled until
+// it's done, and the result is downloaded right away -- Polza keeps it for
+// only seven days, while a picture or a video in a chat has to last as long
+// as the chat (server/image.go and server/video.go store them with the
+// chat's files).
 //
 // Requests run on the user's own image key, sent per call and never kept.
 package imagegen
@@ -53,6 +54,10 @@ type Client struct {
 	MaxWait time.Duration
 	// MaxImageBytes caps one downloaded picture.
 	MaxImageBytes int64
+	// MaxVideoWait bounds a whole video generation; MaxVideoBytes caps the
+	// downloaded clip.
+	MaxVideoWait  time.Duration
+	MaxVideoBytes int64
 	// AllowPrivate lets results be downloaded from private addresses and
 	// over plain HTTP. Tests only: in production a result URL pointing
 	// inside the network is refused.
@@ -140,11 +145,7 @@ func (c *Client) Generate(ctx context.Context, apiKey string, req Request) (Resu
 		input["aspect_ratio"] = req.AspectRatio
 	}
 	if len(req.References) > 0 {
-		images := make([]map[string]string, len(req.References))
-		for i, ref := range req.References {
-			images[i] = map[string]string{"type": "base64", "data": "data:" + ref.MIME + ";base64," + base64.StdEncoding.EncodeToString(ref.Data)}
-		}
-		input["images"] = images
+		input["images"] = inlineFiles(req.References)
 	}
 	body := map[string]any{"model": req.Model, "input": input}
 	if req.User != "" {
@@ -155,51 +156,13 @@ func (c *Client) Generate(ctx context.Context, apiKey string, req Request) (Resu
 	if maxWait <= 0 {
 		maxWait = defaultMaxWait
 	}
-	ctx, cancel := context.WithTimeout(ctx, maxWait)
-	defer cancel()
-
-	status, err := c.call(ctx, apiKey, http.MethodPost, "/media", body)
-	poll := c.PollInterval
-	if poll <= 0 {
-		poll = defaultPollInterval
-	}
-	id := status.ID
-	for err == nil && (status.Status == "pending" || status.Status == "processing") {
-		if id == "" {
-			return Result{}, errors.New("imagegen: running generation has no id")
-		}
-		select {
-		case <-ctx.Done():
-		case <-time.After(poll):
-			status, err = c.call(ctx, apiKey, http.MethodGet, "/media/"+url.PathEscape(id), nil)
-			continue
-		}
-		err = ctx.Err()
-	}
+	status, err := c.run(ctx, apiKey, body, maxWait)
 	if err != nil {
-		if id != "" && errors.Is(ctx.Err(), context.DeadlineExceeded) {
-			return Result{}, &TimeoutError{ID: id}
-		}
 		return Result{}, err
 	}
 
-	switch status.Status {
-	case "completed":
-	case "failed", "cancelled":
-		return Result{}, failure(status)
-	default:
-		return Result{}, fmt.Errorf("imagegen: unexpected status %q", status.Status)
-	}
-
 	result := Result{Text: strings.TrimSpace(status.Content)}
-	if status.Usage != nil {
-		switch {
-		case status.Usage.CostRUB != nil:
-			result.CostRUB, result.HasCost = *status.Usage.CostRUB, true
-		case status.Usage.Cost != nil:
-			result.CostRUB, result.HasCost = *status.Usage.Cost, true
-		}
-	}
+	result.CostRUB, result.HasCost = status.cost()
 	var found results
 	found.collect(status.Data, 0)
 	found.collect(status.Output, 0)
@@ -217,7 +180,11 @@ func (c *Client) Generate(ctx context.Context, apiKey string, req Request) (Resu
 		if len(result.Images) == maxImages {
 			break
 		}
-		picture, err := c.download(ctx, link)
+		data, err := c.download(ctx, link, c.maxImageBytes())
+		if err != nil {
+			return result, err
+		}
+		picture, err := decodeImage(data)
 		if err != nil {
 			return result, err
 		}
@@ -227,6 +194,78 @@ func (c *Client) Generate(ctx context.Context, apiKey string, req Request) (Resu
 		return result, errors.New("imagegen: the generation finished without an image")
 	}
 	return result, nil
+}
+
+// inlineFiles is the Media API's form for files sent with a request:
+// base64 data URLs (Polza moves them to its storage when a provider wants
+// a link).
+func inlineFiles(refs []Reference) []map[string]string {
+	out := make([]map[string]string, len(refs))
+	for i, ref := range refs {
+		out[i] = map[string]string{"type": "base64", "data": "data:" + ref.MIME + ";base64," + base64.StdEncoding.EncodeToString(ref.Data)}
+	}
+	return out
+}
+
+func (s mediaStatus) cost() (float64, bool) {
+	if s.Usage == nil {
+		return 0, false
+	}
+	switch {
+	case s.Usage.CostRUB != nil:
+		return *s.Usage.CostRUB, true
+	case s.Usage.Cost != nil:
+		return *s.Usage.Cost, true
+	}
+	return 0, false
+}
+
+// run starts a generation and polls it until it's done, for at most
+// maxWait; a failed one is a *FailedError, one still running a
+// *TimeoutError.
+func (c *Client) run(ctx context.Context, apiKey string, body map[string]any, maxWait time.Duration) (mediaStatus, error) {
+	ctx, cancel := context.WithTimeout(ctx, maxWait)
+	defer cancel()
+
+	status, err := c.call(ctx, apiKey, http.MethodPost, "/media", body)
+	poll := c.PollInterval
+	if poll <= 0 {
+		poll = defaultPollInterval
+	}
+	id := status.ID
+	for err == nil && (status.Status == "pending" || status.Status == "processing") {
+		if id == "" {
+			return mediaStatus{}, errors.New("imagegen: running generation has no id")
+		}
+		select {
+		case <-ctx.Done():
+		case <-time.After(poll):
+			status, err = c.call(ctx, apiKey, http.MethodGet, "/media/"+url.PathEscape(id), nil)
+			continue
+		}
+		err = ctx.Err()
+	}
+	if err != nil {
+		if id != "" && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			return mediaStatus{}, &TimeoutError{ID: id}
+		}
+		return mediaStatus{}, err
+	}
+
+	switch status.Status {
+	case "completed":
+		return status, nil
+	case "failed", "cancelled":
+		return mediaStatus{}, failure(status)
+	}
+	return mediaStatus{}, fmt.Errorf("imagegen: unexpected status %q", status.Status)
+}
+
+func (c *Client) maxImageBytes() int64 {
+	if c.MaxImageBytes > 0 {
+		return c.MaxImageBytes
+	}
+	return defaultMaxImageBytes
 }
 
 func failure(status mediaStatus) error {
@@ -312,7 +351,7 @@ type results struct {
 	seen   map[string]bool
 }
 
-var urlKeys = map[string]bool{"url": true, "urls": true, "image_url": true, "image": true, "images": true, "src": true, "uri": true}
+var urlKeys = map[string]bool{"url": true, "urls": true, "image_url": true, "image": true, "images": true, "src": true, "uri": true, "video": true, "videos": true, "video_url": true}
 var base64Keys = map[string]bool{"b64_json": true, "base64": true, "b64": true}
 
 func (r *results) collect(raw json.RawMessage, depth int) {
@@ -374,13 +413,14 @@ func (r *results) add(key, value string) {
 	}
 }
 
-// download fetches a result. Polza serves results from its own storage,
-// but the address still comes from a response, so it gets the same
-// treatment as any outside URL: HTTPS, public addresses only, a size cap.
-func (c *Client) download(ctx context.Context, link string) (Image, error) {
+// download fetches a result, at most limit bytes. Polza serves results
+// from its own storage, but the address still comes from a response, so it
+// gets the same treatment as any outside URL: HTTPS, public addresses
+// only, a size cap.
+func (c *Client) download(ctx context.Context, link string, limit int64) ([]byte, error) {
 	parsed, err := url.Parse(link)
 	if err != nil || (parsed.Scheme != "https" && !(c.AllowPrivate && parsed.Scheme == "http")) {
-		return Image{}, fmt.Errorf("imagegen: refusing to download %q", link)
+		return nil, fmt.Errorf("imagegen: refusing to download %q", link)
 	}
 	dialer := &net.Dialer{Timeout: 15 * time.Second}
 	if !c.AllowPrivate {
@@ -397,7 +437,7 @@ func (c *Client) download(ctx context.Context, link string) (Image, error) {
 		}
 	}
 	client := &http.Client{
-		Timeout:   2 * time.Minute,
+		Timeout:   5 * time.Minute,
 		Transport: &http.Transport{DialContext: dialer.DialContext, TLSHandshakeTimeout: 15 * time.Second, Proxy: nil},
 		CheckRedirect: func(next *http.Request, via []*http.Request) error {
 			if len(via) >= 3 {
@@ -411,28 +451,24 @@ func (c *Client) download(ctx context.Context, link string) (Image, error) {
 	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, link, nil)
 	if err != nil {
-		return Image{}, err
+		return nil, err
 	}
 	response, err := client.Do(request)
 	if err != nil {
-		return Image{}, fmt.Errorf("imagegen: download result: %w", err)
+		return nil, fmt.Errorf("imagegen: download result: %w", err)
 	}
 	defer response.Body.Close()
 	if response.StatusCode != http.StatusOK {
-		return Image{}, fmt.Errorf("imagegen: download result: HTTP %d", response.StatusCode)
-	}
-	limit := c.MaxImageBytes
-	if limit <= 0 {
-		limit = defaultMaxImageBytes
+		return nil, fmt.Errorf("imagegen: download result: HTTP %d", response.StatusCode)
 	}
 	data, err := io.ReadAll(io.LimitReader(response.Body, limit+1))
 	if err != nil {
-		return Image{}, fmt.Errorf("imagegen: download result: %w", err)
+		return nil, fmt.Errorf("imagegen: download result: %w", err)
 	}
 	if int64(len(data)) > limit {
-		return Image{}, fmt.Errorf("imagegen: result is larger than %d bytes", limit)
+		return nil, fmt.Errorf("imagegen: result is larger than %d bytes", limit)
 	}
-	return decodeImage(data)
+	return data, nil
 }
 
 // decodeImage checks the bytes are a picture and reads its size.
