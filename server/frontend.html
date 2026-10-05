@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=25" />
+<link rel="stylesheet" href="/assets/fluid.css?v=26" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -212,14 +212,6 @@
             <button class="round-btn" id="attachBtn" aria-label="Add to message" aria-haspopup="menu" aria-expanded="false"><svg class="lucide lucide-plus" data-lucide-icon="plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14" /><path d="M12 5v14" /></svg></button>
             <div class="attach-panel" id="attachPanel" role="menu" aria-label="Add to message">
               <div class="attach-tiles">
-                <button class="attach-tile" data-accept="image/*" data-capture="environment" role="menuitem">
-                  <svg class="lucide lucide-camera" data-lucide-icon="camera" viewBox="0 0 24 24" aria-hidden="true"><path d="M13.997 4a2 2 0 0 1 1.76 1.05l.486.9A2 2 0 0 0 18.003 7H20a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h1.997a2 2 0 0 0 1.759-1.048l.489-.904A2 2 0 0 1 10.004 4z" /><circle cx="12" cy="13" r="3" /></svg>
-                  <span>Camera</span>
-                </button>
-                <button class="attach-tile" data-accept="image/*" role="menuitem">
-                  <svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>
-                  <span>Photos</span>
-                </button>
                 <button class="attach-tile" data-accept="*" role="menuitem">
                   <svg class="lucide lucide-file-up" data-lucide-icon="file-up" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z" /><path d="M14 2v5a1 1 0 0 0 1 1h5" /><path d="M12 12v6" /><path d="m15 15-3-3-3 3" /></svg>
                   <span>Files</span>
@@ -227,11 +219,6 @@
               </div>
               <div class="attach-divider"></div>
               <div class="attach-list">
-                <button class="attach-row" id="openConnectorPicker" role="menuitem">
-                  <span class="row-symbol"><svg class="lucide lucide-blocks" data-lucide-icon="blocks" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 22V7a1 1 0 0 0-1-1H4a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-5a1 1 0 0 0-1-1H2" /><rect x="14" y="2" width="8" height="8" rx="1" /></svg></span>
-                  <span class="row-copy"><strong>Plugins</strong><span>Mention a service in your message</span></span>
-                  <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
-                </button>
                 <button class="attach-row" data-toast="Skills aren't part of this preview yet." role="menuitem">
                   <span class="row-symbol"><svg class="lucide lucide-notebook-tabs" data-lucide-icon="notebook-tabs" viewBox="0 0 24 24" aria-hidden="true"><path d="M2 6h4" /><path d="M2 10h4" /><path d="M2 14h4" /><path d="M2 18h4" /><rect width="16" height="20" x="4" y="2" rx="2" /><path d="M15 2v20" /><path d="M15 7h5" /><path d="M15 12h5" /><path d="M15 17h5" /></svg></span>
                   <span class="row-copy"><strong>Skills</strong><span>Reuse specialized skills to handle specific tasks reliably</span></span>
@@ -251,15 +238,6 @@
                   <span class="row-state" id="webSearchState">Auto</span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
-              </div>
-              <div class="attach-connectors-screen">
-                <button class="attach-connectors-back" id="connectorPickerBack" type="button"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>Back</button>
-                <button class="attach-connector-row" type="button" data-connector-mention="gmail"><span class="connector-logo"><svg viewBox="0 0 192 192"><use href="#connector-gmail"/></svg></span><span>Gmail</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-                <button class="attach-connector-row" type="button" data-connector-mention="github"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-github"/></svg></span><span>GitHub</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-                <button class="attach-connector-row" type="button" data-connector-mention="notion"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-notion"/></svg></span><span>Notion</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-                <button class="attach-connector-row" type="button" data-connector-mention="slack"><span class="connector-logo"><svg viewBox="0 0 24 24"><use href="#connector-slack"/></svg></span><span>Slack</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-                <button class="attach-connector-row" type="button" data-connector-mention="canva"><span class="connector-logo connector-canva"><svg viewBox="0 0 50 50"><use href="#connector-canva"/></svg></span><span>Canva</span><svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></button>
-                <button class="browse-connectors" id="browseConnectors" type="button"><svg class="lucide lucide-arrow-up-right" data-lucide-icon="arrow-up-right" viewBox="0 0 24 24" aria-hidden="true"><path d="M7 7h10v10" /><path d="M7 17 17 7" /></svg><span>Browse plugins</span></button>
               </div>
             </div>
             <input type="file" id="fileInput" multiple hidden />
@@ -1415,12 +1393,12 @@
     }catch(error){}
 
     function greetingPoolForHour(hour){
-      if(hour>=9&&hour<=13)return ['What do we do?','Good afternoon, NICK_OF_SETTINGS','How can I help?'];
+      if(hour>=9&&hour<=13)return ['Ready when you are',"Let's think",'Where do we start?','What do we do?',"What's cooking?","What's on the agenda?"];
       if(hour>=14&&hour<=16)return ['What shall we discuss?','Anything left for today?','What should we tackle?'];
       if(hour>=17&&hour<=21)return ['Clocking for the evening shift',"Let's talk",'Good evening'];
       if(hour>=22||hour===0)return ['Late chat?',"Let's think about something",'What shall we talk about?'];
       if(hour>=1&&hour<=6)return ['Not tired yet?','Late-night ideas?','We meet again'];
-      return ['Welcome, early bird','Another day, another chat!',"What's on the agenda?"];
+      return ['Welcome, early bird','Coffee and NeoChat?','Up early, i see','Fresh day'];
     }
 
     const greetingPool=greetingPoolForHour(new Date().getHours());
@@ -2247,7 +2225,7 @@
     }
 
     // While a model thinks, the label is one of these, a new one every 10s.
-    const thinkingPhrases=['Fabrication','Hallucinating','Deep thinking','Thinking','Overthinking','Pondering','Calculating'];
+    const thinkingPhrases=['Fabrication','Hallucinating','Thinking','Overthinking','Pondering','Calculating','Predicting','Cooking','Synthesizing','Decoding','Guessing','Brewing'];
     function nextThinkingPhrase(current){
       const others=thinkingPhrases.filter(function(phrase){return phrase!==current});
       return others[Math.floor(Math.random()*others.length)];
@@ -5072,7 +5050,6 @@
         mainPanel.classList.remove('connectors-open');
       }
     });
-    document.addEventListener('connectors:open',showConnectorsIndex);
     let projectDialogTrigger=null;
     document.querySelectorAll('.project-create-btn').forEach(function(button){button.addEventListener('click',function(){projectDialogTrigger=button;projectOverlay.inert=false;projectOverlay.classList.add('is-open');projectOverlay.setAttribute('aria-hidden','false');setTimeout(function(){document.getElementById('projectName').focus()},100)})});
     document.querySelector('.project-cancel').addEventListener('click',function(){projectOverlay.classList.remove('is-open');projectOverlay.setAttribute('aria-hidden','true');projectOverlay.inert=true;if(projectDialogTrigger)projectDialogTrigger.focus()});
@@ -5317,20 +5294,15 @@
   (function(){
     const wrap=document.getElementById('attachWrap');
     const btn=document.getElementById('attachBtn');
-    const panel=document.getElementById('attachPanel');
     const fileInput=document.getElementById('fileInput');
     const attachments=document.getElementById('attachments');
     const attachmentsInner=document.getElementById('attachmentsInner');
     const webSearchRow=document.getElementById('webSearchRow');
     const webSearchState=document.getElementById('webSearchState');
-    const connectorPickerOpen=document.getElementById('openConnectorPicker');
-    const connectorPickerBack=document.getElementById('connectorPickerBack');
-    const browseConnectors=document.getElementById('browseConnectors');
     const promptEntry=document.getElementById('promptEntry');
     const connectorHighlights=document.getElementById('connectorHighlights');
     const textarea=document.getElementById('message');
     const reduced=window.matchMedia('(prefers-reduced-motion:reduce)');
-    const connectorNames={gmail:'Gmail',github:'GitHub',notion:'Notion',slack:'Slack',canva:'Canva'};
     const connectorViewBoxes={gmail:'0 0 192 192',github:'0 0 24 24',notion:'0 0 24 24',slack:'0 0 24 24',canva:'0 0 50 50'};
     const CLOSE_MS=190,CONFIRM_MS=140;
     let closeTimer=null,selectTimer=null,pendingTile=null;
@@ -5352,7 +5324,7 @@
       wrap.classList.remove('is-open');
       wrap.classList.add('is-closing');
       btn.setAttribute('aria-expanded','false');
-      closeTimer=setTimeout(function(){wrap.classList.remove('is-closing');panel.classList.remove('is-connectors')},reduced.matches?0:CLOSE_MS);
+      closeTimer=setTimeout(function(){wrap.classList.remove('is-closing')},reduced.matches?0:CLOSE_MS);
     }
     btn.addEventListener('click',function(){isOpen()?closePanel():openPanel()});
     document.addEventListener('panel:opening',function(e){if(e.detail!=='attach')closePanel()});
@@ -5362,12 +5334,6 @@
     });
     window.addEventListener('blur',closePanel);
 
-    connectorPickerOpen.addEventListener('click',function(){panel.classList.add('is-connectors')});
-    connectorPickerBack.addEventListener('click',function(){panel.classList.remove('is-connectors')});
-    browseConnectors.addEventListener('click',function(){
-      closePanel();
-      document.dispatchEvent(new CustomEvent('connectors:open'));
-    });
     function escapeMarkup(value){
       return value.replace(/[&<>]/g,function(character){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[character]});
     }
@@ -5388,28 +5354,6 @@
       promptEntry.classList.toggle('has-value',textarea.value.length>0);
       connectorHighlights.scrollTop=textarea.scrollTop;
     }
-    function insertConnectorMention(id){
-      const name=connectorNames[id];
-      if(!name)return;
-      const start=textarea.selectionStart;
-      const end=textarea.selectionEnd;
-      const before=textarea.value.slice(0,start);
-      const after=textarea.value.slice(end);
-      const leadingSpace=before&&!/\s$/.test(before)?' ':'';
-      const trailingSpace=!after||!/\s/.test(after.charAt(0))?' ':'';
-      const mention='@'+name;
-      textarea.value=before+leadingSpace+mention+trailingSpace+after;
-      const caret=before.length+leadingSpace.length+mention.length+trailingSpace.length;
-      textarea.setSelectionRange(caret,caret);
-      textarea.dispatchEvent(new Event('input',{bubbles:true}));
-    }
-    document.querySelectorAll('[data-connector-mention]').forEach(function(row){
-      row.addEventListener('click',function(){
-        insertConnectorMention(row.dataset.connectorMention);
-        textarea.focus();
-        closePanel();
-      });
-    });
     textarea.addEventListener('input',renderConnectorMentions);
     textarea.addEventListener('scroll',function(){connectorHighlights.scrollTop=textarea.scrollTop});
     document.addEventListener('plugin:clear',renderConnectorMentions);
@@ -5643,7 +5587,6 @@
     document.querySelectorAll('.attach-tile').forEach(function(tile){
       tile.addEventListener('click',function(){
         fileInput.accept=tile.dataset.accept==='*'?'':tile.dataset.accept;
-        if(tile.dataset.capture)fileInput.capture=tile.dataset.capture;else fileInput.removeAttribute('capture');
         fileInput.click();
       });
     });
