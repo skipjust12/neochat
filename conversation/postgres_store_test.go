@@ -362,3 +362,70 @@ func TestPostgresStore_SearchAndDeleteProject(t *testing.T) {
 		t.Fatalf("chats after deleting the project = %+v, %v", list, err)
 	}
 }
+
+func TestPostgresStore_UnreadUntilMarkedRead(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "conversation_metadata", "conversation_messages", "projects")
+	store := NewPostgresStore(pgDB)
+	ctx := context.Background()
+	t0 := time.Now().UTC().Truncate(time.Millisecond)
+	project := Project{ID: "p1", Name: "P", CreatedAt: t0}
+	must(t, store.CreateProject(ctx, "u1", project))
+
+	unreadOf := func(list []Overview, err error, id string) bool {
+		t.Helper()
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range list {
+			if item.ID == id {
+				return item.Unread
+			}
+		}
+		t.Fatalf("%s missing from %+v", id, list)
+		return false
+	}
+
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "hi", CreatedAt: t0}))
+	if list, err := store.List(ctx, "u1", 10); unreadOf(list, err, "c1") {
+		t.Fatal("a chat without a reply is unread")
+	}
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: "hello", CreatedAt: t0.Add(time.Second)}))
+	if list, err := store.List(ctx, "u1", 10); !unreadOf(list, err, "c1") {
+		t.Fatal("a chat with a reply never opened is not unread")
+	}
+	must(t, store.MarkRead(ctx, "u1", "c1", t0.Add(2*time.Second)))
+	must(t, store.MarkRead(ctx, "u1", "c1", t0))
+	if list, err := store.List(ctx, "u1", 10); unreadOf(list, err, "c1") {
+		t.Fatal("still unread after MarkRead, or an older MarkRead moved it back")
+	}
+	history, err := store.History(ctx, "u1", "c1", 0)
+	must(t, err)
+	_, err = store.AddResponseVersion(ctx, "u1", "c1", history[1].ID, ResponseVersion{Content: "again", CreatedAt: t0.Add(3 * time.Second)})
+	must(t, err)
+	if list, err := store.List(ctx, "u1", 10); !unreadOf(list, err, "c1") {
+		t.Fatal("a regenerated reply isn't unread")
+	}
+	// Marking read keeps the chat's title and pin.
+	title, pinned := "Kept", true
+	must(t, store.UpdateMetadata(ctx, "u1", "c1", MetadataUpdate{Title: &title, Pinned: &pinned}))
+	must(t, store.MarkRead(ctx, "u1", "c1", t0.Add(4*time.Second)))
+	list, err := store.List(ctx, "u1", 10)
+	if unreadOf(list, err, "c1") || list[0].Title != "Kept" || !list[0].Pinned {
+		t.Fatalf("after MarkRead: %+v", list)
+	}
+
+	must(t, store.Append(ctx, "u1", "c2", Message{Role: RoleUser, Content: "q", CreatedAt: t0}))
+	must(t, store.Append(ctx, "u1", "c2", Message{Role: RoleAssistant, Content: "a", CreatedAt: t0.Add(time.Second)}))
+	must(t, store.UpdateMetadata(ctx, "u1", "c2", MetadataUpdate{ProjectID: &project.ID}))
+	if chats, err := store.ListByProject(ctx, "u1", project.ID, 10); !unreadOf(chats, err, "c2") {
+		t.Fatal("an unread project chat isn't unread")
+	}
+
+	if err := store.MarkRead(ctx, "u1", "missing", t0); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("MarkRead(missing) = %v, want ErrConversationNotFound", err)
+	}
+	if err := store.MarkRead(ctx, "u2", "c1", t0); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("MarkRead(another user's chat) = %v, want ErrConversationNotFound", err)
+	}
+}

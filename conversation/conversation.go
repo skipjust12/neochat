@@ -152,6 +152,9 @@ type Overview struct {
 	Pinned    bool      `json:"pinned,omitempty"`
 	ProjectID string    `json:"project_id,omitempty"`
 	UpdatedAt time.Time `json:"updated_at"`
+	// Unread: the chat has a reply newer than the last time the user
+	// opened it (MarkRead).
+	Unread bool `json:"unread,omitempty"`
 }
 
 type MetadataUpdate struct {

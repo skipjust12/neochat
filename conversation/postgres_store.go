@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"time"
 )
 
 // PostgresStore is a Store backed by the conversation_messages/
@@ -156,9 +157,11 @@ func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]O
 		           LIMIT 1
 		       ), ''), 'New chat') AS title,
 		       COALESCE(metadata.pinned, FALSE),
-		       grouped.updated_at
+		       grouped.updated_at,
+		       grouped.replied_at IS NOT NULL AND (metadata.read_at IS NULL OR metadata.read_at < grouped.replied_at)
 		FROM (
-			SELECT conversation_id, MAX(created_at) AS updated_at
+			SELECT conversation_id, MAX(created_at) AS updated_at,
+			       MAX(created_at) FILTER (WHERE role = $4 AND NOT is_summary) AS replied_at
 			FROM conversation_messages
 			WHERE user_id = $1
 			GROUP BY conversation_id
@@ -168,7 +171,7 @@ func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]O
 		WHERE COALESCE(metadata.project_id, '') = ''
 		ORDER BY COALESCE(metadata.pinned, FALSE) DESC, grouped.updated_at DESC
 		LIMIT $2
-	`, userID, limit, RoleUser)
+	`, userID, limit, RoleUser, RoleAssistant)
 	if err != nil {
 		return nil, err
 	}
@@ -177,7 +180,7 @@ func (s *PostgresStore) List(ctx context.Context, userID string, limit int) ([]O
 	out := []Overview{}
 	for rows.Next() {
 		var overview Overview
-		if err := rows.Scan(&overview.ID, &overview.Title, &overview.Pinned, &overview.UpdatedAt); err != nil {
+		if err := rows.Scan(&overview.ID, &overview.Title, &overview.Pinned, &overview.UpdatedAt, &overview.Unread); err != nil {
 			return nil, err
 		}
 		out = append(out, overview)
@@ -203,9 +206,11 @@ func (s *PostgresStore) ListByProject(ctx context.Context, userID, projectID str
 		       ),
 		       COALESCE(metadata.pinned, FALSE),
 		       metadata.project_id,
-		       grouped.updated_at
+		       grouped.updated_at,
+		       grouped.replied_at IS NOT NULL AND (metadata.read_at IS NULL OR metadata.read_at < grouped.replied_at)
 		FROM (
-		    SELECT conversation_id, MAX(created_at) AS updated_at
+		    SELECT conversation_id, MAX(created_at) AS updated_at,
+		           MAX(created_at) FILTER (WHERE role = $5 AND NOT is_summary) AS replied_at
 		    FROM conversation_messages
 		    WHERE user_id = $1
 		    GROUP BY conversation_id
@@ -216,7 +221,7 @@ func (s *PostgresStore) ListByProject(ctx context.Context, userID, projectID str
 		WHERE metadata.project_id = $2
 		ORDER BY metadata.pinned DESC, grouped.updated_at DESC
 		LIMIT $3
-	`, userID, projectID, limit, RoleUser)
+	`, userID, projectID, limit, RoleUser, RoleAssistant)
 	if err != nil {
 		return nil, err
 	}
@@ -224,12 +229,29 @@ func (s *PostgresStore) ListByProject(ctx context.Context, userID, projectID str
 	out := []Overview{}
 	for rows.Next() {
 		var item Overview
-		if err := rows.Scan(&item.ID, &item.Title, &item.Pinned, &item.ProjectID, &item.UpdatedAt); err != nil {
+		if err := rows.Scan(&item.ID, &item.Title, &item.Pinned, &item.ProjectID, &item.UpdatedAt, &item.Unread); err != nil {
 			return nil, err
 		}
 		out = append(out, item)
 	}
 	return out, rows.Err()
+}
+
+func (s *PostgresStore) MarkRead(ctx context.Context, userID, conversationID string, at time.Time) error {
+	result, err := s.db.ExecContext(ctx, `
+		INSERT INTO conversation_metadata (user_id, conversation_id, read_at)
+		SELECT $1, $2, $3
+		WHERE EXISTS (SELECT 1 FROM conversation_messages WHERE user_id = $1 AND conversation_id = $2)
+		ON CONFLICT (user_id, conversation_id) DO UPDATE SET
+			read_at = GREATEST(conversation_metadata.read_at, EXCLUDED.read_at)
+	`, userID, conversationID, at)
+	if err != nil {
+		return err
+	}
+	if n, err := result.RowsAffected(); err == nil && n == 0 {
+		return ErrConversationNotFound
+	}
+	return nil
 }
 
 func (s *PostgresStore) UpdateMetadata(ctx context.Context, userID, conversationID string, update MetadataUpdate) error {

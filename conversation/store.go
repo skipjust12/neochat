@@ -6,6 +6,7 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"time"
 )
 
 var ErrMessageNotFound = errors.New("conversation: message not found")
@@ -55,6 +56,10 @@ type Store interface {
 	List(ctx context.Context, userID string, limit int) ([]Overview, error)
 	ListByProject(ctx context.Context, userID, projectID string, limit int) ([]Overview, error)
 	UpdateMetadata(ctx context.Context, userID, conversationID string, update MetadataUpdate) error
+	// MarkRead records that the user saw the chat at time at; List and
+	// ListByProject report it unread while a reply is newer than that.
+	// ErrConversationNotFound if there is no such chat.
+	MarkRead(ctx context.Context, userID, conversationID string, at time.Time) error
 	Delete(ctx context.Context, userID, conversationID string) error
 	CreateProject(ctx context.Context, userID string, project Project) error
 	ListProjects(ctx context.Context, userID string) ([]Project, error)
@@ -99,6 +104,7 @@ type conversationMetadata struct {
 	title     string
 	pinned    bool
 	projectID string
+	readAt    time.Time
 }
 
 type conversationKey struct {
@@ -192,6 +198,7 @@ func (s *InMemoryStore) List(_ context.Context, userID string, limit int) ([]Ove
 		if overview.Title == "" {
 			overview.Title = "New chat"
 		}
+		overview.Unread = unread(messages, meta.readAt)
 		for _, message := range messages {
 			if message.CreatedAt.After(overview.UpdatedAt) {
 				overview.UpdatedAt = message.CreatedAt
@@ -245,6 +252,7 @@ func (s *InMemoryStore) ListByProject(_ context.Context, userID, projectID strin
 				}
 			}
 		}
+		overview.Unread = unread(messages, meta.readAt)
 		for _, message := range messages {
 			if message.CreatedAt.After(overview.UpdatedAt) {
 				overview.UpdatedAt = message.CreatedAt
@@ -283,6 +291,32 @@ func (s *InMemoryStore) UpdateMetadata(_ context.Context, userID, conversationID
 	}
 	s.metadata[key] = meta
 	return nil
+}
+
+func (s *InMemoryStore) MarkRead(_ context.Context, userID, conversationID string, at time.Time) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := conversationKey{userID: userID, conversationID: conversationID}
+	if len(s.history[key]) == 0 {
+		return ErrConversationNotFound
+	}
+	meta := s.metadata[key]
+	if at.After(meta.readAt) {
+		meta.readAt = at
+	}
+	s.metadata[key] = meta
+	return nil
+}
+
+// unread reports whether a chat has a reply newer than readAt (the zero
+// time for a chat never opened).
+func unread(messages []Message, readAt time.Time) bool {
+	for _, message := range messages {
+		if message.Role == RoleAssistant && !message.IsSummary && message.CreatedAt.After(readAt) {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *InMemoryStore) CreateProject(_ context.Context, userID string, project Project) error {

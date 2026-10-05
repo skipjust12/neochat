@@ -458,6 +458,9 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /conversations", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withReadTimeout(s.handleConversationList))))))
 	mux.HandleFunc("GET /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withReadTimeout(s.handleConversationHistory))))))
 	mux.HandleFunc("PATCH /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationUpdate))))))
+	// Marking a chat read takes no request slot: it happens while replies
+	// in other chats are running.
+	mux.HandleFunc("POST /conversations/{conversation_id}/read", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withReadTimeout(s.handleConversationRead))))))
 	mux.HandleFunc("DELETE /conversations/{conversation_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationDelete))))))
 	mux.HandleFunc("GET /projects", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withReadTimeout(s.handleProjectList))))))
 	mux.HandleFunc("POST /projects", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectCreate))))))
@@ -621,6 +624,27 @@ func (s *Server) handleConversationUpdate(w http.ResponseWriter, r *http.Request
 		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
 		return
 	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
+// handleConversationRead is POST /conversations/{id}/read: the user is
+// looking at the chat, so its replies so far are read. The user's other
+// devices hear it on GET /events ("read") and drop the chat's unread dot.
+func (s *Server) handleConversationRead(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	conversationID, ok := conversationIDFromRequest(w, r)
+	if !ok {
+		return
+	}
+	if err := s.Conversations.MarkRead(r.Context(), identity.UserID, conversationID, time.Now()); err != nil {
+		if errors.Is(err, conversation.ErrConversationNotFound) {
+			http.Error(w, "conversation not found", http.StatusNotFound)
+			return
+		}
+		log.Printf("server: mark conversation_id=%s read for user_id=%s: %v", conversationID, identity.UserID, err)
+		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		return
+	}
+	s.streams.announce(identity.UserID, "read", liveNotice{ConversationID: conversationID})
 	w.WriteHeader(http.StatusNoContent)
 }
 

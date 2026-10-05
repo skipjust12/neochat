@@ -11,8 +11,8 @@ import (
 
 // Live replies on every device. GET /events is one long-lived stream per
 // open app. It tells each of a user's devices when one of their replies
-// starts streaming ("started", with what was asked) and when it ends
-// ("finished"). A device showing that chat follows the reply through
+// starts streaming ("started", with what was asked), when it ends
+// ("finished"), and when a chat was opened somewhere ("read"). A device showing that chat follows the reply through
 // GET /chat/stream/{stream_id} (streamjob.go); the others mark the chat as
 // live and refresh the list once it's done. A device that connects while
 // replies are running hears about them first. Incognito replies stay on

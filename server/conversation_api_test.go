@@ -189,3 +189,63 @@ func TestHistoryHTTPPaginationAndUserLimit(t *testing.T) {
 		t.Fatalf("IP change bypassed user limit: %d", third.Code)
 	}
 }
+
+func TestConversationReadEndpointMarksReadAndTellsOtherDevices(t *testing.T) {
+	store := conversation.NewInMemoryStore()
+	ctx := context.Background()
+	now := time.Now()
+	for _, m := range []conversation.Message{
+		{Role: conversation.RoleUser, Content: "q", CreatedAt: now.Add(-2 * time.Second)},
+		{Role: conversation.RoleAssistant, Content: "a", CreatedAt: now.Add(-time.Second)},
+	} {
+		if err := store.Append(ctx, "owner", "chat", m); err != nil {
+			t.Fatal(err)
+		}
+	}
+	srv := &Server{Conversations: store}
+	identity := auth.Identity{UserID: "owner"}
+	events, _, _, ok := srv.streams.watch("owner")
+	if !ok {
+		t.Fatal("watch refused")
+	}
+	defer srv.streams.unwatch("owner", events)
+
+	listUnread := func() bool {
+		t.Helper()
+		recorder := httptest.NewRecorder()
+		srv.handleConversationList(recorder, httptest.NewRequest("GET", "/conversations", nil), identity)
+		var list conversationListResponse
+		if err := json.Unmarshal(recorder.Body.Bytes(), &list); err != nil || len(list.Conversations) != 1 {
+			t.Fatalf("list = %s (%v)", recorder.Body, err)
+		}
+		return list.Conversations[0].Unread
+	}
+	if !listUnread() {
+		t.Fatal("a chat with an unopened reply isn't listed as unread")
+	}
+
+	read := func(id string) int {
+		request := httptest.NewRequest(http.MethodPost, "/conversations/"+id+"/read", nil)
+		request.SetPathValue("conversation_id", id)
+		recorder := httptest.NewRecorder()
+		srv.handleConversationRead(recorder, request, identity)
+		return recorder.Code
+	}
+	if code := read("chat"); code != http.StatusNoContent {
+		t.Fatalf("read status = %d, want 204", code)
+	}
+	if listUnread() {
+		t.Fatal("still unread after POST /read")
+	}
+	select {
+	case event := <-events:
+		if event.name != "read" || event.notice.ConversationID != "chat" {
+			t.Fatalf("live event = %+v, want read for chat", event)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("other devices weren't told the chat was read")
+	}
+	if code := read("missing"); code != http.StatusNotFound {
+		t.Fatalf("read(missing) status = %d, want 404", code)
+	}
+}

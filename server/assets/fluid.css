@@ -8273,6 +8273,40 @@ html.artifact-open body {
   .conversation-item.is-live .conversation-title::after { animation: none; }
 }
 
+/* A reply the user hasn't seen yet: a dot at the row's end until the chat
+   is opened. */
+.conversation-item.is-unread,
+.project-chat-item.is-unread {
+  color: var(--text);
+}
+
+.conversation-item.is-unread::after {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  margin-left: auto;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.project-chat-item.is-unread {
+  position: relative;
+  padding-right: 30px;
+}
+
+.project-chat-item.is-unread::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 12px;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
 /* ---------- sketch ---------- */
 .sketch-backdrop {
   position: fixed;
@@ -8395,6 +8429,34 @@ html.artifact-open body {
 
 #sketchCanvas[data-tool="select"] {
   cursor: default;
+}
+
+#sketchCanvas[data-tool="text"] {
+  cursor: text;
+}
+
+.sketch-stage {
+  position: relative;
+}
+
+/* Text being typed on the board, in place of the text it will become. */
+.sketch-text-editor {
+  position: absolute;
+  min-width: 40px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  outline: 1px dashed #3e63dd;
+  outline-offset: 3px;
+  background: transparent;
+  resize: none;
+  overflow: hidden;
+  white-space: pre;
+  caret-color: #3e63dd;
+}
+
+.sketch-text-editor[hidden] {
+  display: none;
 }
 
 .sketch-actions {
@@ -8571,6 +8633,160 @@ html.artifact-open body {
   transform: rotate(180deg);
 }
 
+/* ---------- image viewer ---------- */
+html.image-viewer-open,
+html.image-viewer-open body {
+  overflow: hidden;
+}
+
+.image-viewer {
+  --viewer-fade: 1;
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: flex;
+  flex-direction: column;
+  background: rgb(0 0 0 / var(--viewer-fade));
+  color: #fff;
+  animation: confirm-fade .16s ease;
+}
+
+.image-viewer[hidden] {
+  display: none;
+}
+
+.image-viewer-bar {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: max(10px, env(safe-area-inset-top)) 12px 10px 18px;
+  background: linear-gradient(rgb(0 0 0 / .45), transparent);
+  transition: opacity .2s ease;
+}
+
+.image-viewer.is-zoomed .image-viewer-bar,
+.image-viewer.is-zoomed .image-viewer-nav {
+  opacity: .35;
+}
+
+.image-viewer-count {
+  margin-right: auto;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: rgb(255 255 255 / .8);
+}
+
+.image-viewer-button,
+.image-viewer-nav {
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgb(255 255 255 / .1);
+  color: #fff;
+  cursor: pointer;
+  transition: background .16s ease, opacity .2s ease;
+}
+
+.image-viewer-button {
+  width: 40px;
+  height: 40px;
+}
+
+.image-viewer-button:hover,
+.image-viewer-nav:hover {
+  background: rgb(255 255 255 / .2);
+}
+
+.image-viewer-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.image-viewer-stage {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 60px 72px;
+  overflow: hidden;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.image-viewer-stage img {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  border-radius: 6px;
+  transform-origin: center;
+  will-change: transform;
+  -webkit-user-drag: none;
+}
+
+.image-viewer-stage img.is-animating {
+  transition: transform .22s var(--ease-out);
+}
+
+.image-viewer.is-zoomed .image-viewer-stage {
+  cursor: grab;
+}
+
+.image-viewer-nav {
+  position: absolute;
+  top: 50%;
+  z-index: 2;
+  width: 44px;
+  height: 44px;
+  margin-top: -22px;
+}
+
+.image-viewer-nav[hidden] {
+  display: none;
+}
+
+.image-viewer-nav.is-prev {
+  left: 16px;
+}
+
+.image-viewer-nav.is-next {
+  right: 16px;
+}
+
+.image-viewer-nav svg {
+  width: 22px;
+  height: 22px;
+}
+
+@media (max-width:840px), (pointer: coarse) {
+  .image-viewer-stage {
+    padding: 56px 0 max(16px, env(safe-area-inset-bottom));
+  }
+  .image-viewer-stage img {
+    border-radius: 0;
+  }
+  /* Phones swipe between pictures. */
+  .image-viewer-nav {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .image-viewer,
+  .image-viewer-stage img.is-animating {
+    animation: none;
+    transition: none;
+  }
+}
+
 /* ---------- low balance ---------- */
 .balance-banner {
   display: flex;
@@ -8654,4 +8870,24 @@ html.artifact-open body {
 .balance-input:focus {
   outline: none;
   border-color: var(--line-strong);
+}
+
+/* ---------- phones: the message box starts at the bottom ---------- */
+/* A new chat on a phone keeps the message box where it will stay once the
+   chat starts, by the thumb, and drops the suggestion list. Desktops keep
+   the centered box with suggestions. */
+@media (max-width:640px), (pointer: coarse) and (max-width:899px) {
+  .main:not(.project-mode) .content:not(.has-chat) {
+    padding-bottom: 170px;
+  }
+  .main:not(.project-mode) .content:not(.has-chat) .composer-wrap {
+    position: absolute;
+    left: 50%;
+    bottom: 12px;
+    transform: translateX(-50%);
+    width: calc(100% - 24px);
+  }
+  .suggestions {
+    display: none !important;
+  }
 }
