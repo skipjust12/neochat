@@ -168,6 +168,10 @@ func TestWebLoopSearchesReadsAndAnswers(t *testing.T) {
 	var pageHits atomic.Int32
 	site := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		pageHits.Add(1)
+		// A page takes a moment to load, as it does for real; without it
+		// the whole loop can finish inside a millisecond, and the thinking
+		// time checked below rounds down to zero.
+		time.Sleep(15 * time.Millisecond)
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 		fmt.Fprint(w, articleHTML)
 	}))
