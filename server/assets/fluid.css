@@ -331,10 +331,6 @@ html[data-theme="dark"] #incognitoState:checked ~ .main::after {
   background: var(--btn-hover);
 }
 
-.top-new-chat:hover {
-  background: var(--btn-hover);
-}
-
 .chat-actions-trigger:hover {
   background: var(--btn-hover);
 }
@@ -351,11 +347,7 @@ html[data-theme="dark"] #incognitoState:checked ~ .main::after {
   transform: scale(1.035);
 }
 
-.top-new-chat {
-  display: none;
-}
-
-.chat-actions-wrap {
+.chat-actions-trigger {
   display: none;
 }
 
@@ -367,12 +359,8 @@ html[data-theme="dark"] #incognitoState:checked ~ .main::after {
   display: none;
 }
 
-.main.has-active-chat:not(.is-incognito-chat) .top-new-chat {
+.topbar.is-chat .chat-actions-trigger {
   display: grid;
-}
-
-.main.has-active-chat:not(.is-incognito-chat) .chat-actions-wrap {
-  display: block;
 }
 
 .main.has-active-chat.is-incognito-chat .incognito-exit-wrap {
@@ -568,10 +556,6 @@ html[data-theme="dark"] #incognitoState:checked ~ .main::after {
   color: #c84d46;
 }
 
-.chat-rename {
-  display: none;
-}
-
 .chat-delete-confirm {
   display: none;
 }
@@ -580,35 +564,12 @@ html[data-theme="dark"] #incognitoState:checked ~ .main::after {
   width: min(380px,calc(100vw - 32px));
 }
 
-.chat-actions-panel.is-renaming .chat-actions-list {
-  display: none;
-}
-
 .chat-actions-panel.is-deleting .chat-actions-list {
   display: none;
 }
 
-.chat-actions-panel.is-renaming .chat-rename {
-  display: block;
-}
-
 .chat-actions-panel.is-deleting .chat-delete-confirm {
   display: block;
-}
-
-.chat-rename input {
-  width: 100%;
-  border: 1px solid var(--line);
-  border-radius: 12px;
-  background: var(--soft);
-  color: var(--text);
-  padding: 10px 11px;
-  outline: none;
-  margin-bottom: 10px;
-}
-
-.chat-rename input:focus {
-  box-shadow: 0 0 0 2px var(--line);
 }
 
 .content {
@@ -1461,15 +1422,6 @@ html[data-theme="dark"] .row-chevron {
   pointer-events: none;
 }
 
-.effort-fill {
-  display: block;
-  width: var(--effort-progress);
-  height: 100%;
-  border-radius: inherit;
-  will-change: width;
-  transition: background-color .3s ease;
-}
-
 .effort-ticks {
   position: absolute;
   z-index: 1;
@@ -1573,40 +1525,6 @@ html[data-theme="dark"] .row-chevron {
 
 .effort-range:focus-visible {
   outline: none;
-}
-
-.effort-labels {
-  display: grid;
-  grid-template-columns: repeat(5,1fr);
-  gap: 0;
-  margin: 0 -5px;
-}
-
-.effort-option {
-  min-width: 0;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--muted);
-  padding: 4px 0 3px;
-  font-size: 10px;
-  font-weight: 570;
-  cursor: pointer;
-  transition: color .2s ease,background-color .2s ease,transform .2s var(--ease-out);
-}
-
-.effort-option:hover {
-  background: var(--raise);
-  color: var(--text);
-}
-
-.effort-option:active {
-  transform: scale(.94);
-}
-
-.effort-option.is-active {
-  color: var(--text);
-  font-weight: 720;
 }
 
 #mode-auto:checked ~ .mode-panel label[for="mode-auto"] {
@@ -4484,16 +4402,6 @@ html[data-theme="dark"] .avatar {
   color: var(--muted);
 }
 
-.top-new-chat {
-  width: 28px;
-  height: 28px;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  border-radius: 6px;
-  color: var(--muted);
-}
-
 .chat-actions-trigger {
   width: 28px;
   height: 28px;
@@ -5114,10 +5022,6 @@ h1 {
 .effort-track {
   height: 3px;
   background: var(--line-strong);
-}
-
-.effort-fill {
-  background: var(--accent);
 }
 
 /* ChatMessage and ThinkingSteps. */
@@ -9257,5 +9161,578 @@ html.image-viewer-open body {
   }
   .suggestions {
     display: none !important;
+  }
+}
+
+/* ---------- redesign: frameless chat, title header, pill messages ----------
+   The chat fills the window without a card around it. The header shows the
+   open chat's name: a click renames it in place, the chevron opens its
+   menu (Pin, Add to project, Delete). User messages are soft pills, an
+   answer's actions and time appear on hover. The message box is one line
+   on desktops, with a round button that is a microphone until there is
+   something to send; the model picker shows the model's name only. */
+:root,
+html,
+html[data-theme="dark"] {
+  --bubble: #2c2c2c;
+  --selection-bg: #ececec;
+  --selection-text: #111;
+  --effort-track: rgb(255 255 255 / .1);
+}
+
+html[data-theme="light"] {
+  --bubble: #efefec;
+  --selection-bg: #111;
+  --selection-text: #fff;
+  --effort-track: rgb(0 0 0 / .08);
+}
+
+/* Neutral selection everywhere, not the system blue. The message box draws
+   its text in a layer under a transparent textarea, so the selected text
+   there needs its own color. */
+::selection {
+  background: var(--selection-bg);
+  color: var(--selection-text);
+}
+
+.prompt-entry.has-value textarea::selection {
+  -webkit-text-fill-color: var(--selection-text);
+}
+
+.app {
+  padding: 0;
+}
+
+.main {
+  height: 100dvh;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.topbar {
+  border-bottom: 0;
+}
+
+.brand-mark {
+  font-weight: 450;
+  font-variation-settings: "opsz" 14,"wght" 450;
+}
+
+/* The chat's name, and its menu. */
+.chat-title-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  margin-left: 6px;
+  margin-right: auto;
+}
+
+.topbar-title {
+  min-width: 0;
+  max-width: min(56vw, 560px);
+  margin: 0;
+  padding: 4px 6px;
+  border-radius: 7px;
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 20px;
+  outline: none;
+  transition: background-color .16s ease,box-shadow .16s ease;
+}
+
+.topbar.is-chat .topbar-title {
+  color: var(--text);
+  cursor: text;
+}
+
+.topbar.is-chat .topbar-title:hover {
+  background: var(--hover);
+}
+
+.topbar-title.is-editing {
+  overflow-x: auto;
+  text-overflow: clip;
+  scrollbar-width: none;
+  background: var(--surface-3);
+  box-shadow: inset 0 0 0 1px var(--line-strong);
+  cursor: text;
+}
+
+.topbar-title.is-editing::-webkit-scrollbar {
+  display: none;
+}
+
+.chat-actions-trigger {
+  flex: none;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  color: var(--muted);
+}
+
+.chat-actions-trigger svg {
+  width: 16px;
+  height: 16px;
+  transition: transform .26s var(--ease-out);
+}
+
+.chat-actions-trigger[aria-expanded="true"] {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.chat-actions-trigger[aria-expanded="true"] svg {
+  transform: rotate(180deg);
+}
+
+.chat-actions-panel {
+  left: 0;
+  right: auto;
+  top: calc(100% + 6px);
+  width: 210px;
+  transform: translate3d(0,-6px,0) scale(.96);
+  transform-origin: 16px 0;
+  transition: opacity .16s ease,transform .26s var(--ease-out),width .24s var(--ease-out),visibility 0s linear .26s;
+}
+
+.chat-actions-panel.is-open {
+  transform: none;
+}
+
+.chat-actions-panel.is-deleting,
+.chat-actions-panel.is-projecting {
+  width: min(320px,calc(100vw - 32px));
+}
+
+.chat-actions-panel.is-open .chat-actions-list .chat-menu-item {
+  animation: chat-menu-in .26s var(--ease-out) both;
+}
+
+.chat-actions-panel.is-open .chat-actions-list .chat-menu-item:nth-child(2) {
+  animation-delay: 30ms;
+}
+
+.chat-actions-panel.is-open .chat-actions-list .chat-menu-item:nth-child(3) {
+  animation-delay: 60ms;
+}
+
+@keyframes chat-menu-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-actions-panel.is-open .chat-actions-list .chat-menu-item {
+    animation: none;
+  }
+}
+
+/* Messages. */
+.chat-message.user .chat-copy {
+  padding: 9px 18px;
+  border: 0;
+  border-radius: 22px;
+  background: var(--bubble);
+  box-shadow: none;
+}
+
+.message-actions {
+  gap: 1px;
+  margin-top: 8px;
+}
+
+.message-action {
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+}
+
+.message-action svg {
+  width: 16px;
+  height: 16px;
+}
+
+.message-time {
+  margin-left: auto;
+  padding-left: 12px;
+  color: var(--muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.message-time:empty {
+  display: none;
+}
+
+/* The message box. */
+.composer {
+  border-radius: 14px;
+  background: var(--surface-3);
+}
+
+.composer .round-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+
+.composer .round-btn svg {
+  width: 18px;
+  height: 18px;
+}
+
+.send {
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+  background: var(--accent);
+  color: var(--on-accent);
+}
+
+.send svg {
+  width: 16px;
+  height: 16px;
+  animation: send-icon-in .2s var(--ease-out);
+}
+
+.send .send-mic {
+  display: none;
+}
+
+.send.is-empty .send-mic {
+  display: block;
+}
+
+.send.is-empty .send-arrow,
+.send.is-stop .send-mic {
+  display: none;
+}
+
+@keyframes send-icon-in {
+  from {
+    opacity: 0;
+    transform: scale(.55) rotate(-20deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .send svg {
+    animation: none;
+  }
+}
+
+/* The model button: the model's (or the mode's) name, no icon. */
+.mode-trigger {
+  height: 32px !important;
+  min-height: 32px !important;
+  gap: 4px;
+  padding: 4px 8px 4px 10px !important;
+  color: var(--text);
+  font-size: 13.5px !important;
+  font-weight: 500;
+}
+
+.trigger-state > svg,
+.trigger-model-icon {
+  display: none !important;
+}
+
+.mode-trigger .mode-chevron {
+  width: 14px;
+  height: 14px;
+  color: var(--muted);
+}
+
+/* One line on desktops: + | text | model | video | send. The bottom row's
+   children join the box's grid, and stay at the bottom as text grows. */
+@media (min-width:900px), (min-width:641px) and (pointer: fine) {
+  .composer {
+    display: grid;
+    grid-template-columns: auto minmax(0,1fr) auto auto auto;
+    align-items: end;
+    column-gap: 4px;
+    row-gap: 0;
+    padding: 8px;
+  }
+  .composer > .attachments {
+    grid-row: 1;
+    grid-column: 1 / -1;
+  }
+  .composer-bottom {
+    display: contents;
+  }
+  .composer .attach-wrap {
+    grid-row: 2;
+    grid-column: 1;
+    margin-bottom: 2px;
+  }
+  .composer .prompt-entry {
+    grid-row: 2;
+    grid-column: 2;
+  }
+  .composer .mode-wrap {
+    grid-row: 2;
+    grid-column: 3;
+    margin: 0 0 2px;
+  }
+  .composer .video-options {
+    grid-row: 2;
+    grid-column: 4;
+    margin: 0 0 2px;
+  }
+  .composer .send {
+    grid-row: 2;
+    grid-column: 5;
+    margin-bottom: 2px;
+  }
+  .composer > .suggestions {
+    grid-row: 3;
+    grid-column: 1 / -1;
+  }
+  .composer textarea,
+  .composer .connector-highlights {
+    min-height: 36px;
+    padding: 8px 6px;
+  }
+  /* Opened from the right-hand side, the panels open leftward. */
+  .composer .mode-panel {
+    left: auto;
+    right: 0;
+    transform-origin: calc(100% - 18px) 100%;
+    clip-path: inset(56% 0 0 44% round 16px);
+  }
+  .composer .mode-picker.is-open .mode-panel {
+    clip-path: none;
+  }
+  .composer .video-options-panel {
+    left: auto;
+    right: 0;
+    transform-origin: calc(100% - 24px) 100%;
+  }
+}
+
+/* The model picker, on the same card as the effort control. */
+.mode-panel {
+  border-radius: 12px !important;
+}
+
+.mode-choice {
+  min-height: 44px;
+  border-radius: 8px;
+}
+
+.mode-symbol {
+  background: transparent;
+}
+
+.mode-symbol svg,
+.vendor-symbol svg {
+  width: 16px;
+  height: 16px;
+}
+
+.mode-copy strong {
+  font-size: 13px;
+  font-weight: 550;
+}
+
+.mode-copy > span {
+  font-size: 11.5px;
+}
+
+.mode-check {
+  width: 15px;
+  height: 15px;
+}
+
+.mode-back svg {
+  width: 15px;
+  height: 15px;
+}
+
+/* Effort: the level's name next to the label, Faster and Smarter at the
+   ends, and a soft track with a stop for each level under a white handle
+   that snaps to the nearest stop when let go. */
+.reasoning-effort-body {
+  padding: 12px 8px 8px;
+}
+
+.effort-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.effort-title {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 450;
+  line-height: 1.2;
+}
+
+.effort-value {
+  min-width: 0;
+  padding: 0;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 550;
+  line-height: 1.2;
+  text-align: left;
+}
+
+.effort-ends {
+  display: flex;
+  justify-content: space-between;
+  margin: 12px 0 6px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1;
+}
+
+.effort-slider {
+  --thumb-width: 26px;
+  position: relative;
+  height: 24px;
+  margin: 0;
+}
+
+.effort-track {
+  position: absolute;
+  inset: 0;
+  height: 100%;
+  overflow: visible;
+  border-radius: 8px;
+  background: var(--effort-track);
+  pointer-events: none;
+}
+
+.effort-ticks {
+  position: absolute;
+  inset: 0;
+  display: block;
+  height: 100%;
+}
+
+.effort-ticks i {
+  position: absolute;
+  top: 50%;
+  left: calc(var(--thumb-width) / 2 + (100% - var(--thumb-width)) * var(--stop) / 4);
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--muted);
+  opacity: .45;
+  transform: translate(-50%,-50%);
+}
+
+.effort-ticks i:nth-child(1) {
+  --stop: 0;
+}
+
+.effort-ticks i:nth-child(2) {
+  --stop: 1;
+}
+
+.effort-ticks i:nth-child(3) {
+  --stop: 2;
+}
+
+.effort-ticks i:nth-child(4) {
+  --stop: 3;
+}
+
+.effort-ticks i:nth-child(5) {
+  --stop: 4;
+}
+
+.effort-range {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  width: 100%;
+  height: 24px;
+  margin: 0;
+  opacity: 1;
+  background: transparent;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.effort-range::-webkit-slider-runnable-track {
+  height: 24px;
+  background: transparent;
+}
+
+.effort-range::-moz-range-track {
+  height: 24px;
+  background: transparent;
+}
+
+.effort-range::-moz-range-progress {
+  background: transparent;
+}
+
+.effort-range::-webkit-slider-thumb {
+  width: var(--thumb-width);
+  height: 20px;
+  margin-top: 2px;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 0 0 .5px rgb(0 0 0 / .12),0 1px 3px rgb(0 0 0 / .18),0 2px 8px rgb(0 0 0 / .06);
+  -webkit-appearance: none;
+  appearance: none;
+  transition: transform .18s var(--ease-out),box-shadow .18s ease;
+}
+
+.effort-range::-moz-range-thumb {
+  width: var(--thumb-width);
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: #fff;
+  box-shadow: 0 0 0 .5px rgb(0 0 0 / .12),0 1px 3px rgb(0 0 0 / .18),0 2px 8px rgb(0 0 0 / .06);
+  transition: transform .18s var(--ease-out),box-shadow .18s ease;
+}
+
+.effort-range:hover::-webkit-slider-thumb,
+.effort-slider.is-dragging .effort-range::-webkit-slider-thumb {
+  transform: scale(1.05);
+  box-shadow: 0 0 0 .5px rgb(0 0 0 / .14),0 2px 5px rgb(0 0 0 / .2),0 4px 12px rgb(0 0 0 / .08);
+}
+
+.effort-range:hover::-moz-range-thumb,
+.effort-slider.is-dragging .effort-range::-moz-range-thumb {
+  transform: scale(1.05);
+}
+
+.effort-range:focus-visible {
+  outline: none;
+}
+
+.effort-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--line-strong),0 1px 3px rgb(0 0 0 / .18);
+}
+
+.effort-range:focus-visible::-moz-range-thumb {
+  box-shadow: 0 0 0 2px var(--line-strong),0 1px 3px rgb(0 0 0 / .18);
+}
+
+/* Phones keep two rows, but the text row is one line tall too. */
+@media (max-width:640px), (pointer: coarse) and (max-width:899px) {
+  .composer textarea,
+  .composer .connector-highlights {
+    min-height: 36px;
   }
 }
