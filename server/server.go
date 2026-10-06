@@ -1380,6 +1380,10 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 	var tail []conversation.Message
 	var summaryText string
 	var lastImage *conversation.Attachment
+	// firstTurn: nothing of this chat is stored yet, so this message
+	// opens it (also when the client already has its id from a first
+	// attempt that failed).
+	firstTurn := false
 	if req.Incognito {
 		tail = make([]conversation.Message, 0, len(req.IncognitoHistory))
 		for _, message := range req.IncognitoHistory {
@@ -1399,6 +1403,7 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 		if err != nil {
 			return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
 		}
+		firstTurn = len(history) == 0 && summaryState.CoversThrough == 0
 		if req.regenerationHistoryDrop > 0 {
 			if len(history) < req.regenerationHistoryDrop || history[len(history)-1].ID != req.regenerateMessageID {
 				return preparedRequest{}, nil, fmt.Errorf("%w: regeneration target changed", errInvalidRequest)
@@ -1459,7 +1464,7 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 		plan:                   plan,
 		attachments:            attachmentRefs(files),
 		lastImage:              lastImage,
-		title:                  s.startTitle(ctx, req, preparedRequest{plan: plan, conversationID: conversationID, requestID: requestID}, files),
+		title:                  s.startTitle(ctx, req, firstTurn, preparedRequest{plan: plan, conversationID: conversationID, requestID: requestID}, files),
 	}, nil, nil
 }
 

@@ -82,11 +82,12 @@ func (t *chatTitler) follow(f func(title string)) {
 	t.notifyMu.Unlock()
 }
 
-// startTitle starts naming the chat a request opens; nil when there is
-// nothing to name: a follow-up, a regeneration, an incognito chat, no chat
-// key (image and video models run without one), or naming turned off.
-func (s *Server) startTitle(ctx context.Context, req chatRequest, prepared preparedRequest, files []attachment.File) *chatTitler {
-	if s.TitleModelID == "" || req.ConversationID != "" || req.Incognito || req.regenerateMessageID > 0 || req.providerKey == "" || s.Conversations == nil {
+// startTitle starts naming the chat a request opens (firstTurn: nothing
+// of it is stored yet); nil when there is nothing to name: a follow-up, a
+// regeneration, an incognito chat, no chat key (image and video models run
+// without one), or naming turned off.
+func (s *Server) startTitle(ctx context.Context, req chatRequest, firstTurn bool, prepared preparedRequest, files []attachment.File) *chatTitler {
+	if s.TitleModelID == "" || !firstTurn || req.Incognito || req.regenerateMessageID > 0 || req.providerKey == "" || s.Conversations == nil {
 		return nil
 	}
 	input := titleInput(withQuote(req.Quote, req.Message), files)

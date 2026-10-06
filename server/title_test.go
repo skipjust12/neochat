@@ -180,6 +180,44 @@ func TestNewChatIsNamedByTheTitleModel(t *testing.T) {
 	}
 }
 
+// A first message whose answer failed leaves the client holding the
+// chat's id; the retry, sent with that id, still opens the chat and names
+// it.
+func TestRetryAfterAFailedFirstAnswerStillNamesTheChat(t *testing.T) {
+	s, standIn := newTitleServer(t, "Рецепт борща")
+	mux := s.Mux()
+	token := issueTestKey(t, s, "u1")
+	key := map[string]string{providerKeyHeader: "pza_chat"}
+
+	standIn.chat.status, standIn.chat.errBody = http.StatusBadGateway, `{"error":{"message":"upstream down"}}`
+	failed := sendStream(t, mux, "/chat/stream", token, key, map[string]any{
+		"message": "как сварить борщ?", "requested_mode": "manual", "manual_model_id": "deepseek-text",
+	})
+	var id string
+	for _, event := range parseSSE(failed) {
+		if event.name == "meta" {
+			var meta map[string]any
+			_ = json.Unmarshal([]byte(event.data), &meta)
+			id, _ = meta["conversation_id"].(string)
+		}
+	}
+	if id == "" {
+		t.Fatalf("no conversation id in %s", failed)
+	}
+	if list, _ := s.Conversations.List(context.Background(), "u1", 10); len(list) != 0 {
+		t.Fatalf("a failed first answer stored the chat: %+v", list)
+	}
+
+	standIn.chat.status = 0
+	doneEvent(t, sendStream(t, mux, "/chat/stream", token, key, map[string]any{
+		"conversation_id": id, "message": "как сварить борщ?", "requested_mode": "manual", "manual_model_id": "deepseek-text",
+	}))
+	waitFor(t, "the name", func() bool { return listedTitle(t, s, "u1", id) == "Рецепт борща" })
+	if n := len(standIn.calls()); n != 2 {
+		t.Fatalf("naming calls = %d, want 2 (one per attempt)", n)
+	}
+}
+
 func TestGeneratedNameNeverReplacesTheUsersName(t *testing.T) {
 	s, standIn := newTitleServer(t, "Рецепт борща")
 	standIn.release = make(chan struct{})
