@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=28" />
+<link rel="stylesheet" href="/assets/fluid.css?v=29" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -4387,7 +4387,8 @@
         button.title=conversation.title||'New chat';
         button.classList.toggle('is-active',conversation.conversation_id===conversationID);
         setUnread(button,Boolean(conversation.unread)&&conversation.conversation_id!==conversationID);
-        button.addEventListener('click',function(){loadConversation(conversation.conversation_id,conversation.title,Boolean(conversation.pinned))});
+        // The name can change while the row is shown (chatNamed).
+        button.addEventListener('click',function(){loadConversation(conversation.conversation_id,button.title,Boolean(conversation.pinned))});
         conversationList.append(button);
       });
       if(typeof markLiveConversations==='function')markLiveConversations();
@@ -5255,6 +5256,7 @@
             return;
           }
           if(event==='reasoning'){thought.reasoning(data&&data.text?String(data.text):'');return}
+          if(event==='title'){if(data&&!activeChatIncognito)chatNamed(data.conversation_id,data.title);return}
           if(event==='activity'){
             // "Searching the web" / "Reading example.com" take the place of
             // "Thinking" while a step runs.
@@ -5405,6 +5407,7 @@
               return;
             }
             if(event==='reasoning'){thought.reasoning(data&&data.text?String(data.text):'');return}
+            if(event==='title'){if(data)chatNamed(data.conversation_id,data.title);return}
             if(event==='activity'){thought.activity(Array.isArray(data&&data.activity)?data.activity:[]);return}
             if(event==='delta'){
               const text=data&&data.text?String(data.text):'';
@@ -5482,6 +5485,7 @@
             if(event==='started')liveStarted(data);
             if(event==='finished')liveFinished(data);
             if(event==='read'&&data&&data.conversation_id)clearUnread(data.conversation_id);
+            if(event==='title'&&data)chatNamed(data.conversation_id,data.title);
           },function(){channel.lastByte=Date.now()});
         }catch(error){
           if(channel.controller.signal.aborted||error.status===401)return;
@@ -5554,6 +5558,28 @@
 
     // Sidebar: a dot on chats with a reply streaming, and a stand-in row for
     // a chat another device just started (it's stored once the reply is).
+    // A new chat got its name from the naming model (server/title.go): its
+    // row and, when it is the chat open here, the header take it, fading in.
+    function chatNamed(id,title){
+      if(!id||typeof title!=='string'||!title.trim())return;
+      const fadeIn=function(element){
+        element.classList.remove('is-renamed');
+        void element.offsetWidth;
+        element.classList.add('is-renamed');
+      };
+      conversationList.querySelectorAll('.conversation-item[data-conversation-id="'+CSS.escape(id)+'"]').forEach(function(item){
+        const label=item.querySelector('.conversation-title');
+        if(label&&label.textContent!==title){label.textContent=title;fadeIn(label)}
+        item.title=title;
+      });
+      const live=liveReplies.get(id);
+      if(live)live.title=title;
+      if(id===conversationID&&!activeChatIncognito&&!pageTitle.isContentEditable&&currentConversationTitle!==title){
+        setConversationTitle(title);
+        fadeIn(pageTitle);
+      }
+    }
+
     function markLiveConversations(){
       conversationList.querySelectorAll('.conversation-item.is-live-placeholder').forEach(function(item){
         if(!liveReplies.has(item.dataset.conversationId))item.remove();
@@ -5563,7 +5589,7 @@
       });
       liveReplies.forEach(function(notice,id){
         if(notice.regenerate_message_id||conversationList.querySelector('.conversation-item[data-conversation-id="'+CSS.escape(id)+'"]'))return;
-        const title=Array.from(String(notice.message||'New chat')).slice(0,80).join('')||'New chat';
+        const title=Array.from(String(notice.title||notice.message||'New chat')).slice(0,80).join('')||'New chat';
         const button=document.createElement('button');
         button.type='button';
         button.className='conversation-item has-title is-live is-live-placeholder';

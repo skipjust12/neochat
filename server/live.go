@@ -12,7 +12,8 @@ import (
 // Live replies on every device. GET /events is one long-lived stream per
 // open app. It tells each of a user's devices when one of their replies
 // starts streaming ("started", with what was asked), when it ends
-// ("finished"), and when a chat was opened somewhere ("read"). A device showing that chat follows the reply through
+// ("finished"), when a chat was opened somewhere ("read"), and when a new
+// chat got its name ("title"). A device showing that chat follows the reply through
 // GET /chat/stream/{stream_id} (streamjob.go); the others mark the chat as
 // live and refresh the list once it's done. A device that connects while
 // replies are running hears about them first. Incognito replies stay on
@@ -35,6 +36,8 @@ type liveNotice struct {
 	Quote               string `json:"quote,omitempty"`
 	RegenerateMessageID int64  `json:"regenerate_message_id,omitempty"`
 	ModelID             string `json:"model_id,omitempty"`
+	// Title is a chat's new name ("title", title.go).
+	Title string `json:"title,omitempty"`
 }
 
 type liveEvent struct {

@@ -332,8 +332,12 @@ func main() {
 		Models:           liveModels,
 		Pages:            pagestore.NewPostgresStore(pgDB),
 		WebSearchModelID: os.Getenv("WEB_SEARCH_MODEL"),
-		IPRateLimiter:    ipRateLimiter,
-		UserRateLimiter:  userRateLimiter,
+		// New chats are named by a cheap model alongside the first answer
+		// (server/title.go): TITLE_MODEL is its catalog id, "off" turns
+		// naming off.
+		TitleModelID:    titleModelID(os.Getenv("TITLE_MODEL")),
+		IPRateLimiter:   ipRateLimiter,
+		UserRateLimiter: userRateLimiter,
 		// Postgres-backed -- see auth.Store's doc comment and audit.md
 		// finding #1. Keys are minted out of band via `go run
 		// ./cmd/issuekey` (see docs/running-locally.md); there is no HTTP
@@ -470,4 +474,16 @@ func getenvIntDefault(key string, def int) int {
 		log.Fatalf("%s: %v", key, err)
 	}
 	return n
+}
+
+// titleModelID is the catalog model that names new chats: TITLE_MODEL,
+// server.DefaultTitleModelID when unset, none for "off".
+func titleModelID(setting string) string {
+	switch strings.TrimSpace(setting) {
+	case "":
+		return server.DefaultTitleModelID
+	case "off":
+		return ""
+	}
+	return strings.TrimSpace(setting)
 }

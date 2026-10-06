@@ -227,6 +227,10 @@ type Server struct {
 	Pages            pagestore.Store
 	WebSearchModelID string
 
+	// TitleModelID is the catalog model that names new chats (title.go);
+	// empty: chats keep the start of their first message as their name.
+	TitleModelID string
+
 	// Images makes pictures for image models (image.go). Nil: image models
 	// answer that image generation isn't available.
 	Images *imagegen.Client
@@ -1199,6 +1203,10 @@ type preparedRequest struct {
 	// on it by persistTurn.
 	attachments []conversation.Attachment
 
+	// title names a new chat alongside the answer (title.go); nil for
+	// anything else.
+	title *chatTitler
+
 	// lastImage is the newest picture an earlier answer in this chat made,
 	// what an image model edits when the message attaches none.
 	lastImage *conversation.Attachment
@@ -1451,6 +1459,7 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 		plan:                   plan,
 		attachments:            attachmentRefs(files),
 		lastImage:              lastImage,
+		title:                  s.startTitle(ctx, req, preparedRequest{plan: plan, conversationID: conversationID, requestID: requestID}, files),
 	}, nil, nil
 }
 
@@ -1820,6 +1829,7 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleAssistant, Content: text, ModelID: model.ID, CreatedAt: now, Versions: []conversation.ResponseVersion{version}}); err != nil {
 			log.Printf("server: failed to persist assistant message for conversation_id=%s: %v", prepared.conversationID, err)
 		}
+		prepared.title.turnStored()
 	}
 	// Generated pictures and videos join the chat's files only now that the
 	// answer showing them is stored, the same order uploads follow.
@@ -2101,6 +2111,11 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 		send("blocked", *blocked)
 		return *blocked, nil
 	}
+	// A new chat's name goes out as soon as the naming model has one.
+	prepared.title.follow(func(title string) {
+		send("title", map[string]string{"conversation_id": prepared.conversationID, "title": title})
+	})
+	defer prepared.title.follow(nil)
 
 	// Deltas are accumulated as they go out, not just forwarded: if the
 	// stream then dies (client disconnect, vendor error), this is the only

@@ -429,3 +429,49 @@ func TestPostgresStore_UnreadUntilMarkedRead(t *testing.T) {
 		t.Fatalf("MarkRead(another user's chat) = %v, want ErrConversationNotFound", err)
 	}
 }
+
+func TestPostgresStore_SetTitleIfUnsetKeepsTheUsersName(t *testing.T) {
+	pgDB := dbtest.Postgres(t)
+	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_metadata")
+	store := NewPostgresStore(pgDB)
+	ctx := context.Background()
+
+	if _, err := store.SetTitleIfUnset(ctx, "u1", "missing", "Name"); !errors.Is(err, ErrConversationNotFound) {
+		t.Fatalf("unknown chat: err = %v", err)
+	}
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "how do I fix a race in Go", CreatedAt: time.Now().UTC()}))
+	must(t, store.Append(ctx, "u1", "c2", Message{Role: RoleUser, Content: "hi", CreatedAt: time.Now().UTC()}))
+
+	// No metadata row yet: the generated name goes in.
+	if applied, err := store.SetTitleIfUnset(ctx, "u1", "c1", "Fixing a Go race"); err != nil || !applied {
+		t.Fatalf("first name: %v %v", applied, err)
+	}
+	// Named already: left alone.
+	if applied, err := store.SetTitleIfUnset(ctx, "u1", "c1", "Something else"); err != nil || applied {
+		t.Fatalf("second name: %v %v", applied, err)
+	}
+	// A row without a name (pinned first) takes one; a name the user gave
+	// wins over a later generated one.
+	pinned := true
+	must(t, store.UpdateMetadata(ctx, "u1", "c2", MetadataUpdate{Pinned: &pinned}))
+	if applied, err := store.SetTitleIfUnset(ctx, "u1", "c2", "Greeting"); err != nil || !applied {
+		t.Fatalf("pinned chat: %v %v", applied, err)
+	}
+	mine := "My chat"
+	must(t, store.UpdateMetadata(ctx, "u1", "c2", MetadataUpdate{Title: &mine}))
+	if applied, err := store.SetTitleIfUnset(ctx, "u1", "c2", "Greeting again"); err != nil || applied {
+		t.Fatalf("renamed chat: %v %v", applied, err)
+	}
+
+	list, err := store.List(ctx, "u1", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	titles := map[string]string{}
+	for _, o := range list {
+		titles[o.ID] = o.Title
+	}
+	if titles["c1"] != "Fixing a Go race" || titles["c2"] != "My chat" {
+		t.Fatalf("titles = %v", titles)
+	}
+}

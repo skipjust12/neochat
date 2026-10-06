@@ -273,6 +273,33 @@ func (s *PostgresStore) UpdateMetadata(ctx context.Context, userID, conversation
 	return err
 }
 
+func (s *PostgresStore) SetTitleIfUnset(ctx context.Context, userID, conversationID, title string) (bool, error) {
+	var exists bool
+	if err := s.db.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM conversation_messages WHERE user_id = $1 AND conversation_id = $2)`, userID, conversationID).Scan(&exists); err != nil {
+		return false, err
+	}
+	if !exists {
+		return false, ErrConversationNotFound
+	}
+	// A conflicting row the user already named is left alone, and then
+	// nothing comes back.
+	var stored string
+	err := s.db.QueryRowContext(ctx, `
+		INSERT INTO conversation_metadata (user_id, conversation_id, title, pinned, project_id)
+		VALUES ($1, $2, $3, FALSE, '')
+		ON CONFLICT (user_id, conversation_id) DO UPDATE SET title = EXCLUDED.title
+		WHERE conversation_metadata.title = ''
+		RETURNING title
+	`, userID, conversationID, title).Scan(&stored)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return true, nil
+}
+
 func (s *PostgresStore) CreateProject(ctx context.Context, userID string, project Project) error {
 	_, err := s.db.ExecContext(ctx, `
 		INSERT INTO projects (user_id, project_id, name, description, created_at)

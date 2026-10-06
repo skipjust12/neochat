@@ -56,6 +56,10 @@ type Store interface {
 	List(ctx context.Context, userID string, limit int) ([]Overview, error)
 	ListByProject(ctx context.Context, userID, projectID string, limit int) ([]Overview, error)
 	UpdateMetadata(ctx context.Context, userID, conversationID string, update MetadataUpdate) error
+	// SetTitleIfUnset names a chat the user hasn't named (a generated
+	// name); false when it already has a name. ErrConversationNotFound if
+	// there is no such chat.
+	SetTitleIfUnset(ctx context.Context, userID, conversationID, title string) (bool, error)
 	// MarkRead records that the user saw the chat at time at; List and
 	// ListByProject report it unread while a reply is newer than that.
 	// ErrConversationNotFound if there is no such chat.
@@ -291,6 +295,22 @@ func (s *InMemoryStore) UpdateMetadata(_ context.Context, userID, conversationID
 	}
 	s.metadata[key] = meta
 	return nil
+}
+
+func (s *InMemoryStore) SetTitleIfUnset(_ context.Context, userID, conversationID, title string) (bool, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	key := conversationKey{userID: userID, conversationID: conversationID}
+	if len(s.history[key]) == 0 {
+		return false, ErrConversationNotFound
+	}
+	meta := s.metadata[key]
+	if meta.title != "" {
+		return false, nil
+	}
+	meta.title = title
+	s.metadata[key] = meta
+	return true, nil
 }
 
 func (s *InMemoryStore) MarkRead(_ context.Context, userID, conversationID string, at time.Time) error {

@@ -9736,3 +9736,23 @@ html[data-theme="light"] {
     min-height: 36px;
   }
 }
+
+/* A chat's generated name fades in where its first words were. */
+.conversation-title.is-renamed,
+.topbar-title.is-renamed {
+  animation: title-in .5s var(--ease-out);
+}
+
+@keyframes title-in {
+  from {
+    opacity: 0;
+    filter: blur(3px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .conversation-title.is-renamed,
+  .topbar-title.is-renamed {
+    animation: none;
+  }
+}
