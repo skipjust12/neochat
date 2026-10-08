@@ -849,3 +849,73 @@ func firstDeltaHook(ctx context.Context) func() {
 	fn, _ := ctx.Value(firstDeltaKey{}).(func())
 	return fn
 }
+
+// webNoteResults is how many of a search's results the history note names.
+const webNoteResults = 3
+
+// webStepsNote tells the model, in a later turn, which searches it ran and
+// which pages it read for an answer: queries with their top results,
+// pages with title and address, steps that failed as failed. "" for an
+// answer without web steps.
+func webStepsNote(steps []conversation.ToolActivity) string {
+	var lines []string
+	for _, step := range steps {
+		switch step.Tool {
+		case "web_search":
+			line := fmt.Sprintf("- searched the web for %q", oneLine(step.Query, 200))
+			switch {
+			case step.Error != "":
+				line += " (failed: " + oneLine(step.Error, 120) + ")"
+			case len(step.Results) == 0:
+				line += " (no results)"
+			default:
+				var top []string
+				for i, r := range step.Results {
+					if i == webNoteResults {
+						break
+					}
+					top = append(top, oneLine(r.Title, 100)+" <"+r.URL+">")
+				}
+				line += fmt.Sprintf(" (%d results; top: %s)", len(step.Results), strings.Join(top, "; "))
+			}
+			lines = append(lines, line)
+		case "web_fetch":
+			line := "- read the page <" + step.URL + ">"
+			if step.Title != "" {
+				line += " \"" + oneLine(step.Title, 150) + "\""
+			}
+			if step.Error != "" {
+				line += " (failed: " + oneLine(step.Error, 120) + ")"
+			}
+			lines = append(lines, line)
+		}
+	}
+	if len(lines) == 0 {
+		return ""
+	}
+	return "[Before writing this answer you used your web tools:\n" + strings.Join(lines, "\n") + "\nWhat it says about these comes from those results, not from memory.]"
+}
+
+// boundActivity keeps what a private chat's client sends back of an
+// answer's web steps within the bounds the history note uses.
+func boundActivity(steps []conversation.ToolActivity) []conversation.ToolActivity {
+	if len(steps) > 16 {
+		steps = steps[:16]
+	}
+	out := make([]conversation.ToolActivity, 0, len(steps))
+	for _, step := range steps {
+		if step.Tool != "web_search" && step.Tool != "web_fetch" {
+			continue
+		}
+		results := step.Results
+		if len(results) > webSearchResults {
+			results = results[:webSearchResults]
+		}
+		kept := conversation.ToolActivity{Tool: step.Tool, Query: clipRunes(step.Query, 200), URL: clipRunes(step.URL, 500), Title: clipRunes(step.Title, 200), Error: clipRunes(step.Error, 200)}
+		for _, r := range results {
+			kept.Results = append(kept.Results, conversation.WebLink{Title: clipRunes(r.Title, 200), URL: clipRunes(r.URL, 500)})
+		}
+		out = append(out, kept)
+	}
+	return out
+}

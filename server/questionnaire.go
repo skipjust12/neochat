@@ -203,13 +203,18 @@ func questionnaireText(q *conversation.Questionnaire) string {
 
 // assistantHistoryContent is an assistant message as the model sees it in
 // history: its text, plus the questionnaire its latest version asked.
-// Pictures and videos it made appear as a note (imageNote, videoNote).
+// Pictures and videos it made appear as a note (imageNote, videoNote), and
+// the web steps it took before answering lead it (webStepsNote), so a model
+// later in the chat knows that answer came from the web, not from memory.
 func assistantHistoryContent(m conversation.Message) string {
 	if len(m.Versions) == 0 {
 		return m.Content
 	}
 	latest := m.Versions[len(m.Versions)-1]
 	content := m.Content
+	if note := webStepsNote(latest.Activity); note != "" {
+		content = strings.TrimSpace(note + "\n\n" + content)
+	}
 	if len(latest.Images) > 0 {
 		content = strings.TrimSpace(content + "\n\n" + imageNote(latest.Images))
 	}

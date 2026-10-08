@@ -369,6 +369,9 @@ type incognitoMessage struct {
 	// Questionnaire is what an assistant turn asked (ask_user), so the
 	// model sees it in later turns of a private chat too.
 	Questionnaire *conversation.Questionnaire `json:"questionnaire,omitempty"`
+	// Activity is the web steps an assistant turn took, so the model knows
+	// in later turns that the answer came from the web (webStepsNote).
+	Activity []conversation.ToolActivity `json:"activity,omitempty"`
 }
 
 // defaultPersona is the persona used when a request doesn't specify one.
@@ -1391,8 +1394,11 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 			if m.Role == conversation.RoleUser {
 				m.Quote = cleanQuote(message.Quote)
 			}
-			if q := boundQuestionnaire(message.Questionnaire); q != nil && m.Role == conversation.RoleAssistant {
-				m.Versions = []conversation.ResponseVersion{{Content: m.Content, Questionnaire: q}}
+			if m.Role == conversation.RoleAssistant {
+				q, steps := boundQuestionnaire(message.Questionnaire), boundActivity(message.Activity)
+				if q != nil || len(steps) > 0 {
+					m.Versions = []conversation.ResponseVersion{{Content: m.Content, Questionnaire: q, Activity: steps}}
+				}
 			}
 			tail = append(tail, m)
 		}

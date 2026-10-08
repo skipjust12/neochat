@@ -551,3 +551,58 @@ func TestWebLoopFallsBackToTextWhenToolResultsAreRefused(t *testing.T) {
 		}
 	}
 }
+
+func TestWebStepsNoteTellsTheModelWhereAnAnswerCameFrom(t *testing.T) {
+	if note := webStepsNote(nil); note != "" {
+		t.Fatalf("no steps: %q", note)
+	}
+	var results []conversation.WebLink
+	for i := 1; i <= 10; i++ {
+		results = append(results, conversation.WebLink{Title: fmt.Sprintf("Result %d", i), URL: fmt.Sprintf("https://news.example/%d", i), Snippet: "long snippet"})
+	}
+	note := webStepsNote([]conversation.ToolActivity{
+		{Tool: "web_search", Query: "latest OpenAI model", Results: results},
+		{Tool: "web_search", Query: "gpt-6 sol price"},
+		{Tool: "web_fetch", URL: "https://openai.example/gpt-6", Title: "GPT-6 is here"},
+		{Tool: "web_fetch", URL: "https://down.example/", Error: "timed out"},
+	})
+	want := `[Before writing this answer you used your web tools:
+- searched the web for "latest OpenAI model" (10 results; top: Result 1 <https://news.example/1>; Result 2 <https://news.example/2>; Result 3 <https://news.example/3>)
+- searched the web for "gpt-6 sol price" (no results)
+- read the page <https://openai.example/gpt-6> "GPT-6 is here"
+- read the page <https://down.example/> (failed: timed out)
+What it says about these comes from those results, not from memory.]`
+	if note != want {
+		t.Fatalf("note =\n%s\nwant\n%s", note, want)
+	}
+}
+
+func TestLaterTurnsSeeEarlierWebSteps(t *testing.T) {
+	steps := []conversation.ToolActivity{{Tool: "web_search", Query: "weather Amsterdam", Results: []conversation.WebLink{{Title: "Forecast", URL: "https://weather.example/ams"}}}}
+	saved := conversation.Message{Role: conversation.RoleAssistant, Content: "It's 14°C and raining.", Versions: []conversation.ResponseVersion{{Content: "It's 14°C and raining.", Activity: steps}}}
+	got := assistantHistoryContent(saved)
+	if !strings.HasPrefix(got, `[Before writing this answer you used your web tools:
+- searched the web for "weather Amsterdam" (1 results; top: Forecast <https://weather.example/ams>)`) || !strings.HasSuffix(got, "\n\nIt's 14°C and raining.") {
+		t.Fatalf("history content = %q", got)
+	}
+	// A private chat's client sends the steps back with the answer.
+	s, standIn := newTitleServer(t, "")
+	s.TitleModelID = ""
+	_, err := collectStream(s, context.Background(), chatRequest{
+		UserID: "u1", PlanID: "pro", Message: "а завтра?", RequestedMode: "manual", ManualModelID: "deepseek-text", providerKey: "pza", Incognito: true,
+		IncognitoHistory: []incognitoMessage{{Role: "user", Content: "погода в Амстердаме"}, {Role: "assistant", Content: "It's 14°C and raining.", Activity: steps}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	messages, _ := standIn.chat.lastBody(t)["messages"].([]any)
+	var assistant string
+	for _, m := range messages {
+		if mm := m.(map[string]any); mm["role"] == "assistant" {
+			assistant, _ = mm["content"].(string)
+		}
+	}
+	if !strings.Contains(assistant, `searched the web for "weather Amsterdam"`) {
+		t.Fatalf("assistant turn sent as %q", assistant)
+	}
+}
