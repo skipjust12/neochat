@@ -1,0 +1,38 @@
+# SearXNG behind NeoChat's web_search tool (package websearch,
+# compose.production.yml). Only the NeoChat server reaches it, over the
+# compose network; it has no published port. Everything not set here
+# comes from SearXNG's own defaults. The secret key comes from
+# SEARXNG_SECRET in the environment.
+use_default_settings: true
+
+general:
+  instance_name: neochat-search
+
+server:
+  # One client (the NeoChat server), never the public: no bot limiter,
+  # no image proxy.
+  limiter: false
+  image_proxy: false
+  public_instance: false
+
+search:
+  safe_search: 0
+  # json is what websearch.SearXNG asks for; html keeps the page usable
+  # for debugging from inside the network.
+  formats:
+    - html
+    - json
+
+engines:
+  - name: google
+    disabled: false
+  - name: bing
+    disabled: false
+  - name: duckduckgo
+    disabled: false
+  - name: brave
+    disabled: false
+  - name: startpage
+    disabled: false
+  - name: yandex
+    disabled: true
