@@ -16,6 +16,7 @@ import (
 	"neochat/pagestore"
 	"neochat/provider"
 	"neochat/webfetch"
+	"neochat/websearch"
 )
 
 // scriptedPolza is a Polza stand-in for the web tool loop: reply decides
@@ -467,6 +468,95 @@ func TestWebLoopCarriesOnWhenReasoningCantComeBack(t *testing.T) {
 	}
 	if r := main[1]["reasoning"].(map[string]any); r["effort"] != "high" {
 		t.Errorf("first continuation reasoning = %v, want the user's", r)
+	}
+}
+
+// stubSearcher stands in for SearXNG: it records queries and returns
+// results, or err.
+type stubSearcher struct {
+	mu      sync.Mutex
+	queries []string
+	results []provider.WebResult
+	err     error
+}
+
+func (s *stubSearcher) Search(_ context.Context, query string, max int) ([]provider.WebResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.queries = append(s.queries, query)
+	if s.err != nil {
+		return nil, s.err
+	}
+	return s.results[:min(max, len(s.results))], nil
+}
+
+func TestWebSearchRunsOnOwnSearcher(t *testing.T) {
+	vendor := &scriptedPolza{reply: func(body map[string]any) (int, []string) {
+		if body["plugins"] != nil {
+			t.Errorf("Polza's web plugin was called with a Searcher set: %v", body)
+			return 200, []string{searchHelperReply(1)}
+		}
+		if body["tools"] != nil && len(toolMessages(body)) == 0 {
+			return 200, []string{toolCallChunk([3]string{"s1", "web_search", `{"query":"brave search api price"}`}), usageChunk}
+		}
+		return 200, []string{textChunk("answer"), usageChunk}
+	}}
+	s := newWebServer(t, vendor)
+	searcher := &stubSearcher{results: []provider.WebResult{
+		{Title: "Brave Search API", URL: "https://brave.com/search/api/", Snippet: "$5 per 1,000 requests"},
+		{Title: "dup", URL: "https://brave.com/search/api/"},
+		{Title: "Pricing", URL: "https://api-dashboard.search.brave.com/pricing"},
+	}}
+	s.Searcher = searcher
+
+	// A tool-calling model: web_search goes to the Searcher.
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "сколько стоит brave api", RequestedMode: "manual", ManualModelID: "gpt-6-luna", providerKey: "pza_user", WebSearch: "auto"}
+	events, err := collectStream(s, context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := events["done"][0].(chatResponse)
+	if len(done.Activity) != 1 || done.Activity[0].Query != "brave search api price" || len(done.Activity[0].Results) != 2 {
+		t.Fatalf("activity = %+v", done.Activity)
+	}
+	main := vendor.mainCalls()
+	if text := toolMessages(main[len(main)-1])[0]["content"].(string); !strings.HasPrefix(text, "1. Brave Search API\nhttps://brave.com/search/api/\n$5 per 1,000 requests") {
+		t.Errorf("search result text = %q", text)
+	}
+
+	// A model without function calling, "on": one search for the message,
+	// handed over as a note.
+	req.ManualModelID, req.WebSearch = "deepseek-text", "on"
+	events, err = collectStream(s, context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done = events["done"][0].(chatResponse)
+	calls := vendor.calls()
+	body := calls[len(calls)-1]
+	if body["plugins"] != nil || !hasSystemPrefix(body, webPluginNote+"\n\n1. Brave Search API") {
+		t.Errorf("search-first call = %v", body)
+	}
+	if len(done.Activity) != 1 || done.Activity[0].Query != "сколько стоит brave api" || len(done.Activity[0].Results) != 2 {
+		t.Errorf("search-first activity = %+v", done.Activity)
+	}
+	if got := searcher.queries[len(searcher.queries)-1]; got != "сколько стоит brave api" {
+		t.Errorf("search-first query = %q", got)
+	}
+
+	// The search fails: the step says why, the model is told it has no web.
+	searcher.err = &websearch.Error{Message: "no search engine answered"}
+	events, err = collectStream(s, context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done = events["done"][0].(chatResponse)
+	calls = vendor.calls()
+	if body := calls[len(calls)-1]; !hasSystemMessage(body, webUnavailableNote) {
+		t.Errorf("failed search-first call = %v", body)
+	}
+	if len(done.Activity) != 1 || done.Activity[0].Error != "no search engine answered" {
+		t.Errorf("failed search-first activity = %+v", done.Activity)
 	}
 }
 

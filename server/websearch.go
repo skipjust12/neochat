@@ -18,6 +18,7 @@ import (
 	"neochat/provider"
 	"neochat/router"
 	"neochat/webfetch"
+	"neochat/websearch"
 )
 
 // Web access, from the composer's Web search toggle.
@@ -26,10 +27,11 @@ import (
 // to use them, and the server runs the loop: the model asks for a tool,
 // the server runs it (showing the step live), sends back the result, and
 // the model goes on -- up to webMaxRounds model calls per answer.
-//   - web_search runs Polza's web plugin (Yandex search) through a small
-//     helper model call and returns up to webSearchResults results; see
-//     searchWeb. (Polza's own server tools, polza:*, are not open to every
-//     account; the plugin is.)
+//   - web_search returns up to webSearchResults results from the server's
+//     own SearXNG (Server.Searcher) when there is one; otherwise it runs
+//     Polza's web plugin (Yandex search) through a small helper model
+//     call; see searchWeb. (Polza's own server tools, polza:*, are not
+//     open to every account; the plugin is.)
 //   - web_fetch downloads the page on this server (package webfetch) and
 //     keeps its text per chat (package pagestore), so the model can read a
 //     long page in parts or come back to it in a later message.
@@ -38,7 +40,7 @@ import (
 //   - "auto": tool-calling models get the tools; others get a note saying
 //     they can't search, so they point the user to "on".
 //   - "on": tool-calling models are also told to search first; others get
-//     one web plugin search for the user's message before they answer.
+//     one search for the user's message before they answer.
 //   - "off" (and empty, for API callers that never set it): no web access.
 const (
 	webSearchAuto = "auto"
@@ -72,6 +74,12 @@ const defaultWebSearchModelID = "gpt-6-luna"
 // webPluginFeeUSD is what Polza charges per web plugin search on top of
 // tokens: 0 RUB at the time of writing ("уточняется" in /v2/plugins).
 const webPluginFeeUSD = 0.0
+
+// WebSearcher runs a search by itself, without a model call
+// (websearch.SearXNG).
+type WebSearcher interface {
+	Search(ctx context.Context, query string, max int) ([]provider.WebResult, error)
+}
 
 var webFunctionTools = []provider.FunctionTool{
 	{
@@ -288,10 +296,14 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 	return out, nil
 }
 
-// searchFirst is "on" mode for a model without function calling: Polza's
-// web plugin searches for the user's message before the model answers.
+// searchFirst is "on" mode for a model without function calling: the
+// server's Searcher, or else Polza's web plugin, searches for the user's
+// message before the model answers.
 func (r *webRun) searchFirst(ctx context.Context, messages []provider.Message) (webAnswer, error) {
 	step := r.start(conversation.ToolActivity{Tool: "web_search", Query: clipRunes(strings.TrimSpace(r.req.Message), 200)})
+	if r.s.Searcher != nil {
+		return r.searchFirstOwn(ctx, messages, step)
+	}
 	searchPrompt := clipRunes(r.req.Message, 400)
 	if r.req.Quote != "" {
 		searchPrompt += "\n(about: " + clipRunes(r.req.Quote, 200) + ")"
@@ -308,6 +320,32 @@ func (r *webRun) searchFirst(ctx context.Context, messages []provider.Message) (
 	// The results are shown with the search step, not again as sources.
 	r.finish(step, func(a *conversation.ToolActivity) { a.Results = webLinks(res.Citations) })
 	res.Citations = nil
+	return webAnswer{GenerateResult: res, Activity: r.snapshot()}, err
+}
+
+// searchFirstOwn is searchFirst on the server's Searcher: the results go
+// to the model as a system note. A failed search leaves the model without
+// web access, told so.
+func (r *webRun) searchFirstOwn(ctx context.Context, messages []provider.Message, step int) (webAnswer, error) {
+	stepCtx, cancel := context.WithTimeout(ctx, webStepTimeout)
+	results, err := r.s.Searcher.Search(stepCtx, clipRunes(strings.TrimSpace(r.req.Message), 400), webSearchResults)
+	cancel()
+	results = mergeSearchResults(results, nil)
+	r.finish(step, func(a *conversation.ToolActivity) {
+		if err != nil {
+			a.Error = toolErrorMessage(err)
+		} else {
+			a.Results = webLinks(results)
+		}
+	})
+	if err := ctx.Err(); err != nil {
+		return webAnswer{Activity: r.snapshot()}, err
+	}
+	note := webPluginNote + "\n\n" + formatSearchResults(results)
+	if err != nil {
+		note = webUnavailableNote
+	}
+	res, err := r.generate(ctx, withSystemNote(messages, note))
 	return webAnswer{GenerateResult: res, Activity: r.snapshot()}, err
 }
 
@@ -499,11 +537,19 @@ const searchExtractPrompt = `The web search results for the user's query were ad
 {"results":[{"title":"...","url":"...","snippet":"..."}]}
 Copy every URL exactly. The snippet is the result's own text, at most 300 characters. Never add a result that isn't in your context; if there are none, output {"results":[]}.`
 
-// searchWeb runs one search: a call to the web search model with Polza's
-// web plugin, which puts the results into that call's context. They come
-// back as url_citation annotations; the model also copies them out as
-// JSON, used when a route returns no annotations.
+// searchWeb runs one search: on the server's Searcher when there is one,
+// otherwise a call to the web search model with Polza's web plugin, which
+// puts the results into that call's context. They come back as
+// url_citation annotations; the model also copies them out as JSON, used
+// when a route returns no annotations.
 func (s *Server) searchWeb(ctx context.Context, req chatRequest, prepared preparedRequest, query string) ([]provider.WebResult, error) {
+	if s.Searcher != nil {
+		results, err := s.Searcher.Search(ctx, query, webSearchResults)
+		if err != nil {
+			return nil, err
+		}
+		return mergeSearchResults(results, nil), nil
+	}
 	modelID := s.WebSearchModelID
 	if modelID == "" {
 		modelID = defaultWebSearchModelID
@@ -694,10 +740,13 @@ func formatPage(page pagestore.Page, window string, from, to int) string {
 // fetch errors and vendor refusals as such, anything else generically.
 func toolErrorMessage(err error) string {
 	var fetchErr *webfetch.Error
+	var searchErr *websearch.Error
 	var statusErr *provider.StatusError
 	switch {
 	case errors.As(err, &fetchErr):
 		return fetchErr.Message
+	case errors.As(err, &searchErr):
+		return searchErr.Message
 	case errors.As(err, &statusErr):
 		if msg := provider.VendorMessage(statusErr.Body); msg != "" {
 			return fmt.Sprintf("the search service refused (HTTP %d): %s", statusErr.StatusCode, msg)

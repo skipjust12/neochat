@@ -220,11 +220,13 @@ type Server struct {
 
 	// Web access (see websearch.go). Fetcher downloads pages for the
 	// web_fetch tool (nil: a default webfetch.Fetcher); Pages keeps what was
-	// read per chat (nil: nothing is kept); WebSearchModelID is the catalog
-	// model that runs each web_search through Polza's web plugin (empty:
-	// defaultWebSearchModelID).
+	// read per chat (nil: nothing is kept); Searcher runs web_search on
+	// the server's own SearXNG (nil: Polza's web plugin, through
+	// WebSearchModelID, the catalog model that runs each search there;
+	// empty: defaultWebSearchModelID).
 	Fetcher          *webfetch.Fetcher
 	Pages            pagestore.Store
+	Searcher         WebSearcher
 	WebSearchModelID string
 
 	// TitleModelID is the catalog model that names new chats (title.go);

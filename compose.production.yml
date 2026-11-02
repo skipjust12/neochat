@@ -56,6 +56,9 @@ services:
       REDIS_HOST: redis
       REQUIRE_HTTPS: "true"
       TRUSTED_PROXY_CIDRS: "172.30.77.2/32"
+      # web_search runs on the searxng service below instead of Polza's
+      # Yandex plugin.
+      SEARXNG_URL: http://searxng:8080
     networks:
       backend:
       frontend:
@@ -65,6 +68,22 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+
+  # Metasearch for web_search (configs/searxng/settings.yml): queries
+  # Google, Bing, DuckDuckGo, Brave and Startpage live. On the frontend
+  # network because it needs the internet; no published port.
+  searxng:
+    image: searxng/searxng:latest
+    container_name: neochat-searxng
+    restart: unless-stopped
+    mem_limit: 256m
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?Set SEARXNG_SECRET to a long random string}
+    volumes:
+      - ./configs/searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks:
+      frontend:
+        ipv4_address: 172.30.77.4
 
   proxy:
     image: caddy:2-alpine

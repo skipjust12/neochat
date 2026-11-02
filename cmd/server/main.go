@@ -39,6 +39,7 @@ import (
 	"neochat/settings"
 	"neochat/summarizer"
 	"neochat/webfetch"
+	"neochat/websearch"
 )
 
 func main() {
@@ -320,9 +321,11 @@ func main() {
 		Attachments: attachment.NewPostgresStore(pgDB),
 		// Web access: pages the model reads are fetched by this server and
 		// kept per chat (db/migrations/0009_web_pages.sql); searches run on
-		// Polza's web plugin through WEB_SEARCH_MODEL (a catalog model id;
-		// default: the cheapest current one).
-		Fetcher: &webfetch.Fetcher{},
+		// the SearXNG at SEARXNG_URL, or without one on Polza's web plugin
+		// (Yandex) through WEB_SEARCH_MODEL (a catalog model id; default:
+		// the cheapest current one).
+		Fetcher:  &webfetch.Fetcher{},
+		Searcher: webSearcher(os.Getenv("SEARXNG_URL")),
 		// Image models (kind "image" in configs/models.json) make pictures
 		// through Polza's Media API on the user's own image key.
 		Images: &imagegen.Client{},
@@ -486,4 +489,13 @@ func titleModelID(setting string) string {
 		return ""
 	}
 	return strings.TrimSpace(setting)
+}
+
+// webSearcher is the SearXNG instance web_search runs on (SEARXNG_URL);
+// nil when unset, which leaves searches on Polza's web plugin.
+func webSearcher(baseURL string) server.WebSearcher {
+	if strings.TrimSpace(baseURL) == "" {
+		return nil
+	}
+	return &websearch.SearXNG{BaseURL: strings.TrimSpace(baseURL)}
 }
