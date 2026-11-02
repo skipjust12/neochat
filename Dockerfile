@@ -1,6 +1,6 @@
 # Builds cmd/server -- the real HTTP entry point (see docs/running-locally.md).
 # main.go at the repo root is a separate router-only demo and is not built here.
-FROM golang:1.25-alpine AS build
+FROM golang:1.26-alpine AS build
 
 WORKDIR /src
 
