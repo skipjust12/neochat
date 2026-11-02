@@ -340,3 +340,40 @@ func TestDirectMode_StopSettlesOnEstimateNotUpperBound(t *testing.T) {
 		t.Fatalf("stopped generation charged %v, want a small positive estimate (upper bound %v)", spent, upperBound)
 	}
 }
+
+func TestDirectMode_ExtendedThinkingOffTurnsThinkingOffWithoutTouchingEffort(t *testing.T) {
+	standIn := &polzaStandIn{reply: "ok"}
+	s := newDirectServer(t, standIn)
+	off, on := false, true
+	base := chatRequest{UserID: "u1", PlanID: "pro", Message: "hello", RequestedMode: "manual", ReasoningEffort: "high", providerKey: "pza_user"}
+
+	for _, model := range []string{"gpt-6-luna", "claude-opus-5.5"} {
+		req := base
+		req.ManualModelID, req.ExtendedThinking = model, &off
+		if _, err := collectStream(s, context.Background(), req); err != nil {
+			t.Fatal(err)
+		}
+		reasoning, _ := standIn.lastBody(t)["reasoning"].(map[string]any)
+		if reasoning == nil || reasoning["effort"] == "high" || reasoning["effort_level"] == "high" {
+			t.Fatalf("%s with Extended Thinking off: reasoning = %v, want it off", model, reasoning)
+		}
+	}
+	// Back on: the same effort as before, untouched.
+	req := base
+	req.ManualModelID, req.ExtendedThinking = "gpt-6-luna", &on
+	if _, err := collectStream(s, context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if reasoning, _ := standIn.lastBody(t)["reasoning"].(map[string]any); reasoning["effort"] != "high" {
+		t.Fatalf("Extended Thinking on: reasoning = %v, want effort high", reasoning)
+	}
+	// A model without thinking control is left alone either way.
+	req = base
+	req.ManualModelID, req.ExtendedThinking = "claude-haiku-4-5", &off
+	if _, err := collectStream(s, context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := standIn.lastBody(t)["reasoning"]; ok {
+		t.Fatal("a model without reasoning control must not get a reasoning block")
+	}
+}

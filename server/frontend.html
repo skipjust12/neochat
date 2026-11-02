@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=29" />
+<link rel="stylesheet" href="/assets/fluid.css?v=30" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -244,6 +244,12 @@
                   <span class="row-symbol"><svg class="lucide lucide-globe" data-lucide-icon="globe" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" /><path d="M2 12h20" /></svg></span>
                   <span class="row-copy row-copy-tight"><strong>Web search</strong></span>
                   <span class="row-state" id="webSearchState">Auto</span>
+                  <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                </button>
+                <button class="attach-row" id="thinkingRow" role="menuitem" aria-label="Extended Thinking">
+                  <span class="row-symbol"><svg class="lucide lucide-brain" data-lucide-icon="brain" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18V5" /><path d="M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4" /><path d="M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294" /><path d="M17.996 5.125a4 4 0 012.526 5.77" /><path d="M18 18a4 4 0 002-7.465" /><path d="M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517" /><path d="M6 18a4 4 0 01-2-7.465" /><path d="M6.004 5.125a4 4 0 00-2.526 5.77" /></svg></span>
+                  <span class="row-copy row-copy-tight"><strong>Extended Thinking</strong></span>
+                  <span class="row-state" id="thinkingState">On</span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
               </div>
@@ -1820,6 +1826,9 @@
       request.reasoning_effort=selectedReasoningEffort();
       const webSearchMode=(document.getElementById('webSearchState').textContent||'Auto').trim().toLowerCase();
       request.web_search=['auto','on','off'].indexOf(webSearchMode)>-1?webSearchMode:'auto';
+      // Extended Thinking (+ menu) turns thinking on or off; the effort is
+      // sent either way and never changes with it.
+      request.extended_thinking=(document.getElementById('thinkingState').textContent||'On').trim()!=='Off';
       const instructions=document.getElementById('instructions').value.trim();
       if(instructions)request.instructions=instructions;
       if(request.requested_mode==='manual')request.manual_model_id=document.getElementById('manualState').dataset.modelId||'';
@@ -6307,6 +6316,13 @@
       webSearchState.classList.remove('row-state');void webSearchState.offsetWidth;webSearchState.classList.add('row-state');
       webSearchState.textContent=states[stateIndex];
     });
+
+    /* ---------- Extended Thinking toggle ---------- */
+    const thinkingState=document.getElementById('thinkingState');
+    document.getElementById('thinkingRow').addEventListener('click',function(){
+      thinkingState.classList.remove('row-state');void thinkingState.offsetWidth;thinkingState.classList.add('row-state');
+      thinkingState.textContent=thinkingState.textContent.trim()==='Off'?'On':'Off';
+    });
   })();
 </script>
 <script>
@@ -6346,6 +6362,7 @@
         manualModelId:manualState.dataset.modelId||'',
         reasoningEffort:Math.round(Number(reasoningRange.value)),
         webSearch:webSearchState.textContent.trim(),
+        extendedThinking:document.getElementById('thinkingState').textContent.trim()!=='Off',
         balanceWarnAt:thresholdValue('balanceWarnAt'),
         balanceLowAt:thresholdValue('balanceLowAt')
       };
@@ -6412,6 +6429,10 @@
     if(['Auto','On','Off'].includes(preferences.webSearch)){
       while(webSearchState.textContent.trim()!==preferences.webSearch)webSearchRow.click();
     }
+    if(typeof preferences.extendedThinking==='boolean'){
+      const thinkingRow=document.getElementById('thinkingRow');
+      if((document.getElementById('thinkingState').textContent.trim()!=='Off')!==preferences.extendedThinking)thinkingRow.click();
+    }
     }
     applying=true;
     try{applyPreferencesNow(loadPreferences())}finally{applying=false}
@@ -6426,6 +6447,7 @@
     reasoningRange.addEventListener('input',savePreferences);
     reasoningRange.addEventListener('effort:change',savePreferences);
     webSearchRow.addEventListener('click',savePreferences);
+    document.getElementById('thinkingRow').addEventListener('click',savePreferences);
     ['balanceWarnAt','balanceLowAt'].forEach(function(id){
       document.getElementById(id).addEventListener('input',function(){
         savePreferences();

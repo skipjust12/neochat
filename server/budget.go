@@ -233,7 +233,12 @@ var errMissingProviderKey = errors.New("Add your Polza AI API key in Settings â†
 // silently dropped anyway). Adaptive Claude models only know
 // low/medium/high/max, so xhigh rounds up to max -- the user asked for
 // more than high.
-func reasoningFor(model router.Model, effort string) (provider.Reasoning, bool) {
+func reasoningFor(model router.Model, effort string, thinking *bool) (provider.Reasoning, bool) {
+	// Extended Thinking off: no thinking at all, the effort kept as it is
+	// for when it's turned back on.
+	if thinking != nil && !*thinking && model.Reasoning != "" {
+		return provider.Reasoning{Disabled: true, Adaptive: model.Reasoning == "adaptive"}, true
+	}
 	if effort == "" {
 		return provider.Reasoning{}, false
 	}

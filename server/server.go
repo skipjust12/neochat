@@ -335,6 +335,11 @@ type chatRequest struct {
 	// given model.
 	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 
+	// ExtendedThinking is the + menu's Extended Thinking switch: false
+	// turns a reasoning model's thinking off for this answer, whatever the
+	// effort; nil or true leaves it to ReasoningEffort.
+	ExtendedThinking *bool `json:"extended_thinking,omitempty"`
+
 	// Instructions is the user's custom prompt from Settings ("Instructions
 	// for NeoChat"), sent as a system message after the persona prompt.
 	Instructions string `json:"instructions,omitempty"`
@@ -1117,9 +1122,10 @@ type regenerateRequest struct {
 	Persona        string `json:"persona,omitempty"`
 	ProjectID      string `json:"project_id,omitempty"`
 
-	ReasoningEffort string `json:"reasoning_effort,omitempty"`
-	Instructions    string `json:"instructions,omitempty"`
-	WebSearch       string `json:"web_search,omitempty"`
+	ReasoningEffort  string `json:"reasoning_effort,omitempty"`
+	ExtendedThinking *bool  `json:"extended_thinking,omitempty"`
+	Instructions     string `json:"instructions,omitempty"`
+	WebSearch        string `json:"web_search,omitempty"`
 	// Video: the length, resolution and shape asked of a video model.
 	Video *videoChoice `json:"video,omitempty"`
 }
@@ -1173,6 +1179,7 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		IdempotencyKey: input.IdempotencyKey, Persona: input.Persona,
 		ProjectID:           input.ProjectID,
 		ReasoningEffort:     input.ReasoningEffort,
+		ExtendedThinking:    input.ExtendedThinking,
 		Instructions:        input.Instructions,
 		WebSearch:           input.WebSearch,
 		Video:               input.Video,
@@ -1723,7 +1730,7 @@ func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared pre
 			return router.RouteResult{}, router.Model{}, webAnswer{}, err
 		}
 		callCtx := ctx
-		if r, ok := reasoningFor(model, req.ReasoningEffort); ok {
+		if r, ok := reasoningFor(model, req.ReasoningEffort, req.ExtendedThinking); ok {
 			callCtx = provider.WithReasoning(callCtx, r)
 		}
 		generate := func(ctx context.Context, messages []provider.Message) (provider.GenerateResult, error) {

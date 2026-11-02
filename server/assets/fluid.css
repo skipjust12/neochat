@@ -3345,7 +3345,8 @@ html[data-theme="dark"] #incognitoState:checked~.main::after {
   grid-template-columns: 27px minmax(0,1fr) auto;
 }
 
-#webSearchRow {
+#webSearchRow,
+#thinkingRow {
   grid-template-columns: 27px minmax(0,1fr) auto 14px;
 }
 
