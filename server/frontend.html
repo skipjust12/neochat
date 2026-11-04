@@ -8,7 +8,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=31" />
+<link rel="stylesheet" href="/assets/fluid.css?v=32" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -2468,13 +2468,14 @@
     // Terminal steps: a command (run_command) or a script the model wrote
     // and ran (run_script) on the server.
     function isTerminalStep(step){
-      return Boolean(step&&(step.tool==='run_command'||step.tool==='run_script'));
+      return Boolean(step&&(step.tool==='run_command'||step.tool==='run_script'||step.tool==='send_file'));
     }
     function scriptPurpose(step){
       return String(step&&step.purpose||'').trim();
     }
     // What a running terminal step is doing, for the block's label.
     function terminalLiveLabel(step){
+      if(step.tool==='send_file')return 'Sending a file';
       if(step.tool==='run_script'){
         if(step.phase==='writing'){
           const purpose=scriptPurpose(step);
@@ -2486,6 +2487,10 @@
     }
     // A finished terminal step, in the past tense.
     function terminalDoneLabel(step){
+      if(step.tool==='send_file'){
+        if(step.error)return 'Couldn’t send a file';
+        return 'Sent '+(step.title||'a file');
+      }
       if(step.error==='stopped')return step.tool==='run_script'?'Stopped the script':'Stopped the command';
       if(step.error&&step.exit_code===undefined)return step.tool==='run_script'?'Couldn’t run the script':'Couldn’t run the command';
       if(step.tool==='run_script'){
@@ -2703,7 +2708,23 @@
         text.classList.add('thinking-label');
         text.dataset.text=text.textContent;
       }else text.textContent=terminalDoneLabel(step);
-      head.append(stepIcon(step.tool==='run_script'?'script':'terminal'),text);
+      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'?'fetch':'terminal'),text);
+      if(step.tool==='send_file'){
+        if(!step.pending&&step.size){
+          const note=document.createElement('span');
+          note.className='web-step-note';
+          note.textContent=formatFileSize(step.size);
+          head.append(note);
+        }
+        row.append(head);
+        if(step.error){
+          const error=document.createElement('p');
+          error.className='web-step-error';
+          error.textContent=step.error;
+          row.append(error);
+        }
+        return row;
+      }
       if(!step.pending&&step.exit_code!==undefined&&step.error!=='stopped'){
         const note=document.createElement('span');
         note.className='web-step-note term-status';
@@ -2793,13 +2814,13 @@
       const terminalSteps=activity.filter(isTerminalStep);
       const lastStep=activity.length?activity[activity.length-1]:null;
       // Right after a command, until the model goes on: "Ran a command".
-      const justRan=live&&!running.length&&state.sinceStep&&isTerminalStep(lastStep)&&!lastStep.error;
+      const justRan=live&&!running.length&&state.sinceStep&&isTerminalStep(lastStep)&&lastStep.tool!=='send_file'&&!lastStep.error;
       let text;
       if(running.length)text=webStepLabel(running[running.length-1]);
       else if(justRan)text=lastStep.tool==='run_script'?'Ran a script':'Ran a command';
       else if(live)text=thinkingPhrase(message);
       else if(seconds)text='Thought for '+plural(seconds,'second','seconds');
-      else if(terminalSteps.length)text=terminalSteps.length===1?terminalDoneLabel(terminalSteps[0]):'Ran '+plural(terminalSteps.length,'command','commands');
+      else if(terminalSteps.length)text=terminalSteps.length===1?terminalDoneLabel(terminalSteps[0]):'Ran '+plural(terminalSteps.filter(function(step){return step.tool!=='send_file'}).length||terminalSteps.length,'command','commands');
       else text=activity.some(function(step){return !webStepFailed(step)})?'Searched the web':activity.length?'Web search unavailable':'Sources';
       label.textContent=text;
       label.dataset.text=text;
@@ -2811,11 +2832,13 @@
       const pages=done.filter(function(step){return step.tool==='web_fetch'&&!step.error}).length;
       const commands=done.filter(function(step){return step.tool==='run_command'}).length;
       const scripts=done.filter(function(step){return step.tool==='run_script'}).length;
+      const sent=done.filter(function(step){return step.tool==='send_file'}).length;
       const parts=[];
       if(searches)parts.push(plural(searches,'search','searches'));
       if(pages)parts.push(plural(pages,'page','pages'));
       if(scripts)parts.push(plural(scripts,'script','scripts'));
       if(commands)parts.push(plural(commands,'command','commands'));
+      if(sent)parts.push(plural(sent,'file','files'));
       if(!parts.length&&activity.some(webStepFailed))parts.push('search unavailable');
       block.querySelector('.thought-meta').textContent=live||!parts.length?'':parts.join(' · ');
 
@@ -3387,6 +3410,7 @@
       message.dataset.messageText=version.content;
       renderMarkdown(message.querySelector('.chat-text'),version.content);
       renderGeneratedImages(message,version.images,version.videos);
+      renderAnswerFiles(message,version.files);
       const time=message.querySelector('.message-time');
       if(time){
         const known=function(value){return value&&!/^0001-/.test(value)?value:''};
@@ -3531,6 +3555,113 @@
         list.append(item);
       });
       if(list.children.length)message.prepend(list);
+    }
+
+    /* ---------- files the model sent (send_file) ---------- */
+    // Cards under the answer for what the model made on the terminal. The
+    // icon says what kind of file it is; the card opens it (an HTML page in
+    // the page viewer, text and code in the text preview, a picture in the
+    // image viewer) and its own button downloads it.
+    const fileCardIcons={
+      download:'<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+      file:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/>',
+      text:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+      spreadsheet:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/>',
+      image:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><circle cx="10" cy="12" r="2"/><path d="m20 17-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22"/>',
+      code:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/>',
+      technical:'<path d="M15 8a1 1 0 0 1-1-1V2a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8z"/><path d="M20 8v12a2 2 0 0 1-2 2h-4.182"/><path d="m3.305 19.53.923-.382"/><path d="M4 10.592V4a2 2 0 0 1 2-2h8"/><path d="m4.228 16.852-.924-.383"/><path d="m5.852 15.228-.383-.923"/><path d="m5.852 20.772-.383.924"/><path d="m8.148 15.228.383-.923"/><path d="m8.53 21.696-.382-.924"/><path d="m9.773 16.852.922-.383"/><path d="m9.773 19.148.922.383"/><circle cx="7" cy="18" r="3"/>',
+      archive:'<path d="M13.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v11.5"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M8 12v-1"/><path d="M8 18v-2"/><path d="M8 7V6"/><circle cx="8" cy="20" r="2"/>'
+    };
+    function fileCardIcon(name){
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+fileCardIcons[name]+'</svg>';
+    }
+    const fileCategories={
+      image:'png jpg jpeg gif webp svg bmp ico tif tiff heic avif',
+      spreadsheet:'csv tsv xlsx xls xlsm ods numbers',
+      archive:'zip tar gz tgz bz2 tbz xz txz 7z rar zst lz4 lzma cab',
+      code:'html htm js mjs cjs ts jsx tsx vue svelte css scss less py ipynb go rs c h cc cpp hpp cs java kt kts swift rb php pl lua r m sh bash zsh ps1 bat sql json jsonl yaml yml toml ini xml graphql proto dockerfile makefile',
+      text:'txt md markdown log rst rtf tex pdf doc docx odt pages epub srt vtt',
+      technical:'dll exe so dylib bin dat db sqlite sqlite3 mdb iso img dmg o a lib obj pyc class jar wasm pkl pickle parquet feather npy npz h5 hdf5 onnx pt pth ckpt safetensors msi apk deb rpm sys drv lock'
+    };
+    const fileTypeNames={image:'Image',spreadsheet:'Spreadsheet',archive:'Archive',code:'Code',text:'Document',technical:'Binary file',file:'File'};
+    function fileExtension(name){
+      const base=String(name||'').toLowerCase().split('/').pop();
+      if(base==='dockerfile'||base==='makefile')return base;
+      const dot=base.lastIndexOf('.');
+      return dot>0?base.slice(dot+1):'';
+    }
+    function fileCategory(file){
+      const ext=fileExtension(file.name);
+      for(const category in fileCategories){
+        if(ext&&fileCategories[category].split(' ').indexOf(ext)>-1)return category;
+      }
+      const mime=String(file.mime||'');
+      if(file.kind==='image'||mime.indexOf('image/')===0)return 'image';
+      if(file.kind==='text'||mime.indexOf('text/')===0)return 'text';
+      return 'file';
+    }
+    function isHTMLFile(file){
+      const ext=fileExtension(file.name);
+      return ext==='html'||ext==='htm'||file.mime==='text/html';
+    }
+    async function openSentFile(file){
+      if(isHTMLFile(file)&&file.kind==='text'){
+        try{
+          const response=await apiFetch('/files/'+encodeURIComponent(file.id),{});
+          if(!response.ok)throw new Error('HTTP '+response.status);
+          openArtifact(await response.text());
+        }catch(error){toast('That file is no longer available.')}
+        return;
+      }
+      openAttachment(file);
+    }
+    function downloadSentFile(file){
+      attachmentURL(file.id).then(function(url){
+        const link=document.createElement('a');
+        link.href=url;link.download=file.name||'file';
+        document.body.append(link);link.click();link.remove();
+      }).catch(function(){toast('That file is no longer available.')});
+    }
+    function answerFileCard(file){
+      const category=fileCategory(file);
+      const card=document.createElement('div');
+      card.className='answer-file is-'+category;
+      const open=document.createElement('button');
+      open.type='button';
+      open.className='answer-file-open';
+      const ext=fileExtension(file.name);
+      const opensAs=isHTMLFile(file)&&file.kind==='text'?'Open page ':file.kind==='image'?'Open image ':file.kind==='text'?'View ':'Download ';
+      open.setAttribute('aria-label',opensAs+(file.name||'file'));
+      open.title=file.name||'';
+      open.innerHTML='<span class="answer-file-icon">'+fileCardIcon(category)+'</span><span class="answer-file-copy"><strong></strong><small></small></span>';
+      open.querySelector('strong').textContent=file.name||'file';
+      const kindName=isHTMLFile(file)?'HTML page':fileTypeNames[category]+(ext&&category!=='file'?' · '+ext.toUpperCase():ext?' · '+ext.toUpperCase():'');
+      open.querySelector('small').textContent=[kindName,formatFileSize(file.size)].filter(Boolean).join(' · ');
+      open.addEventListener('click',function(){openSentFile(file)});
+      const download=document.createElement('button');
+      download.type='button';
+      download.className='answer-file-download';
+      download.setAttribute('aria-label','Download '+(file.name||'file'));
+      download.title='Download';
+      download.innerHTML=fileCardIcon('download');
+      download.addEventListener('click',function(){downloadSentFile(file)});
+      card.append(open,download);
+      return card;
+    }
+    function renderAnswerFiles(message,files){
+      const list=Array.isArray(files)?files.filter(function(file){return file&&file.id}):[];
+      let holder=message.querySelector('.chat-copy > .answer-files');
+      if(!list.length){if(holder)holder.remove();return}
+      const ids=list.map(function(file){return file.id}).join(',');
+      if(holder&&holder.dataset.ids===ids)return;
+      if(!holder){
+        holder=document.createElement('div');
+        holder.className='answer-files';
+        const body=message.querySelector('.chat-text');
+        body.parentNode.insertBefore(holder,body.nextSibling);
+      }
+      holder.dataset.ids=ids;
+      holder.replaceChildren.apply(holder,list.map(answerFileCard));
     }
 
     // Client-side mirror of the server's check, so the user hears about an
@@ -5289,7 +5420,7 @@
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
         if(isIncognito){
-          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],reasoning:terminalData.reasoning||''}]);
+          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],files:terminalData.files||[],reasoning:terminalData.reasoning||''}]);
           incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images,terminalData.videos),questionnaire:terminalData.questionnaire||undefined,activity:terminalData.activity&&terminalData.activity.length?terminalData.activity:undefined};
         }else{
           message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
@@ -5456,7 +5587,7 @@
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(signedInUser()!==session){stream.cancel();return}
         await stream.finish();
-        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],reasoning:terminalData.reasoning||''}];
+        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],files:terminalData.files||[],reasoning:terminalData.reasoning||''}];
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
         openNewArtifact(pending);

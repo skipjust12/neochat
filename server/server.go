@@ -431,6 +431,8 @@ type chatResponse struct {
 	// ResponseVersion.Images, Videos).
 	Images []conversation.Attachment `json:"images,omitempty"`
 	Videos []conversation.Attachment `json:"videos,omitempty"`
+	// Files: what the model sent from the terminal (ResponseVersion.Files).
+	Files []conversation.Attachment `json:"files,omitempty"`
 	// Reasoning: the model's thinking (see ResponseVersion.Reasoning).
 	Reasoning string `json:"reasoning,omitempty"`
 
@@ -1777,7 +1779,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	version := conversation.ResponseVersion{
 		Content: genResult.Text, ModelID: model.ID, CreatedAt: now,
 		Activity: answer.Activity, Sources: webLinks(genResult.Citations), ThoughtMS: thought.Milliseconds(),
-		Questionnaire: answer.Questionnaire, Images: answer.Images, Videos: answer.Videos, Reasoning: answer.Reasoning,
+		Questionnaire: answer.Questionnaire, Images: answer.Images, Videos: answer.Videos, Files: answer.Files, Reasoning: answer.Reasoning,
 	}
 	if len(version.Images) > 0 || len(version.Videos) > 0 {
 		version.ThoughtMS = 0 // a picture isn't "thought for N seconds"
@@ -1814,6 +1816,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		Questionnaire:    version.Questionnaire,
 		Images:           version.Images,
 		Videos:           version.Videos,
+		Files:            version.Files,
 		Reasoning:        version.Reasoning,
 	}
 	if req.regenerateMessageID > 0 {
@@ -1859,7 +1862,7 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 	}
 	// Generated pictures and videos join the chat's files only now that the
 	// answer showing them is stored, the same order uploads follow.
-	if made := append(attachmentIDs(version.Images), attachmentIDs(version.Videos)...); len(made) > 0 && s.Attachments != nil {
+	if made := append(append(attachmentIDs(version.Images), attachmentIDs(version.Videos)...), attachmentIDs(version.Files)...); len(made) > 0 && s.Attachments != nil {
 		if err := s.Attachments.Claim(ctx, req.UserID, prepared.conversationID, made); err != nil {
 			log.Printf("server: claim generated media for conversation_id=%s: %v", prepared.conversationID, err)
 		}

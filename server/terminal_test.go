@@ -3,6 +3,8 @@ package server
 import (
 	"context"
 	"encoding/json"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -79,7 +81,7 @@ func TestTerminalScriptRunsAndShowsItsSteps(t *testing.T) {
 	}
 
 	main := vendor.mainCalls()
-	if names := strings.Join(toolNames(main[0]), ","); names != "run_command,run_script,ask_user" {
+	if names := strings.Join(toolNames(main[0]), ","); names != "run_command,run_script,send_file,ask_user" {
 		t.Fatalf("tools = %s", names)
 	}
 	if !hasSystemPrefix(main[0], "You have a terminal on the server") {
@@ -278,9 +280,74 @@ func TestPersonaPromptsDescribeTheTerminal(t *testing.T) {
 			t.Fatalf("%s isn't recognised as describing the terminal", name)
 		}
 	}
-	for _, want := range []string{"run_script", "Writing a script for", "Never claim you ran something", "ask first"} {
+	for _, want := range []string{"run_script", "send_file", "sandbox:", "Writing a script for", "Never claim you ran something", "ask first"} {
 		if !strings.Contains(core, want) {
 			t.Errorf("terminal section lacks %q", want)
+		}
+	}
+}
+
+func TestSendFileGoesWithTheAnswer(t *testing.T) {
+	vendor := &scriptedPolza{reply: func(body map[string]any) (int, []string) {
+		switch len(toolMessages(body)) {
+		case 0:
+			return 200, []string{toolCallChunk([3]string{"c1", "run_command", `{"command":"printf '<!doctype html><title>Dash</title>' > dash_board.html"}`}), usageChunk}
+		case 1:
+			return 200, []string{toolCallChunk([3]string{"c2", "send_file", `{"path":"dash_board.html"}`}), usageChunk}
+		}
+		return 200, []string{textChunk("Here it is."), usageChunk}
+	}}
+	s := newTerminalServer(t, vendor, "*")
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "make a page", RequestedMode: "manual", ManualModelID: "gpt-6-luna", providerKey: "pza_user"}
+	events, err := collectStream(s, context.Background(), req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := events["done"][0].(chatResponse)
+	if len(done.Files) != 1 || done.Files[0].Name != "dash_board.html" || done.Files[0].Kind != "text" || done.Files[0].MIME != "text/html" {
+		t.Fatalf("files = %+v", done.Files)
+	}
+	stored, err := s.Attachments.Get(context.Background(), "u1", done.Files[0].ID)
+	if err != nil || !strings.Contains(string(stored.Data), "<title>Dash</title>") || stored.ConversationID != done.ConversationID {
+		t.Fatalf("stored = %+v, %v", stored, err)
+	}
+	step := done.Activity[1]
+	if step.Tool != "send_file" || step.Title != "dash_board.html" || step.Size == 0 {
+		t.Fatalf("step = %+v", step)
+	}
+	if got := toolMessages(vendor.mainCalls()[2])[1]["content"].(string); !strings.HasPrefix(got, "Sent dash_board.html") {
+		t.Fatalf("tool result = %q", got)
+	}
+}
+
+func TestSandboxLinksAreRescued(t *testing.T) {
+	s := newTerminalServer(t, &scriptedPolza{reply: func(map[string]any) (int, []string) { return 200, nil }}, "*")
+	r := &webRun{s: s, req: chatRequest{UserID: "u1"}, prepared: preparedRequest{conversationID: "c1"}}
+	dir, _ := s.Terminal.Dir("u1", "c1")
+	if err := os.WriteFile(filepath.Join(dir, "sales_dashboard_artifact.html"), []byte("<!doctype html><p>hi</p>"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	text := "Done.\n\n[Open the dashboard](sandbox:" + dir + "/sales_dashboard_artifact.html)\n\nAlso [missing](sandbox:/tmp/nope.txt) and file://" + dir + "/sales_dashboard_artifact.html."
+	got := r.rescueFileLinks(context.Background(), text)
+	if strings.Contains(got, "sandbox:") || strings.Contains(got, "file://") {
+		t.Fatalf("links left: %s", got)
+	}
+	if !strings.Contains(got, "Open the dashboard (**sales_dashboard_artifact.html**, below)") || !strings.Contains(got, "Also missing and") {
+		t.Fatalf("got %s", got)
+	}
+	if files := r.sentFiles(); len(files) != 1 {
+		t.Fatalf("files = %+v (the same file twice is one file)", files)
+	}
+}
+
+func TestSendFileRefusesWhatItCantSend(t *testing.T) {
+	s := newTerminalServer(t, &scriptedPolza{reply: func(map[string]any) (int, []string) { return 200, nil }}, "*")
+	r := &webRun{s: s, req: chatRequest{UserID: "u1"}, prepared: preparedRequest{conversationID: "c1"}}
+	dir, _ := s.Terminal.Dir("u1", "c1")
+	_ = os.WriteFile(filepath.Join(dir, "empty.txt"), nil, 0o600)
+	for _, path := range []string{"nope.txt", ".", "empty.txt"} {
+		if _, err := r.sendFile(context.Background(), path, ""); err == nil {
+			t.Errorf("%s: want an error", path)
 		}
 	}
 }

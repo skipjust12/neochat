@@ -28,6 +28,10 @@ const (
 	KindDocument = "document"
 	KindText     = "text"
 	KindVideo    = "video"
+	// KindFile is a file a model made on the server's terminal and sent to
+	// the user (server/terminal.go, send_file) that is none of the above:
+	// it is only ever downloaded, never sent to a model.
+	KindFile = "file"
 )
 
 // Per-kind size ceilings. An uploaded image may be up to MaxUploadBytes,

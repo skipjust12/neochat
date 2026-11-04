@@ -91,6 +91,9 @@ type ResponseVersion struct {
 	// (server/image.go, server/video.go).
 	Images []Attachment `json:"images,omitempty"`
 	Videos []Attachment `json:"videos,omitempty"`
+	// Files are what the model made on the server's terminal and sent to
+	// the user with the answer (send_file), kept with the chat's files.
+	Files []Attachment `json:"files,omitempty"`
 
 	// Reasoning is the model's thinking before and while it wrote this
 	// version, for models that share it; the client shows it on request.
@@ -150,6 +153,9 @@ type ToolActivity struct {
 	OutputChars int    `json:"output_chars,omitempty"`
 	TimedOut    bool   `json:"timed_out,omitempty"`
 	DurationMS  int64  `json:"duration_ms,omitempty"`
+	// Size is a sent file's size in bytes ("send_file", with its name as
+	// Title and its path as Command).
+	Size int64 `json:"size,omitempty"`
 
 	// Pending marks a step still running; only ever set in the live
 	// stream, never stored. Phase says what a pending terminal step is

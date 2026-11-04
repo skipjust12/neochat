@@ -133,8 +133,10 @@ type webAnswer struct {
 	Questionnaire *conversation.Questionnaire
 	// Images an image model made (imageAnswer), or a video a video model
 	// made (videoAnswer), and what it cost.
-	Images       []conversation.Attachment
-	Videos       []conversation.Attachment
+	Images []conversation.Attachment
+	Videos []conversation.Attachment
+	// Files the model sent from the terminal (send_file).
+	Files        []conversation.Attachment
 	MediaCostUSD float64
 	// Reasoning is the model's thinking for this answer (streamed answers
 	// only), kept with it.
@@ -172,6 +174,8 @@ type webRun struct {
 	searches int
 	fetches  int
 	runs     int
+	files    []conversation.Attachment
+	sentFrom map[string]conversation.Attachment // by real path, so a file goes once
 	// writing maps a run_script call the model is still writing (its
 	// position in the step) to the step shown for it.
 	writing map[int]int
@@ -190,7 +194,12 @@ func (s *Server) answer(ctx context.Context, req chatRequest, prepared preparedR
 	}
 	switch {
 	case model.ToolCalling:
-		return r.loop(ctx, messages, web)
+		out, err := r.loop(ctx, messages, web)
+		if err == nil && r.terminalAllowed() {
+			out.Text = r.rescueFileLinks(ctx, out.Text)
+		}
+		out.Files = r.sentFiles()
+		return out, err
 	case req.WebSearch == webSearchAuto:
 		res, err := generate(ctx, withSystemNote(messages, noWebToolsNote))
 		return webAnswer{GenerateResult: res}, err
@@ -216,6 +225,9 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 	maxRounds := webMaxRounds
 	if r.terminalAllowed() {
 		tools = append(tools, terminalFunctionTools...)
+		if r.s.Attachments != nil {
+			tools = append(tools, sendFileTool)
+		}
 		messages = withSystemNote(messages, r.terminalNote())
 		maxRounds = terminalMaxRounds
 	}
@@ -440,6 +452,9 @@ func (r *webRun) planTool(call provider.ToolCall, position int) (string, func(co
 	if isTerminalTool(call.Name) {
 		return r.planTerminalTool(call, position)
 	}
+	if call.Name == "send_file" {
+		return r.planSendFile(call)
+	}
 	var args struct {
 		Query  string `json:"query"`
 		URL    string `json:"url"`
@@ -554,8 +569,11 @@ func finishedSteps(activity []conversation.ToolActivity) []conversation.ToolActi
 	out := append([]conversation.ToolActivity(nil), activity...)
 	for i := range out {
 		finished := len(out[i].Results) > 0 || out[i].Title != ""
-		if isTerminalTool(out[i].Tool) {
+		switch {
+		case isTerminalTool(out[i].Tool):
 			finished = out[i].ExitCode != nil
+		case out[i].Tool == "send_file":
+			finished = out[i].Size > 0
 		}
 		if out[i].Pending && out[i].Error == "" && !finished {
 			out[i].Error = "stopped"
@@ -975,7 +993,7 @@ func webStepsNote(steps []conversation.ToolActivity) string {
 				line += " (failed: " + oneLine(step.Error, 120) + ")"
 			}
 			lines = append(lines, line)
-		case "run_command", "run_script":
+		case "run_command", "run_script", "send_file":
 			lines = append(lines, terminalStepLine(step))
 			terminalSteps = true
 		}
@@ -997,7 +1015,7 @@ func boundActivity(steps []conversation.ToolActivity) []conversation.ToolActivit
 	}
 	out := make([]conversation.ToolActivity, 0, len(steps))
 	for _, step := range steps {
-		if isTerminalTool(step.Tool) {
+		if isTerminalTool(step.Tool) || step.Tool == "send_file" {
 			out = append(out, boundTerminalStep(step))
 			continue
 		}
