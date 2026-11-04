@@ -149,3 +149,15 @@ func TestTimeoutIsClamped(t *testing.T) {
 		t.Fatalf("max = %v", got)
 	}
 }
+
+func TestPipPackagesAreSharedBetweenChats(t *testing.T) {
+	r := newRunner(t)
+	a, _ := r.Dir("u1", "c1")
+	b, _ := r.Dir("u1", "c2")
+	ra, _ := r.Run(context.Background(), a, "echo $PYTHONUSERBASE", 0)
+	rb, _ := r.Run(context.Background(), b, "echo $PYTHONUSERBASE", 0)
+	want := filepath.Join(r.WorkDir, ".python-packages")
+	if strings.TrimSpace(ra.Output) != want || ra.Output != rb.Output {
+		t.Fatalf("PYTHONUSERBASE = %q / %q, want %q", ra.Output, rb.Output, want)
+	}
+}

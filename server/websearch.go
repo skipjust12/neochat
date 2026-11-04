@@ -185,6 +185,9 @@ type webRun struct {
 func (s *Server) answer(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, messages []provider.Message, generate func(context.Context, []provider.Message) (provider.GenerateResult, error), onActivity func([]conversation.ToolActivity)) (webAnswer, error) {
 	r := &webRun{s: s, req: req, prepared: prepared, model: model, generate: generate, onActivity: onActivity}
 	web := req.WebSearch == webSearchAuto || req.WebSearch == webSearchOn
+	if (!model.ToolCalling || !r.terminalAllowed()) && promptDescribesTerminal(messages) {
+		messages = withSystemNote(messages, noTerminalNote)
+	}
 	switch {
 	case model.ToolCalling:
 		return r.loop(ctx, messages, web)

@@ -35,8 +35,8 @@ import (
 	"neochat/ratelimit"
 	"neochat/router"
 	"neochat/settings"
-	"neochat/terminal"
 	"neochat/summarizer"
+	"neochat/terminal"
 	"neochat/tokenizer"
 	"neochat/webfetch"
 )

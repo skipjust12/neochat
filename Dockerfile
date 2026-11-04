@@ -12,10 +12,10 @@ RUN CGO_ENABLED=0 go build -o /out/server ./cmd/server
 
 FROM alpine:3.20
 
-# bash and Python for the models' terminal (TERMINAL_ENABLED, see
-# server/terminal.go): with it on, commands and scripts run in this
-# container as the neochat user.
-RUN apk add --no-cache bash python3 \
+# bash, Python and pip for the models' terminal (server/terminal.go, on
+# by default): commands and scripts run in this container as the neochat
+# user.
+RUN apk add --no-cache bash python3 py3-pip \
     && addgroup -S neochat && adduser -S -G neochat neochat
 
 WORKDIR /app

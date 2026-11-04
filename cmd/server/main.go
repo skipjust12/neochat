@@ -328,8 +328,8 @@ func main() {
 		Fetcher:  &webfetch.Fetcher{},
 		Searcher: webSearcher(os.Getenv("SEARXNG_URL")),
 		// A terminal on this machine for the models (server/terminal.go):
-		// off unless TERMINAL_ENABLED=true, and then only for the users in
-		// TERMINAL_USERS. See terminalRunner.
+		// on by default, TERMINAL_ENABLED=false turns it off. See
+		// terminalRunner.
 		Terminal: terminalRunner(),
 		// Image models (kind "image" in configs/models.json) make pictures
 		// through Polza's Media API on the user's own image key.
@@ -506,15 +506,15 @@ func webSearcher(baseURL string) server.WebSearcher {
 }
 
 // terminalRunner is the terminal models get for run_command and
-// run_script (TERMINAL_ENABLED=true; nil otherwise). Commands run on this
-// machine as the server's own user: TERMINAL_USERS (required) lists the
-// user ids allowed, comma-separated, or "*" for everyone with a key.
-// TERMINAL_WORKDIR holds a working directory per chat (default: the
-// system temp directory's neochat-terminal); TERMINAL_TIMEOUT and
-// TERMINAL_MAX_TIMEOUT are the default and longest time one command may
-// run (Go durations; default 60s and 10m).
+// run_script. It is on unless TERMINAL_ENABLED=false. Commands run on this
+// machine as the server's own user: TERMINAL_USERS lists the user ids
+// allowed, comma-separated (default "*": everyone with a key -- this
+// deployment has one user). TERMINAL_WORKDIR holds a working directory
+// per chat (default: the system temp directory's neochat-terminal);
+// TERMINAL_TIMEOUT and TERMINAL_MAX_TIMEOUT are the default and longest
+// time one command may run (Go durations; default 60s and 10m).
 func terminalRunner() *terminal.Runner {
-	if os.Getenv("TERMINAL_ENABLED") != "true" {
+	if os.Getenv("TERMINAL_ENABLED") == "false" {
 		return nil
 	}
 	var users []string
@@ -524,7 +524,7 @@ func terminalRunner() *terminal.Runner {
 		}
 	}
 	if len(users) == 0 {
-		log.Fatal(`TERMINAL_ENABLED=true needs TERMINAL_USERS: the user ids allowed to use the terminal, comma-separated, or "*" for everyone`)
+		users = []string{"*"}
 	}
 	r := &terminal.Runner{
 		WorkDir:    strings.TrimSpace(os.Getenv("TERMINAL_WORKDIR")),
@@ -532,7 +532,7 @@ func terminalRunner() *terminal.Runner {
 		Timeout:    getenvDurationDefault("TERMINAL_TIMEOUT", 0),
 		MaxTimeout: getenvDurationDefault("TERMINAL_MAX_TIMEOUT", 0),
 	}
-	log.Printf("terminal: enabled for %s (%s); commands run on this machine as the server's user", strings.Join(users, ", "), r.Describe())
+	log.Printf("terminal: on for %s (%s); commands run on this machine as the server's user (TERMINAL_ENABLED=false turns it off)", strings.Join(users, ", "), r.Describe())
 	return r
 }
 

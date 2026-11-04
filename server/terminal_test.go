@@ -173,10 +173,10 @@ func TestTerminalWritingStepIsDroppedWhenTheCallNeverComes(t *testing.T) {
 
 func TestPartialAbout(t *testing.T) {
 	for args, want := range map[string]string{
-		`{"about":"counting \"words\".`: "",
-		`{"about":"counting \"words\"."`: `counting "words"`,
+		`{"about":"counting \"words\".`:         "",
+		`{"about":"counting \"words\"."`:        `counting "words"`,
 		`{"language":"python","about" : "a  b"`: "a b",
-		`{"code":"print(1)"`: "",
+		`{"code":"print(1)"`:                    "",
 	} {
 		if got := partialAbout(args); got != want {
 			t.Errorf("partialAbout(%s) = %q, want %q", args, got, want)
@@ -231,4 +231,56 @@ func toolCall(name, arguments string) provider.ToolCall {
 
 func toolProgress(index int, name, arguments string) provider.ToolCallProgress {
 	return provider.ToolCallProgress{Index: index, Name: name, Arguments: arguments}
+}
+
+func TestNoTerminalNoteOnlyWhenThePromptDescribesTheTerminal(t *testing.T) {
+	vendor := &scriptedPolza{reply: func(body map[string]any) (int, []string) {
+		return 200, []string{textChunk("Hi."), usageChunk}
+	}}
+	s := newWebServer(t, vendor) // no Terminal
+	s.SystemPrompts = map[string]string{"Default": "core prompt\n## The terminal\nYou have run_command and run_script."}
+	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "manual", ManualModelID: "gpt-6-luna", providerKey: "pza_user"}
+	if _, err := collectStream(s, context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if main := vendor.mainCalls(); !hasSystemMessage(main[0], noTerminalNote) {
+		t.Fatal("a model without the terminal wasn't told so")
+	}
+
+	vendor2 := &scriptedPolza{reply: vendor.reply}
+	s2 := newTerminalServer(t, vendor2, "*")
+	s2.SystemPrompts = s.SystemPrompts
+	if _, err := collectStream(s2, context.Background(), req); err != nil {
+		t.Fatal(err)
+	}
+	if main := vendor2.mainCalls(); hasSystemMessage(main[0], noTerminalNote) || !hasSystemPrefix(main[0], "You have a terminal") {
+		t.Fatal("a model with the terminal got the wrong note")
+	}
+}
+
+// The terminal section is part of the core prompt every persona shares.
+func TestPersonaPromptsDescribeTheTerminal(t *testing.T) {
+	prompts := LoadSystemPrompts("../prompts")
+	var core string
+	for _, name := range SystemPromptNames {
+		text := prompts[name]
+		at := strings.Index(text, "## The terminal")
+		if at < 0 {
+			t.Fatalf("%s has no terminal section", name)
+		}
+		section := text[at:]
+		if core == "" {
+			core = section
+		} else if section != core {
+			t.Fatalf("%s's terminal section differs from the others", name)
+		}
+		if !promptDescribesTerminal([]provider.Message{{Role: "system", Content: text}}) {
+			t.Fatalf("%s isn't recognised as describing the terminal", name)
+		}
+	}
+	for _, want := range []string{"run_script", "Writing a script for", "Never claim you ran something", "ask first"} {
+		if !strings.Contains(core, want) {
+			t.Errorf("terminal section lacks %q", want)
+		}
+	}
 }

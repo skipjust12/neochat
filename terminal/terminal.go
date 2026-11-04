@@ -94,16 +94,20 @@ func (e *Error) Error() string { return "terminal: " + e.Message }
 // wrote are there for the next command; chat is empty for one-off runs
 // (private chats), which share one directory per user.
 func (r *Runner) Dir(userID, chat string) (string, error) {
-	base := r.WorkDir
-	if base == "" {
-		base = filepath.Join(os.TempDir(), "neochat-terminal")
-	}
+	base := r.base()
 	sum := sha256.Sum256([]byte(userID + "\x00" + chat))
 	dir := filepath.Join(base, hex.EncodeToString(sum[:])[:24])
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return "", &Error{Message: "can't create the working directory: " + err.Error()}
 	}
 	return dir, nil
+}
+
+func (r *Runner) base() string {
+	if r.WorkDir != "" {
+		return r.WorkDir
+	}
+	return filepath.Join(os.TempDir(), "neochat-terminal")
 }
 
 // Run runs a shell command in dir.
@@ -253,8 +257,13 @@ func (r *Runner) env(dir string) []string {
 	if path == "" {
 		path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 	}
+	// pip install --user goes to one place for all chats, so a package
+	// installed once is there for every later script.
+	packages := filepath.Join(r.base(), ".python-packages")
 	env := []string{
-		"PATH=" + path,
+		"PATH=" + filepath.Join(packages, "bin") + string(os.PathListSeparator) + path,
+		"PYTHONUSERBASE=" + packages,
+		"PIP_DISABLE_PIP_VERSION_CHECK=1",
 		"HOME=" + dir,
 		"TMPDIR=" + dir,
 		"LANG=C.UTF-8",

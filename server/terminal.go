@@ -68,8 +68,31 @@ var terminalFunctionTools = []provider.FunctionTool{
 	},
 }
 
-// terminalToolsNote goes to every tool-calling model with the terminal.
-const terminalToolsNote = "You have a terminal on the server this chat runs on (%s): run_command runs a shell command, run_script writes a Python or bash script and runs it. Use them instead of guessing whenever the answer depends on running code -- calculations, data processing, parsing or converting files, checking how a program or library actually behaves, looking at this machine -- and when the user asks you to run something: run it, read the output, fix and rerun if it failed, then answer from what it printed. Don't use them for things you can answer directly. Commands run in this chat's own working directory (%s), which keeps its files between calls and messages; there is no stdin. Each run has a time limit of %s by default, %s at most. Tell the user what you found, not the raw output, unless they want to see it."
+// terminalToolsNote goes to every tool-calling model with the terminal:
+// the facts of this machine. When and how to use it is in the core prompt
+// (prompts/*.md, "The terminal"); the short version here covers a persona
+// without it.
+const terminalToolsNote = "You have a terminal on the server this chat runs on: run_command runs a shell command, run_script writes a Python or bash script and runs it. Machine: %s. Working directory (this chat's own, kept between runs and messages): %s. Time limit per run: %s by default, up to %s with timeout_seconds. Use it instead of guessing whenever the answer depends on computing, running or checking something; read the output, fix and rerun on errors, then answer from what it printed."
+
+// noTerminalNote goes to a model that gets no terminal for this answer,
+// since the core prompt describes one: without it, a model may claim to
+// have run code.
+const noTerminalNote = "You have no terminal for this answer (run_command and run_script aren't available to this model here), so you can't run code: work it out yourself, say when a result is unchecked, and never claim you ran anything."
+
+// promptDescribesTerminal reports whether the leading system messages
+// (the persona's core prompt) tell the model about the terminal, which a
+// model without one then needs corrected (noTerminalNote).
+func promptDescribesTerminal(messages []provider.Message) bool {
+	for _, m := range messages {
+		if m.Role != "system" {
+			break
+		}
+		if strings.Contains(m.Content, "run_command") {
+			return true
+		}
+	}
+	return false
+}
 
 func isTerminalTool(name string) bool {
 	return name == "run_command" || name == "run_script"
