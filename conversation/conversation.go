@@ -153,6 +153,14 @@ type ToolActivity struct {
 	OutputChars int    `json:"output_chars,omitempty"`
 	TimedOut    bool   `json:"timed_out,omitempty"`
 	DurationMS  int64  `json:"duration_ms,omitempty"`
+	// Where is "computer" for a step that ran on the user's own computer
+	// (empty: on the server). Shell is the shell a command ran in, when
+	// chosen. Approval is "pending", "allowed" or "denied" when the user
+	// was asked first; ApprovalID, live only, is what they answer.
+	Where      string `json:"where,omitempty"`
+	Shell      string `json:"shell,omitempty"`
+	Approval   string `json:"approval,omitempty"`
+	ApprovalID string `json:"approval_id,omitempty"`
 	// Size is a sent file's size in bytes ("send_file", with its name as
 	// Title and its path as Command).
 	Size int64 `json:"size,omitempty"`

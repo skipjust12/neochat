@@ -9948,3 +9948,124 @@ html[data-theme="light"] {
     font-size: 16px !important;
   }
 }
+
+/* ---------- approvals ("Ask for approval" in the + menu) ---------- */
+.approval-card {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  animation: approval-in .18s var(--ease-out, ease);
+}
+
+@keyframes approval-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.approval-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.approval-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--line);
+  color: var(--text);
+}
+
+.approval-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.approval-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.approval-copy strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.approval-copy small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.approval-card .term-block {
+  margin-left: 0;
+}
+
+.approval-card .term-code {
+  max-height: 200px;
+}
+
+.approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.approval-actions button {
+  min-width: 84px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: none;
+  color: var(--text);
+  font: 550 13px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.approval-actions .approval-allow {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--surface-1, #fafafa);
+}
+
+.approval-actions button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.approval-card.is-allowed,
+.approval-card.is-denied {
+  opacity: .7;
+}
+
+.term-where {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  line-height: 15px;
+}
+
+.term-path {
+  padding-left: 21px;
+  color: var(--muted);
+  font: 400 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}

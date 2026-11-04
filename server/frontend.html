@@ -16,7 +16,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=2" />
-<link rel="stylesheet" href="/assets/fluid.css?v=33" />
+<link rel="stylesheet" href="/assets/fluid.css?v=34" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -258,6 +258,17 @@
                   <span class="row-symbol"><svg class="lucide lucide-brain" data-lucide-icon="brain" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18V5" /><path d="M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4" /><path d="M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294" /><path d="M17.996 5.125a4 4 0 012.526 5.77" /><path d="M18 18a4 4 0 002-7.465" /><path d="M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517" /><path d="M6 18a4 4 0 01-2-7.465" /><path d="M6.004 5.125a4 4 0 00-2.526 5.77" /></svg></span>
                   <span class="row-copy row-copy-tight"><strong>Extended Thinking</strong></span>
                   <span class="row-state" id="thinkingState">On</span>
+                  <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                </button>
+                <button class="attach-row" id="executeOnRow" role="menuitem" aria-label="Execute commands on">
+                  <span class="row-symbol"><svg class="lucide lucide-terminal" data-lucide-icon="terminal" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19h8" /><path d="m4 17 6-6-6-6" /></svg></span>
+                  <span class="row-copy row-copy-tight"><strong>Execute commands on</strong></span>
+                  <span class="row-state" id="executeOnState">Server</span>
+                  <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                </button>
+                <button class="attach-row" id="approvalRow" role="menuitem" aria-label="Approval mode">
+                  <span class="row-symbol"><svg class="lucide lucide-shield" data-lucide-icon="shield" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /></svg></span>
+                  <span class="row-copy row-copy-tight"><strong id="approvalState">Ask for approval</strong></span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
               </div>
@@ -1846,6 +1857,34 @@
       return reasoningEffortValues[Math.max(0,Math.min(reasoningEffortValues.length-1,index))]||'medium';
     }
 
+    /* ---------- Execute commands on / approvals (+ menu) ---------- */
+    // Server: the model's terminal is this server's. Computer: the user's
+    // own, through the NeoChat desktop app, which has to be running.
+    const executeOnState=document.getElementById('executeOnState');
+    const approvalState=document.getElementById('approvalState');
+    function pulseState(element){element.classList.remove('row-state');void element.offsetWidth;element.classList.add('row-state')}
+    async function checkComputer(){
+      try{
+        const response=await apiFetch('/device/status',{});
+        if(!response.ok)return;
+        const status=await response.json();
+        if(status.connected){
+          const tools=(status.mcp||[]).reduce(function(sum,server){return sum+(server.tools||0)},0);
+          toast('Commands will run on '+(status.name||'your computer')+(tools?' · '+plural(tools,'MCP tool','MCP tools'):'')+'.');
+        }else toast('Open the NeoChat app on your computer to connect it.');
+      }catch(error){}
+    }
+    document.getElementById('executeOnRow').addEventListener('click',function(){
+      pulseState(executeOnState);
+      executeOnState.textContent=executeOnState.textContent.trim()==='Computer'?'Server':'Computer';
+      if(executeOnState.textContent==='Computer')checkComputer();
+      document.dispatchEvent(new CustomEvent('preferences:save'));
+    });
+    document.getElementById('approvalRow').addEventListener('click',function(){
+      approvalState.textContent=approvalState.textContent.trim()==='Allow all'?'Ask for approval':'Allow all';
+      document.dispatchEvent(new CustomEvent('preferences:save'));
+    });
+
     // Shared by send and regenerate: settings that shape every reply.
     function applyReplySettings(request){
       request.reasoning_effort=selectedReasoningEffort();
@@ -1854,6 +1893,9 @@
       // Extended Thinking (+ menu) turns thinking on or off; the effort is
       // sent either way and never changes with it.
       request.extended_thinking=(document.getElementById('thinkingState').textContent||'On').trim()!=='Off';
+      // Where the model's commands run, and whether each waits for a yes.
+      request.execute_on=executeOnState.textContent.trim()==='Computer'?'computer':'server';
+      request.approval=approvalState.textContent.trim()==='Allow all'?'allow':'ask';
       const instructions=document.getElementById('instructions').value.trim();
       if(instructions)request.instructions=instructions;
       if(request.requested_mode==='manual')request.manual_model_id=document.getElementById('manualState').dataset.modelId||'';
@@ -2492,26 +2534,44 @@
     }
     // Terminal steps: a command (run_command) or a script the model wrote
     // and ran (run_script) on the server.
+    const terminalTools=['run_command','run_script','send_file','read_file','write_file','list_dir','mcp'];
     function isTerminalStep(step){
-      return Boolean(step&&(step.tool==='run_command'||step.tool==='run_script'||step.tool==='send_file'));
+      return Boolean(step&&terminalTools.indexOf(step.tool)>-1);
+    }
+    function shortPath(path){
+      const text=String(path||'');
+      const parts=text.split(/[\\/]/).filter(Boolean);
+      return parts.length>2?'…'+(text.indexOf('\\')>-1?'\\':'/')+parts.slice(-2).join(text.indexOf('\\')>-1?'\\':'/'):text;
     }
     function scriptPurpose(step){
       return String(step&&step.purpose||'').trim();
     }
     // What a running terminal step is doing, for the block's label.
     function terminalLiveLabel(step){
+      if(step.approval==='pending')return 'Waiting for your approval';
       if(step.tool==='send_file')return 'Sending a file';
+      if(step.tool==='read_file')return 'Reading '+(shortPath(step.title)||'a file');
+      if(step.tool==='write_file')return 'Writing '+(shortPath(step.title)||'a file');
+      if(step.tool==='list_dir')return 'Looking in '+(shortPath(step.title)||'a folder');
+      if(step.tool==='mcp')return 'Using '+(step.title||'an MCP tool');
       if(step.tool==='run_script'){
         if(step.phase==='writing'){
           const purpose=scriptPurpose(step);
           return purpose?'Writing a script for '+purpose:'Writing a script';
         }
-        return 'Running a script';
+        return 'Running a script'+(step.where==='computer'?' on your computer':'');
       }
-      return 'Running a command';
+      return 'Running a command'+(step.where==='computer'?' on your computer':'');
     }
     // A finished terminal step, in the past tense.
     function terminalDoneLabel(step){
+      if(step.error==='denied'){
+        return {run_command:'Denied a command',run_script:'Denied a script',write_file:'Denied writing '+shortPath(step.title),mcp:'Denied '+(step.title||'an MCP action')}[step.tool]||'Denied';
+      }
+      if(step.tool==='read_file')return (step.error?'Couldn’t read ':'Read ')+(shortPath(step.title)||'a file');
+      if(step.tool==='write_file')return (step.error?'Couldn’t write ':'Wrote ')+(shortPath(step.title)||'a file');
+      if(step.tool==='list_dir')return (step.error?'Couldn’t open ':'Looked in ')+(shortPath(step.title)||'a folder');
+      if(step.tool==='mcp')return (step.error&&step.error!=='the tool reported an error'?'Couldn’t use ':'Used ')+(step.title||'an MCP tool');
       if(step.tool==='send_file'){
         if(step.error)return 'Couldn’t send a file';
         return 'Sent '+(step.title||'a file');
@@ -2545,7 +2605,9 @@
     function stepIcon(kind){
       const icon=document.createElement('span');
       icon.className='web-step-icon';
-      icon.innerHTML=kind==='terminal'
+      icon.innerHTML=kind==='mcp'
+        ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>'
+        :kind==='terminal'
         ?'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg>'
         :kind==='script'
         ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>'
@@ -2733,7 +2795,57 @@
         text.classList.add('thinking-label');
         text.dataset.text=text.textContent;
       }else text.textContent=terminalDoneLabel(step);
-      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'?'fetch':'terminal'),text);
+      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'||step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'?'fetch':step.tool==='mcp'?'mcp':'terminal'),text);
+      if(step.where==='computer'&&!step.pending){
+        const where=document.createElement('span');
+        where.className='term-where';
+        where.textContent='PC';
+        where.title='Ran on your computer';
+        head.append(where);
+      }
+      if(step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'||step.tool==='mcp'){
+        if(!step.pending&&step.duration_ms&&step.tool==='mcp'){
+          const note=document.createElement('span');
+          note.className='web-step-note';
+          note.textContent=formatDuration(step.duration_ms);
+          head.append(note);
+        }
+        if(!step.pending&&step.tool==='write_file'&&step.size){
+          const note=document.createElement('span');
+          note.className='web-step-note';
+          note.textContent=formatFileSize(step.size);
+          head.append(note);
+        }
+        row.append(head);
+        if(step.title&&step.tool!=='mcp'){
+          const path=document.createElement('div');
+          path.className='term-path';
+          path.textContent=step.title;
+          row.append(path);
+        }
+        if(step.command){
+          const label=document.createElement('div');
+          label.className='term-label';
+          label.textContent=step.tool==='mcp'?'Arguments':(step.purpose==='append'?'Appended':'Content');
+          row.append(label,terminalCode(step.command,step.tool==='mcp'?'json':''));
+        }
+        if(step.output&&!step.pending){
+          const label=document.createElement('div');
+          label.className='term-label';
+          label.textContent=step.tool==='mcp'?'Result':step.tool==='list_dir'?'Contents':'Text';
+          const out=document.createElement('pre');
+          out.className='term-output';
+          out.textContent=step.output;
+          row.append(label,out);
+        }
+        if(step.error){
+          const error=document.createElement('p');
+          error.className='web-step-error'+(step.error==='stopped'||step.error==='denied'?' is-muted':'');
+          error.textContent=step.error==='denied'?'You denied this.':step.error;
+          row.append(error);
+        }
+        return row;
+      }
       if(step.tool==='send_file'){
         if(!step.pending&&step.size){
           const note=document.createElement('span');
@@ -2795,11 +2907,57 @@
       }
       if(step.error){
         const error=document.createElement('p');
-        error.className='web-step-error'+(step.error==='stopped'?' is-muted':'');
-        error.textContent=step.error;
+        error.className='web-step-error'+(step.error==='stopped'||step.error==='denied'?' is-muted':'');
+        error.textContent=step.error==='denied'?'You denied this.':step.error;
         row.append(error);
       }
       return row;
+    }
+    // A step waiting for the user: a card under the thinking block with
+    // what would run and where, and Allow / Deny.
+    function approvalCards(message,activity){
+      const copy=message.querySelector('.chat-copy');
+      const waiting=activity.filter(function(step){return step.pending&&step.approval==='pending'&&step.approval_id});
+      copy.querySelectorAll(':scope > .approval-card').forEach(function(card){
+        if(!waiting.some(function(step){return step.approval_id===card.dataset.id}))card.remove();
+      });
+      waiting.forEach(function(step){
+        if(copy.querySelector(':scope > .approval-card[data-id="'+step.approval_id+'"]'))return;
+        const card=document.createElement('div');
+        card.className='approval-card';
+        card.dataset.id=step.approval_id;
+        const where=step.where==='computer'?'on your computer':'on the server';
+        const what={run_command:'Run this command',run_script:'Run this '+(step.language||'')+' script',write_file:(step.purpose==='append'?'Add to ':'Write ')+(step.title||'a file'),mcp:'Use '+(step.title||'an MCP tool')}[step.tool]||'Allow this action';
+        card.innerHTML='<div class="approval-head"><span class="approval-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg></span><span class="approval-copy"><strong></strong><small></small></span></div>';
+        card.querySelector('strong').textContent=what+'?';
+        card.querySelector('small').textContent=(step.tool==='run_script'&&step.purpose?'For '+step.purpose+' · ':'')+where+(step.shell?' · '+step.shell:'');
+        if(step.command)card.append(terminalCode(step.command,step.language||''));
+        const actions=document.createElement('div');
+        actions.className='approval-actions';
+        const deny=document.createElement('button');
+        deny.type='button';deny.className='approval-deny';deny.textContent='Deny';
+        const allow=document.createElement('button');
+        allow.type='button';allow.className='approval-allow';allow.textContent='Allow';
+        async function answer(yes){
+          allow.disabled=deny.disabled=true;
+          card.classList.add(yes?'is-allowed':'is-denied');
+          try{
+            const response=await apiFetch('/chat/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:step.approval_id,allow:yes})});
+            if(!response.ok&&response.status!==404)throw new Error('HTTP '+response.status);
+          }catch(error){
+            allow.disabled=deny.disabled=false;
+            card.classList.remove('is-allowed','is-denied');
+            toast('Couldn’t send your answer. Try again.');
+          }
+        }
+        deny.addEventListener('click',function(){answer(false)});
+        allow.addEventListener('click',function(){answer(true)});
+        actions.append(deny,allow);
+        card.append(actions);
+        const block=copy.querySelector(':scope > .thought-time');
+        copy.insertBefore(card,block?block.nextSibling:copy.firstChild);
+        if(!document.hidden)allow.focus({preventScroll:true});
+      });
     }
     function thoughtBlock(message){
       const copy=message.querySelector('.chat-copy');
@@ -2828,6 +2986,7 @@
       const seconds=state.seconds?Math.max(1,Math.round(state.seconds)):0;
       const running=activity.filter(function(step){return step.pending});
       const live=Boolean(state.live||running.length);
+      approvalCards(message,activity);
       if(!live&&!seconds&&!activity.length&&!sources.length&&!(state.reasoning||'').trim()){
         const old=message.querySelector('.chat-copy > .thought-time');
         if(old)old.remove();
@@ -2839,7 +2998,7 @@
       const terminalSteps=activity.filter(isTerminalStep);
       const lastStep=activity.length?activity[activity.length-1]:null;
       // Right after a command, until the model goes on: "Ran a command".
-      const justRan=live&&!running.length&&state.sinceStep&&isTerminalStep(lastStep)&&lastStep.tool!=='send_file'&&!lastStep.error;
+      const justRan=live&&!running.length&&state.sinceStep&&(lastStep&&(lastStep.tool==='run_command'||lastStep.tool==='run_script'))&&!lastStep.error;
       let text;
       if(running.length)text=webStepLabel(running[running.length-1]);
       else if(justRan)text=lastStep.tool==='run_script'?'Ran a script':'Ran a command';
@@ -2864,6 +3023,10 @@
       if(scripts)parts.push(plural(scripts,'script','scripts'));
       if(commands)parts.push(plural(commands,'command','commands'));
       if(sent)parts.push(plural(sent,'file','files'));
+      const fileOps=done.filter(function(step){return step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'}).length;
+      const mcpCalls=done.filter(function(step){return step.tool==='mcp'}).length;
+      if(fileOps)parts.push(plural(fileOps,'file action','file actions'));
+      if(mcpCalls)parts.push(plural(mcpCalls,'MCP call','MCP calls'));
       if(!parts.length&&activity.some(webStepFailed))parts.push('search unavailable');
       block.querySelector('.thought-meta').textContent=live||!parts.length?'':parts.join(' · ');
 
@@ -6674,6 +6837,8 @@
         reasoningEffort:Math.round(Number(reasoningRange.value)),
         webSearch:webSearchState.textContent.trim(),
         extendedThinking:document.getElementById('thinkingState').textContent.trim()!=='Off',
+        executeOn:document.getElementById('executeOnState').textContent.trim(),
+        approval:document.getElementById('approvalState').textContent.trim()==='Allow all'?'allow':'ask',
         balanceWarnAt:thresholdValue('balanceWarnAt'),
         balanceLowAt:thresholdValue('balanceLowAt')
       };
@@ -6740,6 +6905,8 @@
     if(['Auto','On','Off'].includes(preferences.webSearch)){
       while(webSearchState.textContent.trim()!==preferences.webSearch)webSearchRow.click();
     }
+    if(preferences.executeOn==='Server'||preferences.executeOn==='Computer')document.getElementById('executeOnState').textContent=preferences.executeOn;
+    if(preferences.approval==='ask'||preferences.approval==='allow')document.getElementById('approvalState').textContent=preferences.approval==='allow'?'Allow all':'Ask for approval';
     if(typeof preferences.extendedThinking==='boolean'){
       const thinkingRow=document.getElementById('thinkingRow');
       if((document.getElementById('thinkingState').textContent.trim()!=='Off')!==preferences.extendedThinking)thinkingRow.click();
@@ -6759,6 +6926,7 @@
     reasoningRange.addEventListener('effort:change',savePreferences);
     webSearchRow.addEventListener('click',savePreferences);
     document.getElementById('thinkingRow').addEventListener('click',savePreferences);
+    document.addEventListener('preferences:save',savePreferences);
     ['balanceWarnAt','balanceLowAt'].forEach(function(id){
       document.getElementById(id).addEventListener('input',function(){
         savePreferences();

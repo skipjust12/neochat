@@ -235,6 +235,12 @@ type Server struct {
 	// allows. Nil: no model gets a terminal.
 	Terminal *terminal.Runner
 
+	// The users' connected computers and the actions waiting for their
+	// approval (device.go), made on first use.
+	extrasMu    sync.Mutex
+	deviceHub   *deviceHub
+	approvalHub *approvalHub
+
 	// TitleModelID is the catalog model that names new chats (title.go);
 	// empty: chats keep the start of their first message as their name.
 	TitleModelID string
@@ -353,6 +359,13 @@ type chatRequest struct {
 	// WebSearch is the composer's Web search toggle: "auto", "on" or
 	// "off" (see webToolsFor). Empty means off.
 	WebSearch string `json:"web_search,omitempty"`
+	// ExecuteOn is where the terminal tools run: "server" (the default)
+	// or "computer", the user's own through the desktop app (device.go).
+	ExecuteOn string `json:"execute_on,omitempty"`
+	// Approval is "ask" (each command, script, file write and MCP action
+	// waits for the user's yes) or "allow" (the default for API callers,
+	// who can't answer).
+	Approval string `json:"approval,omitempty"`
 
 	// Attachments are ids returned by POST /files. Images and PDF/DOCX
 	// files go to the model as native parts, text files are inlined. With
@@ -470,6 +483,9 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
 	mux.HandleFunc("GET /chat/stream/{stream_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleStreamResume)))))
 	mux.HandleFunc("POST /chat/stop", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleStreamStop)))))
+	mux.HandleFunc("POST /chat/approve", recovered(s.rateLimited(s.authenticated(s.handleApprove))))
+	mux.HandleFunc("GET /device/connect", recovered(s.rateLimited(s.authenticated(s.handleDeviceConnect))))
+	mux.HandleFunc("GET /device/status", recovered(s.rateLimited(s.authenticated(s.handleDeviceStatus))))
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
 	mux.HandleFunc("GET /conversations/search", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleConversationSearch)))))
 	mux.HandleFunc("DELETE /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectDelete))))))
@@ -1134,6 +1150,8 @@ type regenerateRequest struct {
 	ExtendedThinking *bool  `json:"extended_thinking,omitempty"`
 	Instructions     string `json:"instructions,omitempty"`
 	WebSearch        string `json:"web_search,omitempty"`
+	ExecuteOn        string `json:"execute_on,omitempty"`
+	Approval         string `json:"approval,omitempty"`
 	// Video: the length, resolution and shape asked of a video model.
 	Video *videoChoice `json:"video,omitempty"`
 }
@@ -1190,6 +1208,8 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		ExtendedThinking:    input.ExtendedThinking,
 		Instructions:        input.Instructions,
 		WebSearch:           input.WebSearch,
+		ExecuteOn:           input.ExecuteOn,
+		Approval:            input.Approval,
 		Video:               input.Video,
 		providerKey:         strings.TrimSpace(r.Header.Get(providerKeyHeader)),
 		imageKey:            strings.TrimSpace(r.Header.Get(imageKeyHeader)),

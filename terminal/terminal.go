@@ -53,6 +53,11 @@ type Runner struct {
 	// Users may use the terminal: user ids, or "*" for everyone. Empty:
 	// no one.
 	Users []string
+	// InheritEnv runs commands with this process's whole environment, for
+	// a terminal on the user's own computer (cmd/neochat-desktop), where
+	// there are no server secrets to keep out and programs need the
+	// user's PATH, profile and settings.
+	InheritEnv bool
 
 	once        sync.Once
 	description string
@@ -110,20 +115,121 @@ func (r *Runner) base() string {
 	return filepath.Join(os.TempDir(), "neochat-terminal")
 }
 
-// Run runs a shell command in dir.
+// Run runs a shell command in dir, in the default shell.
 func (r *Runner) Run(ctx context.Context, dir, command string, timeout time.Duration) (Result, error) {
-	shell := r.shell()
+	return r.RunShell(ctx, dir, "", command, timeout)
+}
+
+// Shells for RunShell.
+const (
+	ShellBash       = "bash"
+	ShellSh         = "sh"
+	ShellPowerShell = "powershell"
+	ShellPwsh       = "pwsh"
+	ShellCmd        = "cmd"
+)
+
+// RunShell runs a command in the named shell ("" for the default: bash or
+// sh, PowerShell on Windows).
+func (r *Runner) RunShell(ctx context.Context, dir, shell, command string, timeout time.Duration) (Result, error) {
 	if shell == "" {
-		return Result{ExitCode: -1}, &Error{Message: "no shell (bash or sh) on this machine"}
+		shell = r.DefaultShell()
 	}
-	return r.exec(ctx, dir, timeout, shell, "-c", command)
+	path := r.shellPath(shell)
+	if path == "" {
+		return Result{ExitCode: -1}, &Error{Message: fmt.Sprintf("no %s on this machine", shell)}
+	}
+	switch shell {
+	case ShellBash, ShellSh:
+		return r.exec(ctx, dir, timeout, "", path, "-c", command)
+	case ShellPowerShell, ShellPwsh:
+		return r.exec(ctx, dir, timeout, "", path, "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", powerShellPrelude+command)
+	case ShellCmd:
+		// cmd parses its own command line, so it goes as written, not
+		// quoted the way other programs' arguments are.
+		return r.exec(ctx, dir, timeout, `"`+path+`" /d /s /c "chcp 65001 >nul & `+command+`"`, path)
+	}
+	return Result{ExitCode: -1}, &Error{Message: fmt.Sprintf("unknown shell %q", shell)}
+}
+
+// powerShellPrelude makes PowerShell write UTF-8 and skip progress bars.
+const powerShellPrelude = "$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[System.Text.Encoding]::UTF8;$OutputEncoding=[System.Text.Encoding]::UTF8;"
+
+// DefaultShell is the shell Run uses.
+func (r *Runner) DefaultShell() string {
+	if r.Shell != "" {
+		return r.Shell
+	}
+	if runtime.GOOS == "windows" {
+		return ShellPowerShell
+	}
+	if firstInPath("bash") != "" {
+		return ShellBash
+	}
+	return ShellSh
+}
+
+// Shells are the shells this machine has.
+func (r *Runner) Shells() []string {
+	var out []string
+	for _, shell := range []string{ShellPowerShell, ShellPwsh, ShellCmd, ShellBash, ShellSh} {
+		if (shell == ShellCmd || shell == ShellPowerShell) && runtime.GOOS != "windows" {
+			continue
+		}
+		if r.shellPath(shell) != "" {
+			out = append(out, shell)
+		}
+	}
+	return out
+}
+
+func (r *Runner) shellPath(shell string) string {
+	switch shell {
+	case ShellBash:
+		return firstInPath("bash")
+	case ShellSh:
+		return firstInPath("sh")
+	case ShellPowerShell:
+		return firstInPath("powershell", "pwsh")
+	case ShellPwsh:
+		return firstInPath("pwsh")
+	case ShellCmd:
+		if comspec := os.Getenv("ComSpec"); comspec != "" {
+			return comspec
+		}
+		return firstInPath("cmd")
+	}
+	// A path the operator set (Runner.Shell).
+	if filepath.IsAbs(shell) {
+		return shell
+	}
+	return firstInPath(shell)
 }
 
 // Script languages for RunScript.
 const (
-	Python = "python"
-	Bash   = "bash"
+	Python     = "python"
+	Bash       = "bash"
+	PowerShell = "powershell"
+	Cmd        = "cmd"
 )
+
+// Languages are the script languages this machine can run.
+func (r *Runner) Languages() []string {
+	var out []string
+	if r.python() != "" {
+		out = append(out, Python)
+	}
+	if runtime.GOOS == "windows" {
+		out = append(out, PowerShell, Cmd)
+		if firstInPath("bash") != "" {
+			out = append(out, Bash)
+		}
+	} else if r.shell() != "" {
+		out = append(out, Bash)
+	}
+	return out
+}
 
 // RunScript saves code as a file in dir's .scripts and runs it with the
 // language's interpreter, in dir. It returns the script's path.
@@ -133,34 +239,67 @@ func (r *Runner) RunScript(ctx context.Context, dir, language, code string, time
 	case Python:
 		interpreter, ext = r.python(), ".py"
 		if interpreter == "" {
-			return "", Result{ExitCode: -1}, &Error{Message: "no Python (python3) on this machine"}
+			return "", Result{ExitCode: -1}, &Error{Message: "no Python on this machine"}
 		}
 	case Bash:
 		interpreter, ext = r.shell(), ".sh"
 		if interpreter == "" {
 			return "", Result{ExitCode: -1}, &Error{Message: "no shell (bash or sh) on this machine"}
 		}
+	case PowerShell:
+		interpreter, ext = r.shellPath(ShellPowerShell), ".ps1"
+		if interpreter == "" {
+			return "", Result{ExitCode: -1}, &Error{Message: "no PowerShell on this machine"}
+		}
+	case Cmd:
+		interpreter, ext = r.shellPath(ShellCmd), ".bat"
+		if interpreter == "" || runtime.GOOS != "windows" {
+			return "", Result{ExitCode: -1}, &Error{Message: "no cmd on this machine"}
+		}
 	default:
-		return "", Result{ExitCode: -1}, &Error{Message: fmt.Sprintf("unknown language %q (use python or bash)", language)}
+		return "", Result{ExitCode: -1}, &Error{Message: fmt.Sprintf("unknown language %q (use one of: %s)", language, strings.Join(r.Languages(), ", "))}
 	}
 	scripts := filepath.Join(dir, ".scripts")
 	if err := os.MkdirAll(scripts, 0o700); err != nil {
 		return "", Result{ExitCode: -1}, &Error{Message: "can't save the script: " + err.Error()}
 	}
 	path := filepath.Join(scripts, fmt.Sprintf("script-%s%s", time.Now().UTC().Format("20060102-150405.000000"), ext))
-	if err := os.WriteFile(path, []byte(code), 0o600); err != nil {
+	data := []byte(code)
+	switch language {
+	case PowerShell:
+		// A BOM, so Windows PowerShell reads the file as UTF-8, and the
+		// same output settings as a command.
+		data = append([]byte("\ufeff"+powerShellPrelude+"\r\n"), data...)
+	case Cmd:
+		data = []byte("@chcp 65001 >nul\r\n" + strings.ReplaceAll(strings.ReplaceAll(code, "\r\n", "\n"), "\n", "\r\n"))
+	}
+	if err := os.WriteFile(path, data, 0o600); err != nil {
 		return "", Result{ExitCode: -1}, &Error{Message: "can't save the script: " + err.Error()}
 	}
-	res, err := r.exec(ctx, dir, timeout, interpreter, path)
+	var res Result
+	var err error
+	switch language {
+	case PowerShell:
+		res, err = r.exec(ctx, dir, timeout, "", interpreter, "-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-File", path)
+	case Cmd:
+		res, err = r.exec(ctx, dir, timeout, `"`+interpreter+`" /d /s /c ""`+path+`""`, interpreter)
+	default:
+		res, err = r.exec(ctx, dir, timeout, "", interpreter, path)
+	}
 	return path, res, err
 }
 
-func (r *Runner) exec(ctx context.Context, dir string, timeout time.Duration, name string, args ...string) (Result, error) {
+// exec runs name with args, or, with a raw command line (Windows only),
+// exactly that line.
+func (r *Runner) exec(ctx context.Context, dir string, timeout time.Duration, raw, name string, args ...string) (Result, error) {
 	timeout = r.clampTimeout(timeout)
 	runCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
 	cmd := exec.CommandContext(runCtx, name, args...)
+	if raw != "" {
+		setRawCommandLine(cmd, raw)
+	}
 	cmd.Dir = dir
 	cmd.Env = r.env(dir)
 	cmd.Stdin = nil // /dev/null: nothing waits for input
@@ -174,7 +313,7 @@ func (r *Runner) exec(ctx context.Context, dir string, timeout time.Duration, na
 
 	started := time.Now()
 	err := cmd.Run()
-	res := Result{ExitCode: 0, Output: out.String(), Truncated: out.dropped, Duration: time.Since(started)}
+	res := Result{ExitCode: 0, Output: decodeOutput(out.bytes()), Truncated: out.dropped, Duration: time.Since(started)}
 	if err == nil {
 		return res, nil
 	}
@@ -238,6 +377,10 @@ func (r *Runner) python() string {
 	if r.Python != "" {
 		return r.Python
 	}
+	if runtime.GOOS == "windows" {
+		// Not python3: on Windows that is usually the Store's stub.
+		return firstInPath("python", "py")
+	}
 	return firstInPath("python3", "python")
 }
 
@@ -253,6 +396,9 @@ func firstInPath(names ...string) string {
 // env is the environment commands get: enough to work, nothing of the
 // server's own (keys, passwords).
 func (r *Runner) env(dir string) []string {
+	if r.InheritEnv {
+		return append(os.Environ(), "PYTHONUNBUFFERED=1", "PYTHONIOENCODING=utf-8", "PYTHONUTF8=1", "PAGER=cat", "GIT_PAGER=cat", "NO_COLOR=1", "PIP_DISABLE_PIP_VERSION_CHECK=1")
+	}
 	path := os.Getenv("PATH")
 	if path == "" {
 		path = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
@@ -300,8 +446,8 @@ func (r *Runner) Describe() string {
 				}
 			}
 		}
-		if sh := r.shell(); sh != "" {
-			parts = append(parts, "shell "+filepath.Base(sh))
+		if shells := r.Shells(); len(shells) > 0 {
+			parts = append(parts, "shells: "+strings.Join(shells, ", "))
 		}
 		if py := r.python(); py != "" {
 			if out, err := exec.CommandContext(ctx, py, "--version").CombinedOutput(); err == nil {
@@ -335,6 +481,12 @@ func (c *capped) Write(p []byte) (int, error) {
 	}
 	c.buf.Write(p)
 	return len(p), nil
+}
+
+func (c *capped) bytes() []byte {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return append([]byte(nil), c.buf.Bytes()...)
 }
 
 func (c *capped) String() string {

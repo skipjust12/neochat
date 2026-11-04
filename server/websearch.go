@@ -179,6 +179,14 @@ type webRun struct {
 	// writing maps a run_script call the model is still writing (its
 	// position in the step) to the step shown for it.
 	writing map[int]int
+
+	// Where the terminal tools run (resolveTarget): "server", "computer"
+	// (dev, with its MCP tools by function name) or "" (none);
+	// wantComputer: the user chose Computer.
+	target       string
+	dev          *deviceConn
+	mcpByName    map[string][2]string
+	wantComputer bool
 }
 
 // answer is routeAndCall's call for one model. Function-calling models go
@@ -189,7 +197,11 @@ type webRun struct {
 func (s *Server) answer(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, messages []provider.Message, generate func(context.Context, []provider.Message) (provider.GenerateResult, error), onActivity func([]conversation.ToolActivity)) (webAnswer, error) {
 	r := &webRun{s: s, req: req, prepared: prepared, model: model, generate: generate, onActivity: onActivity}
 	web := req.WebSearch == webSearchAuto || req.WebSearch == webSearchOn
-	if (!model.ToolCalling || !r.terminalAllowed()) && promptDescribesTerminal(messages) {
+	r.resolveTarget()
+	switch {
+	case r.wantComputer && r.target == "":
+		messages = withSystemNote(messages, computerMissingNote)
+	case (!model.ToolCalling || !r.terminalAllowed()) && promptDescribesTerminal(messages):
 		messages = withSystemNote(messages, noTerminalNote)
 	}
 	switch {
@@ -224,10 +236,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 	}
 	maxRounds := webMaxRounds
 	if r.terminalAllowed() {
-		tools = append(tools, terminalFunctionTools...)
-		if r.s.Attachments != nil {
-			tools = append(tools, sendFileTool)
-		}
+		tools = append(tools, r.terminalTools()...)
 		messages = withSystemNote(messages, r.terminalNote())
 		maxRounds = terminalMaxRounds
 	}
@@ -429,7 +438,11 @@ func (r *webRun) runTools(ctx context.Context, calls []provider.ToolCall, preset
 			defer recoverToolPanic(&results[i])
 			slots <- struct{}{}
 			defer func() { <-slots }()
-			stepCtx, cancel := context.WithTimeout(ctx, webStepTimeout)
+			timeout := webStepTimeout
+			if isLongTool(calls[i].Name) {
+				timeout = longToolTimeout
+			}
+			stepCtx, cancel := context.WithTimeout(ctx, timeout)
 			defer cancel()
 			results[i] = job(stepCtx)
 		}()
@@ -454,6 +467,9 @@ func (r *webRun) planTool(call provider.ToolCall, position int) (string, func(co
 	}
 	if call.Name == "send_file" {
 		return r.planSendFile(call)
+	}
+	if isComputerFileTool(call.Name) || isMCPTool(call.Name) {
+		return r.planComputerTool(call)
 	}
 	var args struct {
 		Query  string `json:"query"`
@@ -569,16 +585,17 @@ func finishedSteps(activity []conversation.ToolActivity) []conversation.ToolActi
 	out := append([]conversation.ToolActivity(nil), activity...)
 	for i := range out {
 		finished := len(out[i].Results) > 0 || out[i].Title != ""
-		switch {
-		case isTerminalTool(out[i].Tool):
-			finished = out[i].ExitCode != nil
-		case out[i].Tool == "send_file":
-			finished = out[i].Size > 0
+		if out[i].Tool != "web_search" && out[i].Tool != "web_fetch" {
+			// A tool step is pending exactly until it finishes.
+			finished = false
 		}
 		if out[i].Pending && out[i].Error == "" && !finished {
 			out[i].Error = "stopped"
 		}
-		out[i].Pending, out[i].Phase = false, ""
+		if out[i].Approval == "pending" {
+			out[i].Approval = ""
+		}
+		out[i].Pending, out[i].Phase, out[i].ApprovalID = false, "", ""
 	}
 	return out
 }
@@ -993,7 +1010,7 @@ func webStepsNote(steps []conversation.ToolActivity) string {
 				line += " (failed: " + oneLine(step.Error, 120) + ")"
 			}
 			lines = append(lines, line)
-		case "run_command", "run_script", "send_file":
+		case "run_command", "run_script", "send_file", "read_file", "write_file", "list_dir", "mcp":
 			lines = append(lines, terminalStepLine(step))
 			terminalSteps = true
 		}
@@ -1015,7 +1032,8 @@ func boundActivity(steps []conversation.ToolActivity) []conversation.ToolActivit
 	}
 	out := make([]conversation.ToolActivity, 0, len(steps))
 	for _, step := range steps {
-		if isTerminalTool(step.Tool) || step.Tool == "send_file" {
+		switch step.Tool {
+		case "run_command", "run_script", "send_file", "read_file", "write_file", "list_dir", "mcp":
 			out = append(out, boundTerminalStep(step))
 			continue
 		}

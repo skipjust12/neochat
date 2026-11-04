@@ -4,6 +4,7 @@ package terminal
 
 import (
 	"os/exec"
+	"strings"
 	"syscall"
 )
 
@@ -21,4 +22,10 @@ func killProcessGroup(cmd *exec.Cmd) error {
 		return cmd.Process.Kill()
 	}
 	return nil
+}
+
+func setRawCommandLine(cmd *exec.Cmd, line string) {}
+
+func decodeOutput(data []byte) string {
+	return strings.ToValidUTF8(string(data), "�")
 }

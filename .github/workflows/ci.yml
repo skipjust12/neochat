@@ -174,6 +174,39 @@ jobs:
           npm run build
           git diff --exit-code -- ../../server/assets/landing
 
+  desktop:
+    name: desktop app (Windows build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # cmd/neochat-desktop and the packages it runs (terminal, device,
+      # mcp) have Windows-only files the Linux checks above never compile.
+      - name: go vet (windows)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go vet ./cmd/neochat-desktop ./device ./mcp ./terminal
+
+      # A ready NeoChat.exe for the run's artifacts: download it from the
+      # run's summary page.
+      - name: Build NeoChat.exe
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags "-s -w" -o NeoChat.exe ./cmd/neochat-desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NeoChat-windows-amd64
+          path: NeoChat.exe
+          retention-days: 30
+
   govulncheck:
     name: govulncheck
     runs-on: ubuntu-latest

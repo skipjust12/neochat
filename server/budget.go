@@ -180,6 +180,12 @@ func (s *Server) validateRequest(req chatRequest) error {
 	if !validWebSearchMode(req.WebSearch) {
 		return fmt.Errorf("%w: web_search must be auto, on or off", errInvalidRequest)
 	}
+	if req.ExecuteOn != "" && req.ExecuteOn != executeOnServer && req.ExecuteOn != executeOnComputer {
+		return fmt.Errorf("%w: execute_on must be server or computer", errInvalidRequest)
+	}
+	if req.Approval != "" && req.Approval != approvalAsk && req.Approval != approvalAllow {
+		return fmt.Errorf("%w: approval must be ask or allow", errInvalidRequest)
+	}
 	if req.ReasoningEffort != "" && !reasoningEfforts[req.ReasoningEffort] {
 		return fmt.Errorf("%w: unknown reasoning effort", errInvalidRequest)
 	}

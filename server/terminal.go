@@ -16,6 +16,7 @@ import (
 
 	"neochat/attachment"
 	"neochat/conversation"
+	"neochat/device"
 	"neochat/provider"
 	"neochat/terminal"
 )
@@ -126,19 +127,9 @@ func isTerminalTool(name string) bool {
 	return name == "run_command" || name == "run_script"
 }
 
-// terminalAllowed reports whether this answer's model may use the terminal.
-func (r *webRun) terminalAllowed() bool {
-	return r.s.Terminal != nil && r.s.Terminal.Allowed(r.req.UserID)
-}
-
-func (r *webRun) terminalNote() string {
-	dir, err := r.s.Terminal.Dir(r.req.UserID, r.prepared.conversationID)
-	if err != nil {
-		dir = "unavailable: " + err.Error()
-	}
-	def, most := r.s.Terminal.TimeoutLimits()
-	return fmt.Sprintf(terminalToolsNote, r.s.Terminal.Describe(), dir, def, most)
-}
+// terminalAllowed reports whether this answer has a terminal, on the
+// server or on the user's computer (resolveTarget).
+func (r *webRun) terminalAllowed() bool { return r.target != "" }
 
 // --- the script the model is still writing ---
 
@@ -244,6 +235,7 @@ func (r *webRun) pruneWriting(keep func(position int) bool) {
 
 type terminalArgs struct {
 	Command        string `json:"command"`
+	Shell          string `json:"shell"`
 	About          string `json:"about"`
 	Language       string `json:"language"`
 	Code           string `json:"code"`
@@ -273,26 +265,29 @@ func (r *webRun) planTerminalTool(call provider.ToolCall, position int) (string,
 		return fail("the arguments are not valid JSON")
 	}
 	step := conversation.ToolActivity{Tool: call.Name, Phase: "running"}
+	if r.onComputer() {
+		step.Where = executeOnComputer
+	}
 	switch call.Name {
 	case "run_command":
 		args.Command = strings.TrimSpace(args.Command)
 		if args.Command == "" {
 			return fail("command is empty")
 		}
-		step.Command = clipRunes(args.Command, terminalShownCommand)
+		args.Shell = strings.ToLower(strings.TrimSpace(args.Shell))
+		if !r.onComputer() {
+			args.Shell = ""
+		} else if args.Shell != "" && !containsString(r.dev.info().Shells, args.Shell) {
+			return fail(fmt.Sprintf("shell must be one of %s, not %q", strings.Join(r.dev.info().Shells, ", "), args.Shell))
+		}
+		step.Command, step.Shell = clipRunes(args.Command, terminalShownCommand), args.Shell
 	case "run_script":
-		args.Language = strings.ToLower(strings.TrimSpace(args.Language))
-		if args.Language == "python3" || args.Language == "py" {
-			args.Language = terminal.Python
-		}
-		if args.Language == "sh" || args.Language == "shell" {
-			args.Language = terminal.Bash
-		}
+		args.Language = normalizeLanguage(args.Language)
 		if strings.TrimSpace(args.Code) == "" {
 			return fail("code is empty")
 		}
-		if args.Language != terminal.Python && args.Language != terminal.Bash {
-			return fail(fmt.Sprintf("language must be python or bash, not %q", args.Language))
+		if languages := r.scriptLanguages(); !containsString(languages, args.Language) {
+			return fail(fmt.Sprintf("language must be one of %s, not %q", strings.Join(languages, ", "), args.Language))
 		}
 		step.Language, step.Purpose, step.Command = args.Language, cleanPurpose(args.About), clipRunes(args.Code, terminalShownCommand)
 	}
@@ -316,16 +311,11 @@ func (r *webRun) planTerminalTool(call provider.ToolCall, position int) (string,
 	}
 	timeout := time.Duration(args.TimeoutSeconds) * time.Second
 	return "", func(ctx context.Context) string {
-		runner := r.s.Terminal
-		var res terminal.Result
-		dir, err := runner.Dir(r.req.UserID, r.prepared.conversationID)
-		if err == nil {
-			if call.Name == "run_command" {
-				res, err = runner.Run(ctx, dir, args.Command, timeout)
-			} else {
-				_, res, err = runner.RunScript(ctx, dir, args.Language, args.Code, timeout)
-			}
+		if !r.approve(ctx, index) {
+			r.finish(index, func(a *conversation.ToolActivity) { a.Phase, a.Error = "", "denied" })
+			return deniedResult
 		}
+		res, err := r.runCommand(ctx, call.Name, args, timeout)
 		r.finish(index, func(a *conversation.ToolActivity) {
 			a.Phase = ""
 			code := res.ExitCode
@@ -401,9 +391,18 @@ func roundDuration(d time.Duration) string {
 // terminalStepLine is a terminal step in webStepsNote.
 func terminalStepLine(step conversation.ToolActivity) string {
 	var line string
-	if step.Tool == "send_file" {
+	switch step.Tool {
+	case "send_file":
 		line = "- sent the user the file " + oneLine(orDefault(step.Title, step.Command), 120)
-	} else if step.Tool == "run_script" {
+	case "read_file":
+		line = "- read the file " + oneLine(step.Title, 200)
+	case "write_file":
+		line = "- wrote the file " + oneLine(step.Title, 200)
+	case "list_dir":
+		line = "- listed the folder " + oneLine(step.Title, 200)
+	case "mcp":
+		line = "- used the MCP tool " + oneLine(step.Title, 120)
+	case "run_script":
 		line = "- wrote and ran a " + orDefault(step.Language, "script")
 		if step.Language != "" {
 			line += " script"
@@ -411,10 +410,15 @@ func terminalStepLine(step conversation.ToolActivity) string {
 		if step.Purpose != "" {
 			line += " for " + oneLine(step.Purpose, 120)
 		}
-	} else {
+	default:
 		line = "- ran the command `" + oneLine(step.Command, terminalHistoryNoteCh) + "`"
 	}
+	if step.Where == executeOnComputer {
+		line += " on the user's computer"
+	}
 	switch {
+	case step.Error == "denied":
+		line += " (the user denied it, so it did not run)"
 	case step.Error != "":
 		line += " (failed: " + oneLine(step.Error, 120) + ")"
 	case step.TimedOut:
@@ -439,6 +443,9 @@ func boundTerminalStep(step conversation.ToolActivity) conversation.ToolActivity
 		Tool: step.Tool, Command: clipRunes(step.Command, 500), Purpose: clipRunes(step.Purpose, 160),
 		Error: clipRunes(step.Error, 200), TimedOut: step.TimedOut,
 		Title: clipRunes(step.Title, 200), Size: max(step.Size, 0),
+	}
+	if step.Where == executeOnComputer {
+		kept.Where = executeOnComputer
 	}
 	if step.Language == terminal.Python || step.Language == terminal.Bash {
 		kept.Language = step.Language
@@ -484,6 +491,9 @@ func (r *webRun) planSendFile(call provider.ToolCall) (string, func(context.Cont
 // sendFile stores a file from the terminal as one of the user's files and
 // adds it to the answer. The same file sent twice is sent once.
 func (r *webRun) sendFile(ctx context.Context, path, name string) (conversation.Attachment, error) {
+	if r.onComputer() {
+		return r.sendComputerFile(ctx, path, name)
+	}
 	dir, err := r.s.Terminal.Dir(r.req.UserID, r.prepared.conversationID)
 	if err != nil {
 		return conversation.Attachment{}, err
@@ -520,7 +530,37 @@ func (r *webRun) sendFile(ctx context.Context, path, name string) (conversation.
 	if err != nil {
 		return conversation.Attachment{}, fmt.Errorf("can't read %s: %v", path, err)
 	}
-	name = fileName(name, real)
+	return r.storeSentFile(ctx, real, fileName(name, real), data)
+}
+
+// sendComputerFile is sendFile for a file on the user's computer.
+func (r *webRun) sendComputerFile(ctx context.Context, path, name string) (conversation.Attachment, error) {
+	path = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(path), "sandbox:"), "file://")
+	r.mu.Lock()
+	if len(r.files) >= maxSentFiles {
+		r.mu.Unlock()
+		return conversation.Attachment{}, fmt.Errorf("at most %d files per answer", maxSentFiles)
+	}
+	r.mu.Unlock()
+	res, err := r.runOnComputer(ctx, device.Request{Op: device.OpFetchFile, Path: path})
+	if err != nil {
+		return conversation.Attachment{}, err
+	}
+	r.mu.Lock()
+	if sent, ok := r.sentFrom[res.Path]; ok {
+		r.mu.Unlock()
+		return sent, nil
+	}
+	r.mu.Unlock()
+	if strings.TrimSpace(name) == "" {
+		name = res.Name
+	}
+	return r.storeSentFile(ctx, res.Path, fileName(name, res.Name), res.Data)
+}
+
+// storeSentFile keeps a sent file with the user's files and adds it to the
+// answer; real is where it came from, so it goes once.
+func (r *webRun) storeSentFile(ctx context.Context, real, name string, data []byte) (conversation.Attachment, error) {
 	kind, mimeType := sentFileKind(name, data)
 	id := conversation.NewID()
 	file := attachment.File{ID: id, UserID: r.req.UserID, Name: name, MIME: mimeType, Kind: kind, Size: int64(len(data)), Data: data, CreatedAt: time.Now()}
@@ -643,4 +683,13 @@ func (r *webRun) rescueFileLinks(ctx context.Context, text string) string {
 		}
 		return "**" + file.Name + "** (below)"
 	})
+}
+
+func containsString(list []string, s string) bool {
+	for _, item := range list {
+		if item == s {
+			return true
+		}
+	}
+	return false
 }

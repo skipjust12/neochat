@@ -155,7 +155,7 @@ func TestTerminalIsOnlyForAllowedUsers(t *testing.T) {
 }
 
 func TestTerminalWritingStepIsDroppedWhenTheCallNeverComes(t *testing.T) {
-	r := &webRun{s: &Server{Terminal: &terminal.Runner{Users: []string{"*"}}}, req: chatRequest{UserID: "u1"}}
+	r := &webRun{s: &Server{Terminal: &terminal.Runner{Users: []string{"*"}}}, req: chatRequest{UserID: "u1"}, target: executeOnServer}
 	r.start(conversation.ToolActivity{Tool: "web_search", Query: "q"})
 	r.onToolProgress(toolProgress(0, "run_script", `{"about":"x"`))
 	r.onToolProgress(toolProgress(1, "run_script", `{"ab`))
