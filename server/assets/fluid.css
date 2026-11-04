@@ -941,6 +941,26 @@ html[data-theme="dark"] .row-chevron {
   --d: 96ms;
 }
 
+.attach-wrap.is-open .attach-row:nth-child(4) {
+  --d: 112ms;
+}
+
+.attach-wrap.is-open .attach-row:nth-child(5) {
+  --d: 128ms;
+}
+
+.attach-wrap.is-open .attach-row:nth-child(6) {
+  --d: 144ms;
+}
+
+.attach-wrap.is-open .attach-row:nth-child(7) {
+  --d: 160ms;
+}
+
+.attach-wrap.is-open .attach-row:nth-child(8) {
+  --d: 176ms;
+}
+
 .attach-wrap.is-closing .attach-tile {
   opacity: 0;
   transform: translateY(2px);
@@ -3346,7 +3366,8 @@ html[data-theme="dark"] #incognitoState:checked~.main::after {
 }
 
 #webSearchRow,
-#thinkingRow {
+#thinkingRow,
+#executeOnRow {
   grid-template-columns: 27px minmax(0,1fr) auto 14px;
 }
 
