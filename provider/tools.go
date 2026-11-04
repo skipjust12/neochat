@@ -76,6 +76,29 @@ func paragraphBreakFromContext(ctx context.Context) bool {
 	return on
 }
 
+// ToolCallProgress is a function call the model is still writing, as far
+// as it has streamed: Index is its position among this call's tool calls
+// (in the order they started), Arguments the JSON so far.
+type ToolCallProgress struct {
+	Index     int
+	Name      string
+	Arguments string
+}
+
+type toolCallProgressKey struct{}
+
+// WithToolCallProgress asks a streamed generation to call fn each time a
+// tool call grows, before the call is complete. fn runs on the stream's
+// goroutine and must not block.
+func WithToolCallProgress(ctx context.Context, fn func(ToolCallProgress)) context.Context {
+	return context.WithValue(ctx, toolCallProgressKey{}, fn)
+}
+
+func toolCallProgressFromContext(ctx context.Context) func(ToolCallProgress) {
+	fn, _ := ctx.Value(toolCallProgressKey{}).(func(ToolCallProgress))
+	return fn
+}
+
 // WebResult is one search hit or one cited source.
 type WebResult struct {
 	Title   string

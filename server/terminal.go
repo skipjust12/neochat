@@ -1,0 +1,420 @@
+package server
+
+import (
+	"context"
+	"encoding/json"
+	"fmt"
+	"regexp"
+	"strings"
+	"time"
+
+	"neochat/conversation"
+	"neochat/provider"
+	"neochat/terminal"
+)
+
+// Terminal access: with Server.Terminal set, function-calling models of
+// the users it allows get two more tools, and run code on this machine
+// instead of guessing at what it would do:
+//   - run_command runs a shell command;
+//   - run_script saves a Python or bash script the model wrote and runs it.
+//
+// Both run in a working directory of the chat's own that outlives the
+// answer, so a later command finds the files an earlier one wrote. The
+// model sees the exit code and the output (its start and end, when long)
+// and goes on. Each step streams as an activity: "Writing a script for …"
+// while the model is still writing a script (from the tool call as it
+// streams), "Running a command" / "Running a script" while it runs, and
+// "Ran a command" once it is done; opened, the thinking block shows the
+// command or the code, the exit code and the output.
+const (
+	terminalMaxRuns       = 20     // run_command + run_script calls per answer
+	terminalMaxRounds     = 24     // model calls per answer with the terminal on
+	terminalModelOutput   = 20_000 // characters of output the model gets
+	terminalShownOutput   = 6_000  // characters of output kept for display
+	terminalShownCommand  = 20_000 // characters of a command or script kept
+	terminalHistoryNoteCh = 160    // characters of a command in the history note
+)
+
+var terminalFunctionTools = []provider.FunctionTool{
+	{
+		Name:        "run_command",
+		Description: "Run a shell command on the server's terminal (bash -c) and get its exit code and output (stdout and stderr together). Use it to inspect files, run programs, install packages, check the system, or run a one-liner. It runs in this chat's own working directory, which keeps its files between calls. There is no stdin: nothing interactive (use flags like -y, avoid pagers and editors).",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				"command":         map[string]any{"type": "string", "description": "The command line to run."},
+				"timeout_seconds": map[string]any{"type": "integer", "description": "Time limit in seconds; omit for the default."},
+			},
+			"required": []string{"command"},
+		},
+	},
+	{
+		Name:        "run_script",
+		Description: "Write a script and run it on the server's terminal, then get its exit code and output. Prefer this over guessing whenever the answer depends on computing, parsing, converting or checking something: write the script, run it, read the output, and answer from it. Print what you need to see. The script runs in this chat's working directory; files it writes stay there for later calls.",
+		Parameters: map[string]any{
+			"type": "object",
+			"properties": map[string]any{
+				// "about" sorts first, so the model writes it before the code
+				// and the UI can say what the script is for while it is
+				// still being written.
+				"about":           map[string]any{"type": "string", "description": "What the script is for, in a few words, so it reads after \"Writing a script for\" (e.g. \"counting the words in report.txt\"). Write this first."},
+				"language":        map[string]any{"type": "string", "enum": []string{terminal.Python, terminal.Bash}, "description": "python (Python 3) or bash."},
+				"code":            map[string]any{"type": "string", "description": "The whole script."},
+				"timeout_seconds": map[string]any{"type": "integer", "description": "Time limit in seconds; omit for the default."},
+			},
+			"required": []string{"about", "language", "code"},
+		},
+	},
+}
+
+// terminalToolsNote goes to every tool-calling model with the terminal:
+// the facts of this machine. When and how to use it is in the core prompt
+// (prompts/*.md, "The terminal"); the short version here covers a persona
+// without it.
+const terminalToolsNote = "You have a terminal on the server this chat runs on: run_command runs a shell command, run_script writes a Python or bash script and runs it. Machine: %s. Working directory (this chat's own, kept between runs and messages): %s. Time limit per run: %s by default, up to %s with timeout_seconds. Use it instead of guessing whenever the answer depends on computing, running or checking something; read the output, fix and rerun on errors, then answer from what it printed."
+
+// noTerminalNote goes to a model that gets no terminal for this answer,
+// since the core prompt describes one: without it, a model may claim to
+// have run code.
+const noTerminalNote = "You have no terminal for this answer (run_command and run_script aren't available to this model here), so you can't run code: work it out yourself, say when a result is unchecked, and never claim you ran anything."
+
+// promptDescribesTerminal reports whether the leading system messages
+// (the persona's core prompt) tell the model about the terminal, which a
+// model without one then needs corrected (noTerminalNote).
+func promptDescribesTerminal(messages []provider.Message) bool {
+	for _, m := range messages {
+		if m.Role != "system" {
+			break
+		}
+		if strings.Contains(m.Content, "run_command") {
+			return true
+		}
+	}
+	return false
+}
+
+func isTerminalTool(name string) bool {
+	return name == "run_command" || name == "run_script"
+}
+
+// terminalAllowed reports whether this answer's model may use the terminal.
+func (r *webRun) terminalAllowed() bool {
+	return r.s.Terminal != nil && r.s.Terminal.Allowed(r.req.UserID)
+}
+
+func (r *webRun) terminalNote() string {
+	dir, err := r.s.Terminal.Dir(r.req.UserID, r.prepared.conversationID)
+	if err != nil {
+		dir = "unavailable: " + err.Error()
+	}
+	def, most := r.s.Terminal.TimeoutLimits()
+	return fmt.Sprintf(terminalToolsNote, r.s.Terminal.Describe(), dir, def, most)
+}
+
+// --- the script the model is still writing ---
+
+var aboutArgument = regexp.MustCompile(`"about"\s*:\s*"((?:[^"\\]|\\.)*)"`)
+
+// partialAbout is the script's purpose once the model has written it out
+// whole in the streamed arguments; "" until then.
+func partialAbout(arguments string) string {
+	m := aboutArgument.FindStringSubmatch(arguments)
+	if m == nil {
+		return ""
+	}
+	var about string
+	if json.Unmarshal([]byte(`"`+m[1]+`"`), &about) != nil {
+		return ""
+	}
+	return cleanPurpose(about)
+}
+
+func cleanPurpose(about string) string {
+	about = strings.Join(strings.Fields(about), " ")
+	about = strings.TrimRight(about, ".…")
+	return clipRunes(about, 160)
+}
+
+// onToolProgress shows a run_script call as "Writing a script for …" while
+// the model is still writing it. The step is taken over by planTool once
+// the call is complete (claimWriting); one that never completes is dropped
+// (dropWriting).
+func (r *webRun) onToolProgress(p provider.ToolCallProgress) {
+	if p.Name != "run_script" || !r.terminalAllowed() {
+		return
+	}
+	about := partialAbout(p.Arguments)
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if r.writing == nil {
+		r.writing = map[int]int{}
+	}
+	index, ok := r.writing[p.Index]
+	if !ok {
+		r.activity = append(r.activity, conversation.ToolActivity{Tool: "run_script", Purpose: about, Pending: true, Phase: "writing"})
+		r.writing[p.Index] = len(r.activity) - 1
+		r.emitLocked()
+		return
+	}
+	if step := &r.activity[index]; step.Purpose != about && about != "" {
+		step.Purpose = about
+		r.emitLocked()
+	}
+}
+
+// claimWriting takes the "writing" step shown for call position i, if
+// there is one; -1 if not.
+func (r *webRun) claimWriting(i int) int {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	index, ok := r.writing[i]
+	if !ok {
+		return -1
+	}
+	delete(r.writing, i)
+	return index
+}
+
+// dropWriting removes the "writing" steps no call took: the model call
+// failed, or ended without them.
+func (r *webRun) dropWriting() { r.pruneWriting(nil) }
+
+// pruneWriting removes the "writing" steps whose call position keep
+// rejects (nil: all of them). They are the last steps shown, since
+// nothing else starts while the model writes, so this runs before any
+// step of the tool calls starts.
+func (r *webRun) pruneWriting(keep func(position int) bool) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	drop := map[int]bool{}
+	for position, index := range r.writing {
+		if keep == nil || !keep(position) {
+			drop[index] = true
+			delete(r.writing, position)
+		}
+	}
+	if len(drop) == 0 {
+		return
+	}
+	kept := r.activity[:0]
+	shift := make([]int, len(r.activity))
+	for i, step := range r.activity {
+		shift[i] = len(kept)
+		if !drop[i] {
+			kept = append(kept, step)
+		}
+	}
+	r.activity = kept
+	for position, index := range r.writing {
+		r.writing[position] = shift[index]
+	}
+	r.emitLocked()
+}
+
+// --- running ---
+
+type terminalArgs struct {
+	Command        string `json:"command"`
+	About          string `json:"about"`
+	Language       string `json:"language"`
+	Code           string `json:"code"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+}
+
+// planTerminalTool is planTool for run_command and run_script: an
+// immediate result (bad arguments, limit reached) or the job that runs it.
+// position is the call's place in its step, for the script shown while it
+// was written.
+func (r *webRun) planTerminalTool(call provider.ToolCall, position int) (string, func(context.Context) string) {
+	writing := -1
+	if call.Name == "run_script" {
+		writing = r.claimWriting(position)
+	}
+	fail := func(message string) (string, func(context.Context) string) {
+		if writing >= 0 {
+			r.finish(writing, func(a *conversation.ToolActivity) { a.Error = message })
+		}
+		return "Error: " + message, nil
+	}
+	if !r.terminalAllowed() {
+		return fail("the terminal is not available")
+	}
+	var args terminalArgs
+	if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
+		return fail("the arguments are not valid JSON")
+	}
+	step := conversation.ToolActivity{Tool: call.Name, Phase: "running"}
+	switch call.Name {
+	case "run_command":
+		args.Command = strings.TrimSpace(args.Command)
+		if args.Command == "" {
+			return fail("command is empty")
+		}
+		step.Command = clipRunes(args.Command, terminalShownCommand)
+	case "run_script":
+		args.Language = strings.ToLower(strings.TrimSpace(args.Language))
+		if args.Language == "python3" || args.Language == "py" {
+			args.Language = terminal.Python
+		}
+		if args.Language == "sh" || args.Language == "shell" {
+			args.Language = terminal.Bash
+		}
+		if strings.TrimSpace(args.Code) == "" {
+			return fail("code is empty")
+		}
+		if args.Language != terminal.Python && args.Language != terminal.Bash {
+			return fail(fmt.Sprintf("language must be python or bash, not %q", args.Language))
+		}
+		step.Language, step.Purpose, step.Command = args.Language, cleanPurpose(args.About), clipRunes(args.Code, terminalShownCommand)
+	}
+	if !r.take(&r.runs, terminalMaxRuns) {
+		message := fmt.Sprintf("Terminal limit for this answer reached (%d runs). Answer with what you have.", terminalMaxRuns)
+		if writing >= 0 {
+			r.finish(writing, func(a *conversation.ToolActivity) { a.Error = "limit reached" })
+		}
+		return message, nil
+	}
+	var index int
+	if writing >= 0 {
+		index = writing
+		r.update(index, func(a *conversation.ToolActivity) {
+			pending := a.Pending
+			*a = step
+			a.Pending = pending
+		})
+	} else {
+		index = r.start(step)
+	}
+	timeout := time.Duration(args.TimeoutSeconds) * time.Second
+	return "", func(ctx context.Context) string {
+		runner := r.s.Terminal
+		var res terminal.Result
+		dir, err := runner.Dir(r.req.UserID, r.prepared.conversationID)
+		if err == nil {
+			if call.Name == "run_command" {
+				res, err = runner.Run(ctx, dir, args.Command, timeout)
+			} else {
+				_, res, err = runner.RunScript(ctx, dir, args.Language, args.Code, timeout)
+			}
+		}
+		r.finish(index, func(a *conversation.ToolActivity) {
+			a.Phase = ""
+			code := res.ExitCode
+			a.ExitCode = &code
+			a.TimedOut = res.TimedOut
+			a.DurationMS = res.Duration.Milliseconds()
+			a.Output, a.OutputChars = shownOutput(res.Output), len([]rune(res.Output))
+			if err != nil {
+				a.Error = toolErrorMessage(err)
+			}
+		})
+		if err != nil {
+			return "Error: " + toolErrorMessage(err)
+		}
+		return formatRun(res)
+	}
+}
+
+// update changes a step without ending it.
+func (r *webRun) update(index int, change func(*conversation.ToolActivity)) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	change(&r.activity[index])
+	r.emitLocked()
+}
+
+// formatRun is what the model gets back from a run.
+func formatRun(res terminal.Result) string {
+	var b strings.Builder
+	switch {
+	case res.TimedOut:
+		fmt.Fprintf(&b, "Killed: time limit reached after %s.\n", roundDuration(res.Duration))
+	default:
+		fmt.Fprintf(&b, "Exit code: %d (%s)\n", res.ExitCode, roundDuration(res.Duration))
+	}
+	output := res.Output
+	if strings.TrimSpace(output) == "" {
+		b.WriteString("(no output)")
+		return b.String()
+	}
+	b.WriteString("Output:\n")
+	b.WriteString(headAndTail(output, terminalModelOutput))
+	if res.Truncated {
+		b.WriteString("\n[Output was longer than the terminal keeps; the rest was dropped. Print less, or write it to a file and read parts of it.]")
+	}
+	return b.String()
+}
+
+func shownOutput(output string) string {
+	return headAndTail(strings.TrimRight(output, "\n"), terminalShownOutput)
+}
+
+// headAndTail keeps the start and the end of a long text, which is where
+// a command's output says what it did and how it ended.
+func headAndTail(text string, n int) string {
+	runes := []rune(text)
+	if len(runes) <= n {
+		return text
+	}
+	head, tail := n*2/3, n/3
+	return string(runes[:head]) + fmt.Sprintf("\n… [%d characters left out] …\n", len(runes)-head-tail) + string(runes[len(runes)-tail:])
+}
+
+func roundDuration(d time.Duration) string {
+	if d < time.Second {
+		return d.Round(time.Millisecond).String()
+	}
+	return d.Round(100 * time.Millisecond).String()
+}
+
+// --- history ---
+
+// terminalStepLine is a terminal step in webStepsNote.
+func terminalStepLine(step conversation.ToolActivity) string {
+	var line string
+	if step.Tool == "run_script" {
+		line = "- wrote and ran a " + orDefault(step.Language, "script")
+		if step.Language != "" {
+			line += " script"
+		}
+		if step.Purpose != "" {
+			line += " for " + oneLine(step.Purpose, 120)
+		}
+	} else {
+		line = "- ran the command `" + oneLine(step.Command, terminalHistoryNoteCh) + "`"
+	}
+	switch {
+	case step.Error != "":
+		line += " (failed: " + oneLine(step.Error, 120) + ")"
+	case step.TimedOut:
+		line += " (killed at the time limit)"
+	case step.ExitCode != nil:
+		line += fmt.Sprintf(" (exit code %d)", *step.ExitCode)
+	}
+	return line
+}
+
+func orDefault(s, def string) string {
+	if s == "" {
+		return def
+	}
+	return s
+}
+
+// boundTerminalStep keeps what a private chat's client sends back of a
+// terminal step within the bounds the history note uses.
+func boundTerminalStep(step conversation.ToolActivity) conversation.ToolActivity {
+	kept := conversation.ToolActivity{
+		Tool: step.Tool, Command: clipRunes(step.Command, 500), Purpose: clipRunes(step.Purpose, 160),
+		Error: clipRunes(step.Error, 200), TimedOut: step.TimedOut,
+	}
+	if step.Language == terminal.Python || step.Language == terminal.Bash {
+		kept.Language = step.Language
+	}
+	if step.ExitCode != nil {
+		code := *step.ExitCode
+		kept.ExitCode = &code
+	}
+	return kept
+}

@@ -632,7 +632,7 @@ func TestWebLoopFallsBackToTextWhenToolResultsAreRefused(t *testing.T) {
 	}
 	main := vendor.mainCalls()
 	final := main[len(main)-1]
-	if final["tools"] != nil || len(toolMessages(final)) != 0 || !hasSystemPrefix(final, "Results of the web searches and pages you asked for") {
+	if final["tools"] != nil || len(toolMessages(final)) != 0 || !hasSystemPrefix(final, "Results of the tools you called") {
 		t.Fatalf("final call = %v", final)
 	}
 	for _, m := range final["messages"].([]any) {

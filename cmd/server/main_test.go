@@ -16,3 +16,20 @@ func TestFreeModelPricingCanBeZero(t *testing.T) {
 		})
 	}
 }
+
+func TestTerminalIsOnByDefaultForEveryone(t *testing.T) {
+	t.Setenv("TERMINAL_ENABLED", "")
+	t.Setenv("TERMINAL_USERS", "")
+	r := terminalRunner()
+	if r == nil || !r.Allowed("anyone") {
+		t.Fatalf("runner = %+v", r)
+	}
+	t.Setenv("TERMINAL_USERS", "me")
+	if r := terminalRunner(); r.Allowed("anyone") || !r.Allowed("me") {
+		t.Fatal("TERMINAL_USERS not applied")
+	}
+	t.Setenv("TERMINAL_ENABLED", "false")
+	if terminalRunner() != nil {
+		t.Fatal("TERMINAL_ENABLED=false should turn it off")
+	}
+}

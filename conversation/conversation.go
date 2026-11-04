@@ -123,9 +123,11 @@ type QuestionOption struct {
 	Description string `json:"description,omitempty"`
 }
 
-// ToolActivity is one web step: a search ("web_search", with the query and
-// what came back) or a page the model read ("web_fetch", with its title,
-// the start of its text and its length).
+// ToolActivity is one tool step: a search ("web_search", with the query
+// and what came back), a page the model read ("web_fetch", with its title,
+// the start of its text and its length), or something it ran on the
+// server's terminal ("run_command", with the command; "run_script", with
+// the script's language, purpose and code), with what came out.
 type ToolActivity struct {
 	Tool    string    `json:"tool"`
 	Query   string    `json:"query,omitempty"`
@@ -135,9 +137,26 @@ type ToolActivity struct {
 	Excerpt string    `json:"excerpt,omitempty"`
 	Chars   int       `json:"chars,omitempty"`
 	Error   string    `json:"error,omitempty"`
+
+	// Terminal steps. Command is the command or the script's code,
+	// Language "python" or "bash" (scripts), Purpose what the script is
+	// for. ExitCode is set once it ran (-1: killed or stopped), Output is
+	// the start and end of what it printed, OutputChars the whole length.
+	Command     string `json:"command,omitempty"`
+	Language    string `json:"language,omitempty"`
+	Purpose     string `json:"purpose,omitempty"`
+	ExitCode    *int   `json:"exit_code,omitempty"`
+	Output      string `json:"output,omitempty"`
+	OutputChars int    `json:"output_chars,omitempty"`
+	TimedOut    bool   `json:"timed_out,omitempty"`
+	DurationMS  int64  `json:"duration_ms,omitempty"`
+
 	// Pending marks a step still running; only ever set in the live
-	// stream, never stored.
-	Pending bool `json:"pending,omitempty"`
+	// stream, never stored. Phase says what a pending terminal step is
+	// doing: "writing" (the model is still writing the script) or
+	// "running".
+	Pending bool   `json:"pending,omitempty"`
+	Phase   string `json:"phase,omitempty"`
 }
 
 // WebLink is a search hit or a cited page.

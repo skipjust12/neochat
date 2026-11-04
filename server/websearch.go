@@ -17,6 +17,7 @@ import (
 	"neochat/pagestore"
 	"neochat/provider"
 	"neochat/router"
+	"neochat/terminal"
 	"neochat/webfetch"
 	"neochat/websearch"
 )
@@ -170,15 +171,23 @@ type webRun struct {
 	activity []conversation.ToolActivity
 	searches int
 	fetches  int
+	runs     int
+	// writing maps a run_script call the model is still writing (its
+	// position in the step) to the step shown for it.
+	writing map[int]int
 }
 
 // answer is routeAndCall's call for one model. Function-calling models go
 // through the tool loop with ask_user, plus the web tools when the Web
-// search toggle allows; the rest answer plainly, or after a search in
-// "on" mode.
+// search toggle allows and the terminal tools when the server gives this
+// user a terminal (terminal.go); the rest answer plainly, or after a
+// search in "on" mode.
 func (s *Server) answer(ctx context.Context, req chatRequest, prepared preparedRequest, model router.Model, messages []provider.Message, generate func(context.Context, []provider.Message) (provider.GenerateResult, error), onActivity func([]conversation.ToolActivity)) (webAnswer, error) {
 	r := &webRun{s: s, req: req, prepared: prepared, model: model, generate: generate, onActivity: onActivity}
 	web := req.WebSearch == webSearchAuto || req.WebSearch == webSearchOn
+	if (!model.ToolCalling || !r.terminalAllowed()) && promptDescribesTerminal(messages) {
+		messages = withSystemNote(messages, noTerminalNote)
+	}
 	switch {
 	case model.ToolCalling:
 		return r.loop(ctx, messages, web)
@@ -193,24 +202,32 @@ func (s *Server) answer(ctx context.Context, req chatRequest, prepared preparedR
 }
 
 // loop is the tool loop for a function-calling model: ask_user always, the
-// web tools when web is on.
+// web tools when web is on, the terminal tools when this user has them.
 func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (webAnswer, error) {
-	tools := []provider.FunctionTool{askUserTool}
+	var tools []provider.FunctionTool
 	messages := base
 	if web {
-		tools = append(append([]provider.FunctionTool(nil), webFunctionTools...), askUserTool)
+		tools = append(tools, webFunctionTools...)
 		messages = withSystemNote(messages, fmt.Sprintf(webToolsNote, time.Now().UTC().Format("Monday, 2 January 2006")))
 		if r.req.WebSearch == webSearchOn {
 			messages = withSystemNote(messages, webSearchInstruction)
 		}
 	}
+	maxRounds := webMaxRounds
+	if r.terminalAllowed() {
+		tools = append(tools, terminalFunctionTools...)
+		messages = withSystemNote(messages, r.terminalNote())
+		maxRounds = terminalMaxRounds
+	}
+	tools = append(tools, askUserTool)
 	var out webAnswer
 	reasoningOff := false
-	for round := 0; round < webMaxRounds; round++ {
-		last := round == webMaxRounds-1
+	for round := 0; round < maxRounds; round++ {
+		last := round == maxRounds-1
 		callCtx := ctx
 		if !last {
 			callCtx = provider.WithFunctionTools(callCtx, tools)
+			callCtx = provider.WithToolCallProgress(callCtx, r.onToolProgress)
 		}
 		if out.Text != "" {
 			callCtx = provider.WithParagraphBreak(callCtx)
@@ -219,6 +236,9 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 			callCtx = provider.WithReasoning(callCtx, provider.Reasoning{Disabled: true, Adaptive: r.model.Reasoning == "adaptive"})
 		}
 		res, err := r.generate(callCtx, messages)
+		if err != nil {
+			r.dropWriting()
+		}
 		if err != nil && rejectedRequest(err) {
 			if round == 0 {
 				return r.withoutTools(ctx, base, err, web)
@@ -237,7 +257,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 				// text and let it answer without tools.
 				log.Printf("server: vendor refused tool results for model_id=%s, answering from them as text: %v", r.model.ID, err)
 				messages = flattenToolTurns(messages)
-				round = webMaxRounds - 2
+				round = maxRounds - 2
 				continue
 			}
 		}
@@ -251,6 +271,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 		out.WebSearches += res.WebSearches
 		out.Citations = append(out.Citations, res.Citations...)
 		if len(res.ToolCalls) == 0 {
+			r.dropWriting()
 			break
 		}
 		calls := res.ToolCalls
@@ -276,6 +297,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 				continue
 			}
 			out.Questionnaire = questionnaire
+			r.dropWriting()
 			out.Activity = r.snapshot()
 			return out, nil
 		}
@@ -371,12 +393,17 @@ func (r *webRun) withoutTools(ctx context.Context, messages []provider.Message, 
 func (r *webRun) runTools(ctx context.Context, calls []provider.ToolCall, preset map[int]string) []string {
 	results := make([]string, len(calls))
 	jobs := make([]func(context.Context) string, len(calls))
+	// A script shown while it was written that no call here takes.
+	r.pruneWriting(func(i int) bool {
+		_, answered := preset[i]
+		return i < len(calls) && calls[i].Name == "run_script" && !answered
+	})
 	for i, call := range calls {
 		if result, ok := preset[i]; ok {
 			results[i] = result
 			continue
 		}
-		results[i], jobs[i] = r.planTool(call)
+		results[i], jobs[i] = r.planTool(call, i)
 	}
 	slots := make(chan struct{}, webToolWorkers)
 	var wg sync.WaitGroup
@@ -401,7 +428,7 @@ func (r *webRun) runTools(ctx context.Context, calls []provider.ToolCall, preset
 
 func recoverToolPanic(result *string) {
 	if rec := recover(); rec != nil {
-		log.Printf("server: panic in web tool: %v", rec)
+		log.Printf("server: panic in tool: %v", rec)
 		*result = "Error: the tool failed."
 	}
 }
@@ -409,7 +436,10 @@ func recoverToolPanic(result *string) {
 // planTool checks one call: it returns either an immediate result (bad
 // arguments, unknown tool, limit reached) or the job that runs it, with
 // its step already shown as running.
-func (r *webRun) planTool(call provider.ToolCall) (string, func(context.Context) string) {
+func (r *webRun) planTool(call provider.ToolCall, position int) (string, func(context.Context) string) {
+	if isTerminalTool(call.Name) {
+		return r.planTerminalTool(call, position)
+	}
 	var args struct {
 		Query  string `json:"query"`
 		URL    string `json:"url"`
@@ -523,10 +553,14 @@ func finishedSteps(activity []conversation.ToolActivity) []conversation.ToolActi
 	}
 	out := append([]conversation.ToolActivity(nil), activity...)
 	for i := range out {
-		if out[i].Pending && out[i].Error == "" && len(out[i].Results) == 0 && out[i].Title == "" {
+		finished := len(out[i].Results) > 0 || out[i].Title != ""
+		if isTerminalTool(out[i].Tool) {
+			finished = out[i].ExitCode != nil
+		}
+		if out[i].Pending && out[i].Error == "" && !finished {
 			out[i].Error = "stopped"
 		}
-		out[i].Pending = false
+		out[i].Pending, out[i].Phase = false, ""
 	}
 	return out
 }
@@ -741,12 +775,15 @@ func formatPage(page pagestore.Page, window string, from, to int) string {
 func toolErrorMessage(err error) string {
 	var fetchErr *webfetch.Error
 	var searchErr *websearch.Error
+	var termErr *terminal.Error
 	var statusErr *provider.StatusError
 	switch {
 	case errors.As(err, &fetchErr):
 		return fetchErr.Message
 	case errors.As(err, &searchErr):
 		return searchErr.Message
+	case errors.As(err, &termErr):
+		return termErr.Message
 	case errors.As(err, &statusErr):
 		if msg := provider.VendorMessage(statusErr.Body); msg != "" {
 			return fmt.Sprintf("the search service refused (HTTP %d): %s", statusErr.StatusCode, msg)
@@ -851,7 +888,7 @@ func flattenToolTurns(messages []provider.Message) []provider.Message {
 		}
 	}
 	if results.Len() > 0 {
-		out = append(out, provider.Message{Role: "system", Content: "Results of the web searches and pages you asked for (tools are no longer available; answer from these):\n\n" + strings.TrimSuffix(results.String(), "\n\n---\n\n")})
+		out = append(out, provider.Message{Role: "system", Content: "Results of the tools you called -- web searches, pages, commands (tools are no longer available; answer from these):\n\n" + strings.TrimSuffix(results.String(), "\n\n---\n\n")})
 	}
 	return out
 }
@@ -908,6 +945,7 @@ const webNoteResults = 3
 // answer without web steps.
 func webStepsNote(steps []conversation.ToolActivity) string {
 	var lines []string
+	terminalSteps := false
 	for _, step := range steps {
 		switch step.Tool {
 		case "web_search":
@@ -937,10 +975,16 @@ func webStepsNote(steps []conversation.ToolActivity) string {
 				line += " (failed: " + oneLine(step.Error, 120) + ")"
 			}
 			lines = append(lines, line)
+		case "run_command", "run_script":
+			lines = append(lines, terminalStepLine(step))
+			terminalSteps = true
 		}
 	}
 	if len(lines) == 0 {
 		return ""
+	}
+	if terminalSteps {
+		return "[Before writing this answer you used your tools:\n" + strings.Join(lines, "\n") + "\nWhat it says about these comes from those results, not from memory.]"
 	}
 	return "[Before writing this answer you used your web tools:\n" + strings.Join(lines, "\n") + "\nWhat it says about these comes from those results, not from memory.]"
 }
@@ -953,6 +997,10 @@ func boundActivity(steps []conversation.ToolActivity) []conversation.ToolActivit
 	}
 	out := make([]conversation.ToolActivity, 0, len(steps))
 	for _, step := range steps {
+		if isTerminalTool(step.Tool) {
+			out = append(out, boundTerminalStep(step))
+			continue
+		}
 		if step.Tool != "web_search" && step.Tool != "web_fetch" {
 			continue
 		}
