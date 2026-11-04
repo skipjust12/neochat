@@ -24,10 +24,12 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"neochat/device"
@@ -105,13 +107,8 @@ func main() {
 	manager := mcp.NewManager(mcpConfig)
 	defer manager.Close()
 	client := &device.Client{
-		Server: cfg.Server, Key: cfg.Key, Version: version,
+		Server: cfg.Server, Version: version,
 		Executor: &device.Executor{Runner: runner, MCP: manager, WorkDir: workDir},
-		Status: func(connected bool, err error) {
-			if !connected && err != nil {
-				log.Printf("not connected: %v", err)
-			}
-		},
 	}
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
@@ -132,11 +129,48 @@ func main() {
 		}()
 	}
 
-	done := make(chan error, 1)
-	go func() { done <- client.Run(ctx) }()
+	// Connect first: a refused key is asked for again here, in the
+	// console, and the window opens once the key works, signed in with it.
+	var done chan error
+	for {
+		connected := make(chan struct{})
+		var once sync.Once
+		client.Key = cfg.Key
+		client.Status = func(ok bool, err error) {
+			if ok {
+				once.Do(func() { close(connected) })
+			} else if err != nil {
+				log.Printf("not connected: %v", err)
+			}
+		}
+		done = make(chan error, 1)
+		go func() { done <- client.Run(ctx) }()
+		fmt.Printf("Connecting to %s…\n", cfg.Server)
+		select {
+		case <-connected:
+			fmt.Println("Connected. Models can now work on this computer when \"Execute commands on\" is set to Computer.")
+		case <-time.After(15 * time.Second):
+			fmt.Println("Still connecting (the server may be down); opening the window anyway.")
+		case err := <-done:
+			var authErr *device.AuthError
+			if !errors.As(err, &authErr) {
+				reportExit(err)
+				return
+			}
+			fmt.Println("\nThe server didn't accept that key. Use your NeoChat key: the one you sign in to NeoChat with, nc_ and 64 letters and digits (not the Polza key, pza_...).")
+			cfg.Key = askKey(bufio.NewReader(os.Stdin))
+			if err := saveConfig(dir, cfg); err != nil {
+				fatal(err)
+			}
+			continue
+		case <-ctx.Done():
+			return
+		}
+		break
+	}
 
 	if !*noWindow {
-		windowClosed := openWindow(ctx, cfg.Server, filepath.Join(dir, "browser"))
+		windowClosed := openWindow(ctx, cfg.Server+"/#desktop-key="+url.QueryEscape(cfg.Key), filepath.Join(dir, "browser"))
 		select {
 		case <-windowClosed:
 			log.Print("the window was closed: disconnecting this computer")
@@ -187,32 +221,78 @@ func loadConfig(dir, server, key string) (config, error) {
 		cfg.Key, changed = key, true
 	}
 	in := bufio.NewReader(os.Stdin)
-	if cfg.Server == "" {
+	for cfg.Server == "" {
 		fmt.Print("NeoChat server address (e.g. https://chat.example.com): ")
 		cfg.Server, changed = readLine(in), true
 	}
-	if cfg.Key == "" {
-		fmt.Print("Your NeoChat API key (nc_...): ")
-		cfg.Key, changed = readLine(in), true
-	}
 	cfg.Server = strings.TrimRight(strings.TrimSpace(cfg.Server), "/")
-	if !strings.Contains(cfg.Server, "://") && cfg.Server != "" {
+	if !strings.Contains(cfg.Server, "://") {
 		cfg.Server = "https://" + cfg.Server
-	}
-	cfg.Key = strings.TrimSpace(cfg.Key)
-	if cfg.Server == "" || cfg.Key == "" {
-		return cfg, errors.New("the server address and the API key are both needed")
 	}
 	if _, err := device.ConnectURL(cfg.Server); err != nil {
 		return cfg, err
 	}
+	cfg.Key = cleanKey(cfg.Key)
+	if keyProblem(cfg.Key) != "" {
+		if cfg.Key != "" {
+			fmt.Println(keyProblem(cfg.Key))
+		}
+		cfg.Key, changed = askKey(in), true
+	}
 	if changed {
-		data, _ := json.MarshalIndent(cfg, "", "  ")
-		if err := os.WriteFile(path, append(data, '\n'), 0o600); err != nil {
+		if err := saveConfig(dir, cfg); err != nil {
 			return cfg, err
 		}
 	}
 	return cfg, nil
+}
+
+func saveConfig(dir string, cfg config) error {
+	data, _ := json.MarshalIndent(cfg, "", "  ")
+	return os.WriteFile(filepath.Join(dir, "config.json"), append(data, '\n'), 0o600)
+}
+
+// askKey asks for the NeoChat API key until it looks like one.
+func askKey(in *bufio.Reader) string {
+	for {
+		fmt.Print("Your NeoChat API key (nc_...): ")
+		key := cleanKey(readLine(in))
+		problem := keyProblem(key)
+		if problem == "" {
+			return key
+		}
+		fmt.Println(problem)
+	}
+}
+
+// cleanKey takes off what a paste tends to bring along: spaces, quotes, a
+// "Bearer " in front.
+func cleanKey(key string) string {
+	key = strings.TrimSpace(key)
+	key = strings.Trim(key, "\"'` ")
+	key = strings.TrimPrefix(key, "Bearer ")
+	return strings.TrimSpace(key)
+}
+
+// keyProblem says what is wrong with a key, "" when it looks right: nc_
+// and 64 hex digits (auth's token format).
+func keyProblem(key string) string {
+	switch {
+	case key == "":
+		return "The key is empty."
+	case strings.HasPrefix(key, "pza_"):
+		return "That's a Polza key (pza_...). The app needs your NeoChat key, the one you sign in to NeoChat with (nc_...)."
+	case !strings.HasPrefix(key, "nc_"):
+		return "NeoChat keys start with nc_."
+	case len(key) != 67:
+		return fmt.Sprintf("That key is %d characters long; NeoChat keys are 67 (nc_ and 64 more). Was it cut off while pasting?", len(key))
+	}
+	for _, c := range key[3:] {
+		if !strings.ContainsRune("0123456789abcdef", c) {
+			return "NeoChat keys are nc_ and then digits and letters a-f only. Check that it was pasted whole."
+		}
+	}
+	return ""
 }
 
 func readLine(in *bufio.Reader) string {

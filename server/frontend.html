@@ -2100,11 +2100,23 @@
       }
       // A tab opened before sessions existed still has its key in
       // sessionStorage: trade it for a session once, then forget it.
+      // The desktop app (cmd/neochat-desktop) opens its window at
+      // /#desktop-key=<key>, so the window signs in with the key the app
+      // already has. The fragment never reaches the server, and it leaves
+      // the address bar at once.
+      function desktopKey(){
+        const match=/^#desktop-key=([^&]+)/.exec(location.hash||'');
+        if(!match)return '';
+        try{history.replaceState(null,'',location.pathname+location.search)}catch(error){}
+        try{return decodeURIComponent(match[1]).trim()}catch(error){return ''}
+      }
       function start(){
         const legacyKey=storedValue(sessionStorage,legacyKeyStorageKey).trim();
         storeValue(sessionStorage,legacyKeyStorageKey,'');
         storeValue(localStorage,legacyKeyStorageKey,'');
-        if(legacyKey)signIn(legacyKey).catch(check);else check();
+        const appKey=desktopKey();
+        const key=legacyKey||appKey;
+        if(key)signIn(key).catch(check);else check();
         // Signing in, out or as someone else in another tab changes the
         // hint: follow it here.
         window.addEventListener('storage',function(event){if(event.key===signedInHintKey)check()});
