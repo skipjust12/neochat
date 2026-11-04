@@ -44,6 +44,12 @@ import (
 )
 
 func main() {
+	// Before anything else: the terminal's commands run as this same OS
+	// user and must not be able to read this process's keys from /proc.
+	if err := terminal.HideServerSecrets(); err != nil {
+		log.Fatal(err)
+	}
+
 	// .env is optional (real deployments set env vars directly) and never
 	// overrides a variable already set in the real environment -- see
 	// internal/envfile's doc comment.
