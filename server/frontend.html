@@ -5582,6 +5582,7 @@
             const madeImages=(Array.isArray(data.images)&&data.images.length>0)||(Array.isArray(data.videos)&&data.videos.length>0);
             if(imageGen)imageGen.finish(data.images,data.videos);
             stream.replace(data.response_text||(data.questionnaire||madeImages?'':'The server returned an empty response.'));
+            renderAnswerFiles(pending,data.files);
           }
         }});
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
@@ -5712,6 +5713,7 @@
               pending.classList.remove('is-pending');
               thought.done(data);
               stream.replace(data.response_text||'');
+              renderAnswerFiles(pending,data.files);
             }
           }});
         await stream.finish();
