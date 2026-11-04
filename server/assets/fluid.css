@@ -9935,3 +9935,16 @@ html[data-theme="light"] {
     width: 100%;
   }
 }
+
+/* ---------- iOS ---------- */
+/* Safari zooms the page into any field under 16px when it gets focus, and
+   leaves it zoomed. On iOS (only it has -webkit-touch-callout) every text
+   field is 16px, which it doesn't zoom into. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+  }
+}
