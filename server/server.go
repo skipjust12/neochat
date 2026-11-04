@@ -35,6 +35,7 @@ import (
 	"neochat/ratelimit"
 	"neochat/router"
 	"neochat/settings"
+	"neochat/terminal"
 	"neochat/summarizer"
 	"neochat/tokenizer"
 	"neochat/webfetch"
@@ -228,6 +229,11 @@ type Server struct {
 	Pages            pagestore.Store
 	Searcher         WebSearcher
 	WebSearchModelID string
+
+	// Terminal runs commands and scripts on this machine for the
+	// run_command and run_script tools (terminal.go), for the users it
+	// allows. Nil: no model gets a terminal.
+	Terminal *terminal.Runner
 
 	// TitleModelID is the catalog model that names new chats (title.go);
 	// empty: chats keep the start of their first message as their name.

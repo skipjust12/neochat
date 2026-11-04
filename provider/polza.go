@@ -506,6 +506,7 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 		var details reasoningDetails
 		var callOrder []int
 		calls := map[int]*streamedToolCall{}
+		onToolCall := toolCallProgressFromContext(ctx)
 		// A call continuing an answer already on screen opens with a
 		// paragraph break (see WithParagraphBreak).
 		pendingBreak := paragraphBreakFromContext(ctx)
@@ -552,6 +553,15 @@ func (c *PolzaClient) GenerateStream(ctx context.Context, apiModelID string, mes
 					}
 					acc.name += call.Function.Name
 					acc.arguments.WriteString(call.Function.Arguments)
+					if onToolCall != nil {
+						position := 0
+						for i, index := range callOrder {
+							if index == call.Index {
+								position = i
+							}
+						}
+						onToolCall(ToolCallProgress{Index: position, Name: acc.name, Arguments: acc.arguments.String()})
+					}
 				}
 				reasoning.WriteString(choice.Delta.Reasoning)
 				details.add(choice.Delta.ReasoningDetails)

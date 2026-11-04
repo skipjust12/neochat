@@ -6676,6 +6676,77 @@ html[data-theme="dark"] .brand-shimmer {
   color: var(--muted);
 }
 
+/* Terminal steps (run_command / run_script) in the thinking block: the
+   command or the script, then what it printed. */
+.term-step {
+  gap: 5px;
+}
+
+.term-label {
+  padding-left: 21px;
+  color: var(--muted);
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: .04em;
+  text-transform: uppercase;
+}
+
+.term-block {
+  display: grid;
+  justify-items: start;
+  margin-left: 21px;
+  min-width: 0;
+}
+
+.term-code,
+.term-output {
+  box-sizing: border-box;
+  width: 100%;
+  max-height: 260px;
+  margin: 0;
+  padding: 8px 10px;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  color: var(--text);
+  font: 400 11.5px/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  white-space: pre;
+  tab-size: 4;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.term-code.is-folded {
+  max-height: calc(12 * 1.5em + 16px);
+  overflow: hidden;
+  -webkit-mask-image: linear-gradient(#000 70%, transparent);
+  mask-image: linear-gradient(#000 70%, transparent);
+}
+
+.term-output {
+  box-sizing: border-box;
+  width: calc(100% - 21px);
+  margin-left: 21px;
+  color: var(--muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.term-more {
+  margin-left: 0;
+}
+
+.term-empty {
+  margin: 0 0 0 21px;
+  color: var(--muted);
+  font-size: 12px;
+  font-style: italic;
+}
+
+.term-status.is-failed {
+  color: #e5484d;
+}
+
 /* Questionnaire (ask_user): a panel above the composer -- in its place on
    phones -- that asks one question at a time, and a card on the answer
    that asked it. */

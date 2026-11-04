@@ -38,6 +38,7 @@ import (
 	"neochat/server"
 	"neochat/settings"
 	"neochat/summarizer"
+	"neochat/terminal"
 	"neochat/webfetch"
 	"neochat/websearch"
 )
@@ -326,6 +327,10 @@ func main() {
 		// the cheapest current one).
 		Fetcher:  &webfetch.Fetcher{},
 		Searcher: webSearcher(os.Getenv("SEARXNG_URL")),
+		// A terminal on this machine for the models (server/terminal.go):
+		// off unless TERMINAL_ENABLED=true, and then only for the users in
+		// TERMINAL_USERS. See terminalRunner.
+		Terminal: terminalRunner(),
 		// Image models (kind "image" in configs/models.json) make pictures
 		// through Polza's Media API on the user's own image key.
 		Images: &imagegen.Client{},
@@ -498,4 +503,51 @@ func webSearcher(baseURL string) server.WebSearcher {
 		return nil
 	}
 	return &websearch.SearXNG{BaseURL: strings.TrimSpace(baseURL)}
+}
+
+// terminalRunner is the terminal models get for run_command and
+// run_script (TERMINAL_ENABLED=true; nil otherwise). Commands run on this
+// machine as the server's own user: TERMINAL_USERS (required) lists the
+// user ids allowed, comma-separated, or "*" for everyone with a key.
+// TERMINAL_WORKDIR holds a working directory per chat (default: the
+// system temp directory's neochat-terminal); TERMINAL_TIMEOUT and
+// TERMINAL_MAX_TIMEOUT are the default and longest time one command may
+// run (Go durations; default 60s and 10m).
+func terminalRunner() *terminal.Runner {
+	if os.Getenv("TERMINAL_ENABLED") != "true" {
+		return nil
+	}
+	var users []string
+	for _, u := range strings.Split(os.Getenv("TERMINAL_USERS"), ",") {
+		if u = strings.TrimSpace(u); u != "" {
+			users = append(users, u)
+		}
+	}
+	if len(users) == 0 {
+		log.Fatal(`TERMINAL_ENABLED=true needs TERMINAL_USERS: the user ids allowed to use the terminal, comma-separated, or "*" for everyone`)
+	}
+	r := &terminal.Runner{
+		WorkDir:    strings.TrimSpace(os.Getenv("TERMINAL_WORKDIR")),
+		Users:      users,
+		Timeout:    getenvDurationDefault("TERMINAL_TIMEOUT", 0),
+		MaxTimeout: getenvDurationDefault("TERMINAL_MAX_TIMEOUT", 0),
+	}
+	log.Printf("terminal: enabled for %s (%s); commands run on this machine as the server's user", strings.Join(users, ", "), r.Describe())
+	return r
+}
+
+// getenvDurationDefault is getenvIntDefault for a Go duration ("90s").
+func getenvDurationDefault(key string, def time.Duration) time.Duration {
+	v := os.Getenv(key)
+	if v == "" {
+		return def
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil {
+		log.Fatalf("%s: %v", key, err)
+	}
+	if d <= 0 {
+		log.Fatalf("%s must be positive", key)
+	}
+	return d
 }
