@@ -1,7 +1,7 @@
 # NeoChat desktop app (Windows x64)
 
-`NeoChat.exe` built from `cmd/neochat-desktop` at commit 8c06d4c of `claude/gifted-hawking-tm3psd`.
+`NeoChat.exe` built from `cmd/neochat-desktop` at commit 0a72182 of `claude/gifted-hawking-tm3psd`.
 
-SHA-256: `2b68027d7e308e7726739e7ada7ddf43b98e9aecd73fe1938426a30a2207c290`
+SHA-256: `29071806c55e3ebdf6b8352b4083be8462f5d1712da9288bcdb4c5f921b7f4e1`
 
-Needs a NeoChat server with the device endpoint (`GET /device/connect`) deployed. First run asks for the server address and your API key; see docs/running-locally.md, "The desktop app".
+Needs a NeoChat server with this version deployed (`GET /device/connect`, and the window's sign-in with `#desktop-key`). The first run asks for the server address and your NeoChat key (nc_...); see docs/running-locally.md, "The desktop app".
