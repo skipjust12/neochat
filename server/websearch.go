@@ -198,6 +198,7 @@ func (s *Server) answer(ctx context.Context, req chatRequest, prepared preparedR
 	r := &webRun{s: s, req: req, prepared: prepared, model: model, generate: generate, onActivity: onActivity}
 	web := req.WebSearch == webSearchAuto || req.WebSearch == webSearchOn
 	r.resolveTarget()
+	messages = withSystemNote(messages, identityNote(model))
 	switch {
 	case r.wantComputer && r.target == "":
 		messages = withSystemNote(messages, computerMissingNote)
@@ -873,6 +874,18 @@ func webRefusal(err error) string {
 		return fmt.Sprintf("Polza refused web search for this model (HTTP %d).", statusErr.StatusCode)
 	}
 	return fmt.Sprintf("Polza refused web search for this model (HTTP %d): %s", statusErr.StatusCode, reason)
+}
+
+// identityNote tells the model answering which model it is and where it
+// runs: the persona prompts only call it NeoChat, and a model behind an API
+// often can't name itself. It goes with every answer, since a chat can
+// change models between turns.
+func identityNote(model router.Model) string {
+	name := model.DisplayName
+	if name == "" {
+		name = model.ID
+	}
+	return fmt.Sprintf("You are %s, one of the AI models available in NeoChat. NeoChat is the chat app the user is talking to you in, and it reaches you through an API (model id: %s); where these instructions call you NeoChat, that is the app's name, not the model's. If asked which model you are, give that name and say you run in NeoChat through the API. Go by this rather than by what you believe about yourself. Answers earlier in this chat may have come from other models.", name, model.ResolveAPIModelID())
 }
 
 // withSystemNote adds a system message after the leading system messages

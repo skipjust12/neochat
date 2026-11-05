@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"math"
+	"strings"
 	"testing"
 	"time"
 
@@ -47,12 +48,12 @@ func TestPromptCache_ClaudeChatMarksPrefixAndBillsWhatPolzaCharged(t *testing.T)
 	second := events["done"][0].(chatResponse)
 
 	marked := cacheMarked(standIn.lastBody(t))
-	want := []string{"system: The user's custom instructions (from their settings) -- follow them unless they conflict with the rules above:\nBe brief.", "user: first question", "user: second question"}
+	want := []string{"system: You are claude-haiku-4-5,", "user: first question", "user: second question"}
 	if len(marked) != len(want) {
 		t.Fatalf("cache marks = %q, want %q", marked, want)
 	}
 	for i := range want {
-		if marked[i] != want[i] {
+		if !strings.HasPrefix(marked[i], want[i]) {
 			t.Fatalf("cache marks = %q, want %q", marked, want)
 		}
 	}

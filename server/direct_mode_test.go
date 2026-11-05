@@ -222,8 +222,8 @@ func TestDirectMode_SendsKeyEffortPersonaAndInstructions(t *testing.T) {
 			system = append(system, m["content"].(string))
 		}
 	}
-	if len(system) != 2 || system[0] != "expert persona prompt" || !strings.Contains(system[1], "Answer in Russian.") {
-		t.Fatalf("system messages = %q, want persona then instructions", system)
+	if len(system) != 3 || system[0] != "expert persona prompt" || !strings.Contains(system[1], "Answer in Russian.") || !strings.HasPrefix(system[2], "You are GPT-6 Luna,") {
+		t.Fatalf("system messages = %q, want persona, instructions, then the model's identity", system)
 	}
 }
 

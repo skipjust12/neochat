@@ -385,7 +385,7 @@ func TestHandle_NoSystemMessageWhenPersonaPromptNotWrittenYet(t *testing.T) {
 	if len(genClient.Requests) != 1 {
 		t.Fatalf("expected exactly 1 generate call, got %d", len(genClient.Requests))
 	}
-	for _, m := range genClient.Requests[0].Messages {
+	for _, m := range withoutIdentityNote(genClient.Requests[0].Messages) {
 		if m.Role == "system" {
 			t.Errorf("expected no system message for a persona with no loaded prompt, got %+v", genClient.Requests[0].Messages)
 		}
@@ -503,7 +503,7 @@ func TestHandle_ConversationHistoryCarriesToNextTurn(t *testing.T) {
 	if len(genClient.Requests) != 2 {
 		t.Fatalf("expected 2 generate calls, got %d", len(genClient.Requests))
 	}
-	turn2Messages := genClient.Requests[1].Messages
+	turn2Messages := withoutIdentityNote(genClient.Requests[1].Messages)
 	if len(turn2Messages) != 3 {
 		t.Fatalf("turn 2 sent %d messages, want 3 (prior user + prior assistant + new user): %+v", len(turn2Messages), turn2Messages)
 	}
@@ -543,7 +543,7 @@ func TestHandle_IncognitoUsesRequestHistoryWithoutPersisting(t *testing.T) {
 		t.Fatalf("generate calls = %d, want 1", len(genClient.Requests))
 	}
 	want := []provider.Message{{Role: "user", Content: "private question"}, {Role: "assistant", Content: "private reply"}, {Role: "user", Content: "follow up"}}
-	got := genClient.Requests[0].Messages
+	got := withoutIdentityNote(genClient.Requests[0].Messages)
 	if len(got) != len(want) {
 		t.Fatalf("generated messages = %+v, want %+v", got, want)
 	}
