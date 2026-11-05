@@ -12,8 +12,8 @@ func TestLoadPlanLimits(t *testing.T) {
 	if !ok {
 		t.Fatal("expected a \"pro\" plan in configs/plans.json")
 	}
-	if pro.ThinkingMaxCapUSD != 10.0 || pro.InstantExtraCapUSD != 3.0 {
-		t.Errorf("pro plan = %+v, want thinking_max_cap_usd=10, instant_extra_cap_usd=3", pro)
+	if pro.ThinkingMaxCapUSD != 100000000.0 || pro.InstantExtraCapUSD != 100000000.0 {
+		t.Errorf("pro plan = %+v, want thinking_max_cap_usd=100000000, instant_extra_cap_usd=100000000", pro)
 	}
 
 	for _, id := range []string{"pro", "pro_plus", "max"} {
