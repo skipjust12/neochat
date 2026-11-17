@@ -5182,12 +5182,14 @@ h1 {
   min-height: 36px;
 }
 
-.thinking-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--muted);
-  animation: fluid-pulse 1.4s ease-in-out infinite;
+/* The dots before a working state's label (stateDots in frontend.html):
+   drawn on a canvas in the text color, so they follow the theme. */
+.state-dots {
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--text);
 }
 
 .thinking-label {
@@ -5221,12 +5223,6 @@ h1 {
   transform: rotate(-90deg);
 }
 
-@keyframes fluid-pulse {
-  50% {
-    opacity: .3;
-    transform: scale(.75);
-  }
-}
 
 /* Card layouts: real page headers, filter rows, cards with hierarchy. */
 

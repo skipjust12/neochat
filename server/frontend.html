@@ -16,7 +16,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=2" />
-<link rel="stylesheet" href="/assets/fluid.css?v=35" />
+<link rel="stylesheet" href="/assets/fluid.css?v=36" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -2507,6 +2507,147 @@
       });
     },10000);
 
+    /* ---------- state dots ---------- */
+    // A small field of dots before a working state's label, a different
+    // motion for each state: "orbit" while the request goes out and the
+    // model thinks, "swap" while a command or script runs, "brackets"
+    // while the model writes a script, "bubbles" while it sends a file,
+    // "reveal" while it searches the web, "nod" while it waits for the
+    // user's approval. Each is a function of time to dots ({x, y, r, a},
+    // x and y in -1..1 of the field), all at 0.8x speed; one animation
+    // frame loop draws every field on the page, in the text color.
+    const stateDots=(function(){
+      const TAU=Math.PI*2,N=12,R=0.15,SPEED=0.8,BOUNCE=1.9,TRANSITION=420;
+      const clamp=function(x,a,b){a=a===undefined?0:a;b=b===undefined?1:b;return Math.min(b,Math.max(a,x))};
+      const ss=function(a,b,x){const t=clamp((x-a)/(b-a));return t*t*(3-2*t)};
+      const lerp=function(a,b,t){return a+(b-a)*t};
+      const easeIn=function(t){return t*t*t};
+      const curves={
+        cubic:function(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2},
+        sine:function(t){return .5-.5*Math.cos(Math.PI*t)}
+      };
+      let ease=curves.cubic;
+      const easeIO=function(t){return ease(t)};
+      const back=function(t){return 1+(BOUNCE+1)*Math.pow(t-1,3)+BOUNCE*Math.pow(t-1,2)};
+      const D=function(x,y,r,a){return {x:x,y:y,r:r===undefined?R:r,a:a===undefined?1:a}};
+      const fill=function(arr){while(arr.length<N)arr.push(Object.assign({},arr[0],{r:0}));return arr};
+      // A loop of poses: each dot hops to its next place, on an arc.
+      function seq(t,poses,hold,move,arc){
+        const step=hold+move,T=t/step,i=Math.floor(T),f=T-i;
+        const e=easeIO(clamp((f-hold)/move));
+        const A=poses[i%poses.length],B=poses[(i+1)%poses.length];
+        return A.map(function(p,k){
+          const q=B[k],dx=q[0]-p[0],dy=q[1]-p[1],len=Math.hypot(dx,dy)||1;
+          const h=arc*Math.sin(Math.PI*clamp(e));
+          return D(lerp(p[0],q[0],e)+(dy/len)*h,lerp(p[1],q[1],e)-(dx/len)*h);
+        });
+      }
+      const SQ=[[-.32,-.32],[.32,-.32],[.32,.32],[-.32,.32]];
+      const motions={
+        orbit:{curve:'cubic',still:30,f:function(t){
+          const T=t/0.55,i=Math.floor(T),e=back(clamp((T-i-0.25)/0.75)),a0=(i+e)*TAU/3-Math.PI/2;
+          return [0,1,2].map(function(k){const a=a0+k*TAU/3;return D(.42*Math.cos(a),.42*Math.sin(a))});
+        }},
+        swap:{curve:'sine',still:30,f:function(t){
+          return seq(t,[SQ,[SQ[2],SQ[1],SQ[0],SQ[3]],[SQ[2],SQ[3],SQ[0],SQ[1]],[SQ[0],SQ[3],SQ[2],SQ[1]]],0.15,0.38,0.22);
+        }},
+        bubbles:{curve:'cubic',still:30.3,f:function(t){
+          return [0,1,2].map(function(k){
+            const q=(t*0.8+k/3)%1,a=ss(0,.15,q)*(1-ss(.8,1,q));
+            return D([-.25,.05,.3][k]+.14*Math.sin(q*TAU*1.5+k*2),lerp(.75,-.75,q),R*lerp(.5,1.05,q)*a,a);
+          });
+        }},
+        reveal:{curve:'cubic',still:30.8,f:function(t){
+          const p=(t/1.6)%1,O=[0,2,1,3];
+          return SQ.map(function(xy,k){const o=O[k];return D(xy[0],xy[1],R*Math.max(0,back(ss(o*.1,o*.1+.15,p)))*(1-easeIn(ss(.72+o*.05,.82+o*.05,p))))});
+        }},
+        brackets:{curve:'cubic',still:30.3,f:function(t){
+          const p=(t/.9)%1,q=back(ss(0,.4,p))*(1-easeIO(ss(.5,.9,p))),bx=lerp(.55,.26,q);
+          return [D(-bx,0,R*.8),D(bx,0,R*.8),D(0,0,R*Math.max(0,.4+.6*q))];
+        }},
+        nod:{curve:'cubic',still:30,f:function(t){
+          const p=(t/2.2)%1;
+          return [-.35,0,.35].map(function(x,k){return D(x,-.25*Math.sin(Math.PI*ss(.05+k*.03,.25+k*.03,p)),R*.85)});
+        }}
+      };
+      const reduced=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):{matches:false};
+      const fields=new Set();
+      let frame=0,last=0;
+      function dotsAt(kind,u){
+        const motion=motions[kind]||motions.orbit;
+        ease=curves[motion.curve]||curves.cubic;
+        return fill(motion.f(reduced.matches?motion.still:u));
+      }
+      function colorOf(canvas){
+        const match=/rgba?\(([^)]+)\)/.exec(getComputedStyle(canvas).color||'');
+        return match?match[1].split(',').slice(0,3).join(','):'128,128,128';
+      }
+      function draw(canvas,dots){
+        const w=canvas.clientWidth;if(!w)return;
+        const dpr=window.devicePixelRatio||1,px=Math.round(w*dpr);
+        if(canvas.width!==px||canvas.height!==px){canvas.width=px;canvas.height=px}
+        const ctx=canvas.getContext('2d');
+        ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,w);
+        const h=w/2,color=colorOf(canvas);
+        dots.forEach(function(d){
+          const r=d.r*h;if(r<0.15||d.a<0.01)return;
+          ctx.fillStyle='rgba('+color+','+d.a+')';
+          ctx.beginPath();ctx.arc(h+d.x*h,h+d.y*h,r,0,TAU);ctx.fill();
+        });
+      }
+      function step(now){
+        frame=0;
+        const dt=last?Math.min(0.1,(now-last)/1000):0;last=now;
+        fields.forEach(function(canvas){
+          if(!canvas.isConnected){fields.delete(canvas);return}
+          const state=canvas.dotsState;
+          state.u+=dt*SPEED;
+          let dots=dotsAt(state.kind,state.u);
+          if(state.from){
+            const k=(now-state.since)/TRANSITION;
+            if(k>=1)state.from=null;
+            else{
+              ease=curves.cubic;const e=easeIO(k);
+              dots=dots.map(function(d,i){const f=state.from[i];return D(lerp(f.x,d.x,e),lerp(f.y,d.y,e)-0.15*Math.sin(Math.PI*e),lerp(f.r,d.r,e),lerp(f.a,d.a,e))});
+            }
+          }
+          state.current=dots;
+          draw(canvas,dots);
+        });
+        if(fields.size)frame=requestAnimationFrame(step);else last=0;
+      }
+      function set(canvas,kind){
+        if(!motions[kind])kind='orbit';
+        const state=canvas.dotsState;
+        if(!state){canvas.dotsState={kind:kind,u:30,from:null,current:null,since:0}}
+        else if(state.kind!==kind){
+          state.from=state.current&&state.current.map(function(d){return Object.assign({},d)});
+          state.kind=kind;state.since=performance.now();
+        }
+        fields.add(canvas);
+        if(!frame)frame=requestAnimationFrame(step);
+      }
+      function create(kind){
+        const canvas=document.createElement('canvas');
+        canvas.className='state-dots';
+        canvas.setAttribute('aria-hidden','true');
+        set(canvas,kind);
+        return canvas;
+      }
+      return {create:create,set:set};
+    })();
+    // Which motion a live thinking block shows: by its running step.
+    function stateDotsKind(running){
+      const step=running.length?running[running.length-1]:null;
+      if(!step)return 'orbit';
+      if(step.approval==='pending')return 'nod';
+      if(step.tool==='run_script'&&step.phase==='writing')return 'brackets';
+      if(step.tool==='run_command'||step.tool==='run_script')return 'swap';
+      if(step.tool==='send_file')return 'bubbles';
+      if(step.tool==='web_search')return 'reveal';
+      return 'orbit';
+    }
+
     function setThinkingState(message,labelText){
       const body=message.querySelector('.chat-text');
       body.replaceChildren();
@@ -2517,9 +2658,7 @@
       label.textContent=labelText||thinkingPhrase(message);
       label.dataset.text=label.textContent;
       if(!labelText)label.dataset.phrase='1';
-      const dot=document.createElement('span');
-      dot.className='thinking-dot';dot.setAttribute('aria-hidden','true');
-      state.append(dot,label);body.append(state);
+      state.append(stateDots.create('orbit'),label);body.append(state);
     }
 
     /* ---------- thinking block ---------- */
@@ -3022,6 +3161,12 @@
       label.dataset.text=text;
       label.classList.toggle('thinking-label',live);
       if(live&&!running.length&&!justRan)label.dataset.phrase='1';else delete label.dataset.phrase;
+      // The state's dots before the label, while the model works.
+      let dots=block.querySelector('summary > .state-dots');
+      if(live){
+        if(!dots){dots=stateDots.create(stateDotsKind(running));label.before(dots)}
+        else stateDots.set(dots,stateDotsKind(running));
+      }else if(dots)dots.remove();
 
       const done=activity.filter(function(step){return !step.pending&&!step.error});
       const searches=done.filter(function(step){return step.tool==='web_search'}).length;
