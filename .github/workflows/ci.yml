@@ -152,7 +152,7 @@ jobs:
         run: docker build -t neochat-ci-check .
 
   landing:
-    name: landing bundle is up to date
+    name: frontend timing and landing bundle
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -162,6 +162,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/landing/package-lock.json
+
+      - name: Frontend state timing
+        run: node --test scripts/frontend-state-timing.test.cjs
 
       # server/assets/landing is the committed build of web/landing, embedded
       # into the Go binary so neither `go build` nor the Dockerfile needs

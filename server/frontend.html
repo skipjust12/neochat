@@ -3135,7 +3135,7 @@
       const activity=Array.isArray(state.activity)?state.activity:[];
       const sources=Array.isArray(state.sources)?state.sources:[];
       const seconds=state.seconds?Math.max(1,Math.round(state.seconds)):0;
-      const running=activity.filter(function(step){return step.pending});
+      const running=state.displayRunning||activity.filter(function(step){return step.pending});
       const live=Boolean(state.live||running.length);
       approvalCards(message,activity);
       if(!live&&!seconds&&!activity.length&&!sources.length&&!(state.reasoning||'').trim()){
@@ -3147,12 +3147,8 @@
       block.classList.toggle('is-live',live);
       const label=block.querySelector('.thought-label');
       const terminalSteps=activity.filter(isTerminalStep);
-      const lastStep=activity.length?activity[activity.length-1]:null;
-      // Right after a command, until the model goes on: "Ran a command".
-      const justRan=live&&!running.length&&state.sinceStep&&(lastStep&&(lastStep.tool==='run_command'||lastStep.tool==='run_script'))&&!lastStep.error;
       let text;
       if(running.length)text=webStepLabel(running[running.length-1]);
-      else if(justRan)text=lastStep.tool==='run_script'?'Ran a script':'Ran a command';
       else if(live)text=thinkingPhrase(message);
       else if(seconds)text='Thought for '+plural(seconds,'second','seconds');
       else if(terminalSteps.length)text=terminalSteps.length===1?terminalDoneLabel(terminalSteps[0]):'Ran '+plural(terminalSteps.filter(function(step){return step.tool!=='send_file'}).length||terminalSteps.length,'command','commands');
@@ -3160,7 +3156,7 @@
       label.textContent=text;
       label.dataset.text=text;
       label.classList.toggle('thinking-label',live);
-      if(live&&!running.length&&!justRan)label.dataset.phrase='1';else delete label.dataset.phrase;
+      if(live&&!running.length)label.dataset.phrase='1';else delete label.dataset.phrase;
       // The state's dots before the label, while the model works.
       let dots=block.querySelector('summary > .state-dots');
       if(live){
@@ -3242,6 +3238,13 @@
     function thoughtTracker(message,startedAt){
       const state={live:true,seconds:0,activity:[],sources:[],reasoning:''};
       let waiting=true;
+      let idleTimer=0;
+      let heldRunning=[];
+      function clearIdle(){clearTimeout(idleTimer);idleTimer=0}
+      function show(){
+        state.displayRunning=heldRunning;
+        renderThought(message,state);
+      }
       function since(){return (performance.now()-startedAt)/1000}
       function clearThinkingState(){
         const thinking=message.querySelector('.chat-text .thinking-state');
@@ -3249,29 +3252,45 @@
       }
       return {
         activity:function(list){
+          clearIdle();
           state.activity=Array.isArray(list)?list:[];
+          const running=state.activity.filter(function(step){return step.pending});
+          if(running.length)heldRunning=running;
+          else if(heldRunning.length){
+            // Keep label and dots together through short gaps between tools.
+            idleTimer=setTimeout(function(){
+              idleTimer=0;
+              heldRunning=[];
+              if(waiting&&state.live)show();
+            },700);
+          }
           state.sinceStep=true;
           waiting=true;
           state.live=true;
           clearThinkingState();
-          renderThought(message,state);
+          show();
         },
         text:function(){
+          clearIdle();
+          heldRunning=[];
           if(!waiting)return;
           waiting=false;
           state.sinceStep=false;
           state.live=false;
           state.seconds=since();
-          renderThought(message,state);
+          show();
         },
         done:function(data){
+          clearIdle();
+          heldRunning=[];
+          waiting=false;
           state.live=false;
           if(data&&typeof data.reasoning==='string'&&data.reasoning)state.reasoning=data.reasoning;
           if(data&&Array.isArray(data.activity))state.activity=data.activity;
           state.sources=data&&Array.isArray(data.sources)?data.sources:[];
           if(data&&data.thought_ms)state.seconds=data.thought_ms/1000;
           else if(!state.seconds)state.seconds=since();
-          renderThought(message,state);
+          show();
         },
         // A piece of the model's thinking. The first one turns "Thinking"
         // into the block's label, which opens to show it; later ones are
@@ -3279,7 +3298,7 @@
         reasoning:function(piece){
           if(!piece)return;
           state.reasoning+=piece;
-          // The model thinks again after a command: back to "Thinking".
+          // Reasoning must not replace an active or briefly held tool state.
           const afterStep=state.sinceStep;
           state.sinceStep=false;
           const shown=message.querySelector('.chat-copy > .thought-time .thought-reasoning');
@@ -3292,18 +3311,20 @@
           }
           if(!state.seconds)state.live=true;
           clearThinkingState();
-          renderThought(message,state);
+          show();
         },
         reasoningText:function(){return state.reasoning},
         ms:function(){return Math.round(state.seconds*1000)},
         stop:function(){
+          clearIdle();
+          heldRunning=[];
           if(!state.live&&!state.activity.some(function(step){return step.pending}))return;
           state.live=false;
           state.activity=state.activity.map(function(step){
             return step.pending?Object.assign({},step,{pending:false,error:step.error||'stopped'}):step;
           });
           if(!state.seconds)state.seconds=since();
-          renderThought(message,state);
+          show();
         }
       };
     }
@@ -5350,13 +5371,13 @@
           buffer=blocks.pop()||'';
           for(const block of blocks){
             const parsed=parseServerSentEvent(block);
-            if(parsed)onEvent(parsed.event,parsed.payload,parsed.id);
+            if(parsed)await onEvent(parsed.event,parsed.payload,parsed.id);
           }
           if(part.done)break;
         }
         if(buffer.trim()){
           const parsed=parseServerSentEvent(buffer);
-          if(parsed)onEvent(parsed.event,parsed.payload,parsed.id);
+          if(parsed)await onEvent(parsed.event,parsed.payload,parsed.id);
         }
       }catch(error){
         try{await reader.cancel()}catch(cancelError){}
@@ -5436,6 +5457,29 @@
       let lastSeq=0;
       let ending='';
       let failures=0;
+      let shownAction='';
+      let actionShownAt=0;
+      async function present(event,data){
+        let nextAction=shownAction;
+        if(event==='activity'){
+          const steps=Array.isArray(data&&data.activity)?data.activity:[];
+          const index=steps.findLastIndex(function(step){return step.pending});
+          const step=steps[index];
+          nextAction=step?JSON.stringify([index,step.tool,step.phase||'',step.approval||'']):'';
+        }else if(event==='delta'||event==='done'||event==='blocked')nextAction='';
+        // One clock for the entire state: its label, animation and following
+        // text. Network timings and server-side execution remain untouched.
+        if(shownAction&&nextAction!==shownAction&&event!=='error'){
+          const remaining=1200-(performance.now()-actionShownAt);
+          if(remaining>0)await pause(remaining,signal);
+        }
+        if(signal.aborted)throw new DOMException('Aborted','AbortError');
+        if(nextAction!==shownAction){
+          shownAction=nextAction;
+          actionShownAt=performance.now();
+        }
+        try{options.onEvent(event,data)}catch(error){throw Object.assign(error,{fromReply:true})}
+      }
       while(true){
         const local=new AbortController();
         const forwardAbort=function(){local.abort()};
@@ -5472,7 +5516,7 @@
           // Connected again: the note goes, the count stays till the
           // connection proves itself.
           if(failures)setStreamStatus(options.message,'');
-          await readServerSentEvents(response,function(event,data,id){
+          await readServerSentEvents(response,async function(event,data,id){
             lastByte=Date.now();
             if(event==='stream'){
               if(data&&data.stream_id){
@@ -5484,7 +5528,7 @@
             if(id){lastSeq=id;recovered()}
             if(event==='stopped'){ending='stopped';return}
             if(event==='done'||event==='blocked')ending=event;
-            try{options.onEvent(event,data)}catch(error){throw Object.assign(error,{fromReply:true})}
+            await present(event,data);
           },function(){
             lastByte=Date.now();
             if(Date.now()-connectedAt>10000)recovered();
