@@ -46,7 +46,13 @@ if ! "${compose[@]}" up -d --no-deps --no-build --wait --wait-timeout 120 server
 fi
 docker exec "$container" wget -q -O- http://127.0.0.1:8080/health
 # Confirm the running binary serves the new frontend, without any API key.
-docker exec "$container" wget -q -O- http://127.0.0.1:8080/ > "$backup/served.html"
+domain=$(docker exec "$container" printenv NEOCHAT_DOMAIN || true)
+if [[ -z "$domain" ]]; then
+  echo 'Container is healthy. NEOCHAT_DOMAIN is unset; verify the frontend through its public HTTPS URL.'
+  echo "Rollback: bash $backup/rollback.sh"
+  exit 0
+fi
+curl -fsS --max-time 30 "https://$domain/" -o "$backup/served.html"
 if ! grep -q '1200-(performance.now()-actionShownAt)' "$backup/served.html"; then
   echo 'Updated frontend not found; rolling back.' >&2
   bash "$backup/rollback.sh"
