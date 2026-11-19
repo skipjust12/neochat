@@ -5,7 +5,7 @@ const fs=require('node:fs');
 const path=require('node:path');
 const html=fs.readFileSync(path.join(__dirname,'../server/frontend.html'),'utf8');
 const start=html.indexOf('    function parseInlineImage(');
-const end=html.indexOf('    function renderMarkdown(',start);
+const end=html.indexOf('    const chatMarkdown=',start);
 const context=vm.createContext({TextDecoder,Uint8Array,atob,JSON,Array,String});
 vm.runInContext(html.slice(start,end),context);
 const shown={display_id:'a'.repeat(32),file:{id:'b'.repeat(32),name:'diagram.png',kind:'image',mime:'image/png',size:100},caption:'Схема: вход → выход'};

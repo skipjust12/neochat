@@ -1,0 +1,7 @@
+{
+  "name": "neochat-markdown-tests",
+  "private": true,
+  "devDependencies": {
+    "playwright": "1.57.0"
+  }
+}

@@ -177,6 +177,20 @@ jobs:
           npm run build
           git diff --exit-code -- ../../server/assets/landing
 
+  markdown:
+    name: Markdown browser regressions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/markdown-tests/package-lock.json
+      - run: npm ci --prefix web/markdown-tests --no-audit --no-fund
+      - run: web/markdown-tests/node_modules/.bin/playwright install --with-deps chromium
+      - run: node scripts/frontend-markdown.browser.cjs
+
   desktop:
     name: desktop app (Windows build)
     runs-on: ubuntu-latest

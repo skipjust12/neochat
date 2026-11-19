@@ -17,6 +17,9 @@
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=2" />
 <link rel="stylesheet" href="/assets/fluid.css?v=37" />
+<script src="/assets/markdown/markdown-it.min.js?v=15.0.3"></script>
+<script src="/assets/markdown/texmath.js?v=1.0.0"></script>
+<script src="/assets/markdown/chat-markdown.js?v=1"></script>
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -2130,89 +2133,6 @@
       return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
     }
 
-    function appendInlineMarkdown(parent,text){
-      const tokenPattern=/(?:`[^`\n]+`|\$\$[^$\n]+?\$\$|\\\([^\n]+?\\\)|(?<![\\\w$])\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?!\d)|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g;
-      let cursor=0;
-      text.replace(tokenPattern,function(token,offset){
-        if(offset>cursor)parent.append(document.createTextNode(text.slice(cursor,offset)));
-        let element=null;
-        if(token.startsWith('$$')||token.startsWith('\\(')){
-          element=mathElement(token.slice(2,-2),false);
-        }else if(token[0]==='$'){
-          element=mathElement(token.slice(1,-1),false);
-        }else if(token[0]==='`'){
-          element=document.createElement('code');
-          element.textContent=token.slice(1,-1);
-        }else if(token.startsWith('**')||token.startsWith('__')){
-          element=document.createElement('strong');
-          element.textContent=token.slice(2,-2);
-        }else if(token.startsWith('~~')){
-          element=document.createElement('del');
-          element.textContent=token.slice(2,-2);
-        }else if(token[0]==='*'||token[0]==='_'){
-          element=document.createElement('em');
-          element.textContent=token.slice(1,-1);
-        }else{
-          const link=token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
-          if(link){
-            element=document.createElement('a');
-            element.textContent=link[1];
-            element.href=link[2];
-            element.target='_blank';
-            element.rel='noopener noreferrer';
-          }
-        }
-        parent.append(element||document.createTextNode(token));
-        cursor=offset+token.length;
-        return token;
-      });
-      if(cursor<text.length)parent.append(document.createTextNode(text.slice(cursor)));
-    }
-
-    function isMarkdownBlockStart(line){
-      return /^\s*$|^<!--neochat-image:|^```|^\s*\$\$|^\s*\\\[|^#{1,6}\s+|^>\s?|^\s*([-+*]|\d+\.)\s+|^\s*([-*_])(?:\s*\2){2,}\s*$/.test(line);
-    }
-
-    function splitMarkdownTableRow(line){
-      let value=String(line||'').trim();
-      if(value.startsWith('|'))value=value.slice(1);
-      if(value.endsWith('|')&&!value.endsWith('\\|'))value=value.slice(0,-1);
-      const cells=[];
-      let cell='';
-      let inCode=false;
-      for(let index=0;index<value.length;index++){
-        const character=value[index];
-        if(character==='\\'&&value[index+1]==='|'){
-          cell+='|';index++;continue;
-        }
-        if(character==='`')inCode=!inCode;
-        if(character==='|'&&!inCode){cells.push(cell.trim());cell='';continue}
-        cell+=character;
-      }
-      cells.push(cell.trim());
-      return cells;
-    }
-
-    function markdownTableDetails(lines,index){
-      if(index+1>=lines.length||!lines[index].includes('|'))return null;
-      const headers=splitMarkdownTableRow(lines[index]);
-      const dividers=splitMarkdownTableRow(lines[index+1]);
-      if(headers.length!==dividers.length||!dividers.every(function(cell){return /^:?-{3,}:?$/.test(cell.replace(/\s/g,''))}))return null;
-      return {headers:headers,alignments:dividers.map(function(cell){
-        const marker=cell.replace(/\s/g,'');
-        if(marker.startsWith(':')&&marker.endsWith(':'))return 'center';
-        return marker.endsWith(':')?'right':'left';
-      })};
-    }
-
-    function appendMarkdownTableCell(row,tagName,text,alignment){
-      const cell=document.createElement(tagName);
-      if(tagName==='th')cell.scope='col';
-      if(alignment!=='left')cell.className='align-'+alignment;
-      appendInlineMarkdown(cell,text);
-      row.append(cell);
-    }
-
     /* ---------- math ---------- */
     // LaTeX, rendered by KaTeX (/assets/katex, deferred like highlight.js):
     // $...$ and \(...\) inline, $$...$$ and \[...\] as blocks. A block
@@ -2436,117 +2356,14 @@
         return part.startsWith('<!--neochat-image:')?[part]:Array.from(part);
       });
     }
+    const chatMarkdown=window.NeoChatMarkdown.create({
+      codeBlock:codeBlock,
+      mathElement:mathElement,
+      parseInlineImage:parseInlineImage,
+      inlineImageElement:inlineImageElement
+    });
     function renderMarkdown(container,source){
-      // Reuse loaded image nodes while the surrounding text streams.
-      const previousImages=new Map(Array.from(container.querySelectorAll('.inline-answer-image')).map(function(figure){return [figure.dataset.displayId,figure]}));
-      container.replaceChildren();
-      const lines=String(source||'').replace(/\r\n?/g,'\n').split('\n');
-      let index=0;
-      while(index<lines.length){
-        const line=lines[index];
-        if(!line.trim()){index++;continue}
-        if(line.trim().startsWith('<!--neochat-image:')){
-          const shown=parseInlineImage(line);
-          if(shown)container.append(previousImages.get(shown.display_id)||inlineImageElement(shown));
-          index++;continue;
-        }
-
-        // The info string's first word is the language: ```c++, ```python title="x".
-        const fence=line.match(/^```\s*([^\s`]*)[^`]*$/);
-        if(fence){
-          index++;
-          const codeLines=[];
-          while(index<lines.length&&!/^```\s*$/.test(lines[index]))codeLines.push(lines[index++]);
-          const complete=index<lines.length;
-          if(complete)index++;
-          container.append(codeBlock(fence[1],codeLines.join('\n'),complete));continue;
-        }
-
-        const mathOpen=line.trim().match(/^(\$\$|\\\[)(.*)$/);
-        if(mathOpen){
-          const close=mathOpen[1]==='$$'?'$$':'\\]';
-          const rest=mathOpen[2].trim();
-          let texLines=[],complete=false;
-          index++;
-          if(rest.length>=close.length&&rest.endsWith(close)){
-            texLines=[rest.slice(0,-close.length)];complete=true;
-          }else{
-            if(rest)texLines.push(rest);
-            while(index<lines.length){
-              const current=lines[index++].trim();
-              if(current.endsWith(close)){texLines.push(current.slice(0,-close.length));complete=true;break}
-              texLines.push(current);
-            }
-          }
-          container.append(mathElement(texLines.join('\n').trim(),true,complete));continue;
-        }
-
-        const heading=line.match(/^(#{1,6})\s+(.+)$/);
-        if(heading){
-          const element=document.createElement('h'+heading[1].length);
-          appendInlineMarkdown(element,heading[2]);
-          container.append(element);index++;continue;
-        }
-
-        if(/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)){
-          container.append(document.createElement('hr'));index++;continue;
-        }
-
-        if(/^>\s?/.test(line)){
-          const quote=document.createElement('blockquote');
-          const parts=[];
-          while(index<lines.length&&/^>\s?/.test(lines[index]))parts.push(lines[index++].replace(/^>\s?/,''));
-          appendInlineMarkdown(quote,parts.join(' '));
-          container.append(quote);continue;
-        }
-
-        const tableDetails=markdownTableDetails(lines,index);
-        if(tableDetails){
-          const wrapper=document.createElement('div');
-          wrapper.className='chat-table-wrap';
-          const table=document.createElement('table');
-          const head=document.createElement('thead');
-          const headerRow=document.createElement('tr');
-          tableDetails.headers.forEach(function(header,column){appendMarkdownTableCell(headerRow,'th',header,tableDetails.alignments[column])});
-          head.append(headerRow);table.append(head);
-          const body=document.createElement('tbody');
-          index+=2;
-          while(index<lines.length&&lines[index].trim()&&lines[index].includes('|')){
-            const values=splitMarkdownTableRow(lines[index]);
-            const row=document.createElement('tr');
-            tableDetails.headers.forEach(function(_,column){appendMarkdownTableCell(row,'td',values[column]||'',tableDetails.alignments[column])});
-            body.append(row);index++;
-          }
-          table.append(body);wrapper.append(table);container.append(wrapper);continue;
-        }
-
-        const listMatch=line.match(/^\s*([-+*]|\d+\.)\s+(.+)$/);
-        if(listMatch){
-          const ordered=/\d+\./.test(listMatch[1]);
-          const list=document.createElement(ordered?'ol':'ul');
-          while(index<lines.length){
-            const item=lines[index].match(/^\s*([-+*]|\d+\.)\s+(.+)$/);
-            if(!item||(/\d+\./.test(item[1]))!==ordered)break;
-            const li=document.createElement('li');
-            appendInlineMarkdown(li,item[2]);
-            list.append(li);index++;
-          }
-          container.append(list);continue;
-        }
-
-        const paragraph=document.createElement('p');
-        let firstLine=true;
-        while(index<lines.length&&!isMarkdownBlockStart(lines[index])&&!markdownTableDetails(lines,index)){
-          if(!firstLine)paragraph.append(document.createTextNode(' '));
-          appendInlineMarkdown(paragraph,lines[index]);
-          firstLine=false;index++;
-        }
-        if(firstLine){
-          appendInlineMarkdown(paragraph,lines[index]);
-          index++;
-        }
-        container.append(paragraph);
-      }
+      chatMarkdown.render(container,source);
     }
 
     // While a model thinks, the label is one of these, a new one every 10s.
