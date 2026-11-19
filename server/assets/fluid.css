@@ -10086,3 +10086,36 @@ html[data-theme="light"] {
   font: 400 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   overflow-wrap: anywhere;
 }
+
+/* The home greeting gets the same text-only sweep as Thinking on hover. */
+.main:not(.project-mode) #homeGreeting {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.main:not(.project-mode) #homeGreeting::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  background-image: linear-gradient(90deg,transparent 0%,transparent 40%,#71717a 50%,transparent 60%,transparent 100%);
+  background-size: 220% 100%;
+  background-position: 140% 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  opacity: 0;
+  pointer-events: none;
+}
+
+html[data-theme="dark"] .main:not(.project-mode) #homeGreeting::after {
+  background-image: linear-gradient(90deg,transparent 0%,transparent 40%,#fafafa 50%,transparent 60%,transparent 100%);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .main:not(.project-mode) #homeGreeting:hover::after {
+    animation: thinkingSweep 1.8s linear;
+  }
+}

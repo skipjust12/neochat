@@ -1445,6 +1445,7 @@
     // In incognito the greeting stays and reads "Incognito mode".
     function renderHomeGreeting(){
       homeGreeting.textContent=document.getElementById('incognitoState').checked?'Incognito mode':selectedGreeting.replace('NICK_OF_SETTINGS',nameInput.value.trim()||'skipjust');
+      homeGreeting.dataset.text=homeGreeting.textContent;
     }
 
     const suggestionPool=[
