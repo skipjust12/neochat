@@ -76,11 +76,11 @@ var terminalFunctionTools = []provider.FunctionTool{
 	},
 }
 
-// sendFileTool hands the user a file from the terminal: the only way a
-// file made there reaches them.
+// sendFileTool hands the user a downloadable file from the terminal;
+// showImageTool places a picture inside the explanation instead.
 var sendFileTool = provider.FunctionTool{
 	Name:        "send_file",
-	Description: "Send the user a file you made on the terminal (a page, a chart, a spreadsheet, a document, an archive...). It appears under your answer as a file they can open or download; an .html page opens in the page viewer, a picture is shown. This is the only way to give the user a file: they can't open paths on the server, and sandbox: or file: links don't work. Call it once the file is final.",
+	Description: "Send the user a file you made on the terminal (a page, a chart, a spreadsheet, a document, an archive...). It appears under your answer as a file they can open or download; an .html page opens in the page viewer, a picture is shown. For a picture inside the explanation, use show_image instead. To give the user a downloadable file, use this tool: they can't open paths on the server, and sandbox: or file: links don't work. Call it once the file is final.",
 	Parameters: map[string]any{
 		"type": "object",
 		"properties": map[string]any{
@@ -101,7 +101,7 @@ const (
 // the facts of this machine. When and how to use it is in the core prompt
 // (prompts/*.md, "The terminal"); the short version here covers a persona
 // without it.
-const terminalToolsNote = "You have a terminal on the server this chat runs on: run_command runs a shell command, run_script writes a Python or bash script and runs it. Machine: %s. Working directory (this chat's own, kept between runs and messages): %s. Time limit per run: %s by default, up to %s with timeout_seconds. To give the user a file you made, call send_file with its path; never write server paths or sandbox:/file: links, the user can't open them. Use it instead of guessing whenever the answer depends on computing, running or checking something; read the output, fix and rerun on errors, then answer from what it printed."
+const terminalToolsNote = "You have a terminal on the server this chat runs on: run_command runs a shell command, run_script writes a Python or bash script and runs it. Machine: %s. Working directory (this chat's own, kept between runs and messages): %s. Time limit per run: %s by default, up to %s with timeout_seconds. To place a picture you made inside your explanation, call show_image with its path and continue writing afterwards. For downloadable files under the answer, call send_file with its path; never write server paths or sandbox:/file: links, the user can't open them. Use it instead of guessing whenever the answer depends on computing, running or checking something; read the output, fix and rerun on errors, then answer from what it printed."
 
 // noTerminalNote goes to a model that gets no terminal for this answer,
 // since the core prompt describes one: without it, a model may claim to
@@ -392,6 +392,8 @@ func roundDuration(d time.Duration) string {
 func terminalStepLine(step conversation.ToolActivity) string {
 	var line string
 	switch step.Tool {
+	case "show_image":
+		line = "- showed the user an inline image " + oneLine(orDefault(step.Title, step.Command), 120)
 	case "send_file":
 		line = "- sent the user the file " + oneLine(orDefault(step.Title, step.Command), 120)
 	case "read_file":
@@ -491,8 +493,12 @@ func (r *webRun) planSendFile(call provider.ToolCall) (string, func(context.Cont
 // sendFile stores a file from the terminal as one of the user's files and
 // adds it to the answer. The same file sent twice is sent once.
 func (r *webRun) sendFile(ctx context.Context, path, name string) (conversation.Attachment, error) {
+	return r.sendTerminalFile(ctx, path, name, false)
+}
+
+func (r *webRun) sendTerminalFile(ctx context.Context, path, name string, imageOnly bool) (conversation.Attachment, error) {
 	if r.onComputer() {
-		return r.sendComputerFile(ctx, path, name)
+		return r.sendComputerFile(ctx, path, name, imageOnly)
 	}
 	dir, err := r.s.Terminal.Dir(r.req.UserID, r.prepared.conversationID)
 	if err != nil {
@@ -503,7 +509,7 @@ func (r *webRun) sendFile(ctx context.Context, path, name string) (conversation.
 		return conversation.Attachment{}, err
 	}
 	r.mu.Lock()
-	if sent, ok := r.sentFrom[real]; ok {
+	if sent, ok := r.sentFrom[real]; ok && !imageOnly {
 		r.mu.Unlock()
 		return sent, nil
 	}
@@ -530,11 +536,11 @@ func (r *webRun) sendFile(ctx context.Context, path, name string) (conversation.
 	if err != nil {
 		return conversation.Attachment{}, fmt.Errorf("can't read %s: %v", path, err)
 	}
-	return r.storeSentFile(ctx, real, fileName(name, real), data)
+	return r.storeSentFile(ctx, real, fileName(name, real), data, imageOnly)
 }
 
 // sendComputerFile is sendFile for a file on the user's computer.
-func (r *webRun) sendComputerFile(ctx context.Context, path, name string) (conversation.Attachment, error) {
+func (r *webRun) sendComputerFile(ctx context.Context, path, name string, imageOnly bool) (conversation.Attachment, error) {
 	path = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(path), "sandbox:"), "file://")
 	r.mu.Lock()
 	if len(r.files) >= maxSentFiles {
@@ -547,7 +553,7 @@ func (r *webRun) sendComputerFile(ctx context.Context, path, name string) (conve
 		return conversation.Attachment{}, err
 	}
 	r.mu.Lock()
-	if sent, ok := r.sentFrom[res.Path]; ok {
+	if sent, ok := r.sentFrom[res.Path]; ok && !imageOnly {
 		r.mu.Unlock()
 		return sent, nil
 	}
@@ -555,13 +561,28 @@ func (r *webRun) sendComputerFile(ctx context.Context, path, name string) (conve
 	if strings.TrimSpace(name) == "" {
 		name = res.Name
 	}
-	return r.storeSentFile(ctx, res.Path, fileName(name, res.Name), res.Data)
+	return r.storeSentFile(ctx, res.Path, fileName(name, res.Name), res.Data, imageOnly)
 }
 
 // storeSentFile keeps a sent file with the user's files and adds it to the
 // answer; real is where it came from, so it goes once.
-func (r *webRun) storeSentFile(ctx context.Context, real, name string, data []byte) (conversation.Attachment, error) {
+func (r *webRun) storeSentFile(ctx context.Context, real, name string, data []byte, imageOnly bool) (conversation.Attachment, error) {
 	kind, mimeType := sentFileKind(name, data)
+	width, height := 0, 0
+	if imageOnly {
+		cfg, err := validateInlineImage(data)
+		if err != nil {
+			return conversation.Attachment{}, err
+		}
+		width, height = cfg.Width, cfg.Height
+	}
+	// Reserve the storage slot while holding the lock, including for
+	// parallel show_image calls in a single model turn.
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if len(r.files) >= maxSentFiles {
+		return conversation.Attachment{}, fmt.Errorf("at most %d files per answer", maxSentFiles)
+	}
 	id := conversation.NewID()
 	file := attachment.File{ID: id, UserID: r.req.UserID, Name: name, MIME: mimeType, Kind: kind, Size: int64(len(data)), Data: data, CreatedAt: time.Now()}
 	storeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
@@ -570,9 +591,7 @@ func (r *webRun) storeSentFile(ctx context.Context, real, name string, data []by
 		log.Printf("server: store sent file for user_id=%s: %v", r.req.UserID, err)
 		return conversation.Attachment{}, fmt.Errorf("couldn't store the file")
 	}
-	ref := conversation.Attachment{ID: id, Name: name, MIME: mimeType, Kind: kind, Size: file.Size}
-	r.mu.Lock()
-	defer r.mu.Unlock()
+	ref := conversation.Attachment{ID: id, Name: name, MIME: mimeType, Kind: kind, Size: file.Size, Width: width, Height: height}
 	if r.sentFrom == nil {
 		r.sentFrom = map[string]conversation.Attachment{}
 	}

@@ -1910,7 +1910,7 @@ func (s *Server) persistStopped(ctx context.Context, req chatRequest, prepared p
 	}
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	msg, err := s.persistTurn(persistCtx, req, prepared, model, conversation.ResponseVersion{Content: partial, ModelID: model.ID, CreatedAt: time.Now(), Activity: activity, ThoughtMS: thought.Milliseconds(), Reasoning: reasoning})
+	msg, err := s.persistTurn(persistCtx, req, prepared, model, conversation.ResponseVersion{Content: partial, ModelID: model.ID, CreatedAt: time.Now(), Activity: activity, ThoughtMS: thought.Milliseconds(), Reasoning: reasoning, Files: inlineImageFiles(partial)})
 	if err != nil {
 		log.Printf("server: persist stopped response for conversation_id=%s: %v", prepared.conversationID, err)
 		return conversation.Message{}, false
@@ -1939,7 +1939,7 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
 		return
 	}
 
-	outputTokens := tokenizer.EstimateText(partialText)
+	outputTokens := tokenizer.EstimateText(inlineImagePattern.ReplaceAllString(partialText, ""))
 	if outputTokens == 0 {
 		log.Printf("server: generation aborted with no measurable output, upper budget reservation retained: request_id=%s user_id=%s model_id=%s: %v",
 			prepared.requestID, req.UserID, model.ID, cause)
@@ -2180,7 +2180,7 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 	// The model's thinking goes out as it comes (the client shows it only
 	// when asked) and is kept with the answer, up to maxReasoningRunes.
 	var reasoning strings.Builder
-	call := streamingGenerate(func(delta string) {
+	onDelta := func(delta string) {
 		mu.Lock()
 		if waiting {
 			thoughtUntil, waiting = time.Now(), false
@@ -2188,7 +2188,9 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 		streamed.WriteString(delta)
 		mu.Unlock()
 		send("delta", map[string]string{"text": delta})
-	}, func(text string) {
+	}
+	ctx = context.WithValue(ctx, inlineImageDeltaKey{}, onDelta)
+	call := streamingGenerate(onDelta, func(text string) {
 		mu.Lock()
 		reasoning.WriteString(text)
 		mu.Unlock()

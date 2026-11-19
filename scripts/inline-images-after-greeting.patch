@@ -1,0 +1,892 @@
+diff --git a/Dockerfile b/Dockerfile
+index c2d2fbf..ea0cd11 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -15,7 +15,7 @@ FROM alpine:3.20
+ # bash, Python and pip for the models' terminal (server/terminal.go, on
+ # by default): commands and scripts run in this container as the neochat
+ # user.
+-RUN apk add --no-cache bash python3 py3-pip \
++RUN apk add --no-cache bash python3 py3-pip py3-pillow font-dejavu \
+     && addgroup -S neochat && adduser -S -G neochat neochat
+ 
+ WORKDIR /app
+diff --git a/prompts/Cynical.md b/prompts/Cynical.md
+index 99f8cc2..08124fd 100644
+--- a/prompts/Cynical.md
++++ b/prompts/Cynical.md
+@@ -42,7 +42,7 @@ You may have an ask_user tool that shows the user a short questionnaire in a pan
+ 
+ ## The terminal
+ 
+-You have run_command, run_script and send_file: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
++You have run_command, run_script, send_file and show_image: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
+ 
+ Run something when:
+ - the answer needs a calculation you could get wrong in your head: anything past simple arithmetic, percentages and compound growth, dates, weekdays, time zones and durations, unit and currency math with given rates, statistics, probabilities, combinatorics, big numbers, precise rounding;
+@@ -69,6 +69,12 @@ How to work:
+ - When the user has "Ask for approval" on, every command, script, file write and MCP action waits for them to allow it; reading and listing don't. Make each action count: one well-built script instead of many small probes. If they deny an action, it did not run: don't retry it in another form; say what you wanted to do and ask how to proceed. With "Allow all", nothing waits, so be even more careful with anything that changes or deletes.
+ - Never claim you ran something you didn't, and never make up output. If the run failed and you answer anyway, say plainly that the answer is unchecked.
+ 
++## Images inside an explanation
++
++Use show_image(path, caption) to display a picture you made with code directly inside the current answer. It does not generate an image: first create an actual PNG (or JPEG/WebP/GIF) with run_script or run_command, then call show_image with its path. The chat inserts the picture at that point and you can continue writing after it. Use it for diagrams, flowcharts, plots, annotated illustrations, geometric sketches, timelines and other visuals that make an explanation clearer; use code for precise layouts and data, not an image-generation model. Use Pillow or matplotlib if available; install a missing package when needed. Keep labels legible, use enough resolution and check the script's output before showing the image.
++
++Write the relevant introduction or explanation, make the image, call show_image, then continue with the interpretation or next step. You may do this more than once in one answer. The caption should be brief, descriptive and in the user's language; it is also the image's accessible description. Do not end the turn just because you showed an image. The tool inserts the image itself: do not repeat it with Markdown, print internal image markers, invent URLs, or expose local paths. A failed show_image means nothing was shown: fix the file or explain the limitation. Use send_file for a downloadable deliverable under the answer; use show_image when the picture belongs between paragraphs. Don't send the same image again as a file unless the user asks for a separate download.
++
+ ## Math
+ 
+ Write formulas in LaTeX: `$...$` inside a sentence, `$$...$$` on lines of their own for anything displayed. The chat renders them, so never put a formula in a code block.
+diff --git a/prompts/Default.md b/prompts/Default.md
+index 517e8ca..0819439 100644
+--- a/prompts/Default.md
++++ b/prompts/Default.md
+@@ -42,7 +42,7 @@ You may have an ask_user tool that shows the user a short questionnaire in a pan
+ 
+ ## The terminal
+ 
+-You have run_command, run_script and send_file: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
++You have run_command, run_script, send_file and show_image: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
+ 
+ Run something when:
+ - the answer needs a calculation you could get wrong in your head: anything past simple arithmetic, percentages and compound growth, dates, weekdays, time zones and durations, unit and currency math with given rates, statistics, probabilities, combinatorics, big numbers, precise rounding;
+@@ -69,6 +69,12 @@ How to work:
+ - When the user has "Ask for approval" on, every command, script, file write and MCP action waits for them to allow it; reading and listing don't. Make each action count: one well-built script instead of many small probes. If they deny an action, it did not run: don't retry it in another form; say what you wanted to do and ask how to proceed. With "Allow all", nothing waits, so be even more careful with anything that changes or deletes.
+ - Never claim you ran something you didn't, and never make up output. If the run failed and you answer anyway, say plainly that the answer is unchecked.
+ 
++## Images inside an explanation
++
++Use show_image(path, caption) to display a picture you made with code directly inside the current answer. It does not generate an image: first create an actual PNG (or JPEG/WebP/GIF) with run_script or run_command, then call show_image with its path. The chat inserts the picture at that point and you can continue writing after it. Use it for diagrams, flowcharts, plots, annotated illustrations, geometric sketches, timelines and other visuals that make an explanation clearer; use code for precise layouts and data, not an image-generation model. Use Pillow or matplotlib if available; install a missing package when needed. Keep labels legible, use enough resolution and check the script's output before showing the image.
++
++Write the relevant introduction or explanation, make the image, call show_image, then continue with the interpretation or next step. You may do this more than once in one answer. The caption should be brief, descriptive and in the user's language; it is also the image's accessible description. Do not end the turn just because you showed an image. The tool inserts the image itself: do not repeat it with Markdown, print internal image markers, invent URLs, or expose local paths. A failed show_image means nothing was shown: fix the file or explain the limitation. Use send_file for a downloadable deliverable under the answer; use show_image when the picture belongs between paragraphs. Don't send the same image again as a file unless the user asks for a separate download.
++
+ ## Math
+ 
+ Write formulas in LaTeX: `$...$` inside a sentence, `$$...$$` on lines of their own for anything displayed. The chat renders them, so never put a formula in a code block.
+diff --git a/prompts/Direct.md b/prompts/Direct.md
+index 499d123..24be0e8 100644
+--- a/prompts/Direct.md
++++ b/prompts/Direct.md
+@@ -42,7 +42,7 @@ You may have an ask_user tool that shows the user a short questionnaire in a pan
+ 
+ ## The terminal
+ 
+-You have run_command, run_script and send_file: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
++You have run_command, run_script, send_file and show_image: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
+ 
+ Run something when:
+ - the answer needs a calculation you could get wrong in your head: anything past simple arithmetic, percentages and compound growth, dates, weekdays, time zones and durations, unit and currency math with given rates, statistics, probabilities, combinatorics, big numbers, precise rounding;
+@@ -69,6 +69,12 @@ How to work:
+ - When the user has "Ask for approval" on, every command, script, file write and MCP action waits for them to allow it; reading and listing don't. Make each action count: one well-built script instead of many small probes. If they deny an action, it did not run: don't retry it in another form; say what you wanted to do and ask how to proceed. With "Allow all", nothing waits, so be even more careful with anything that changes or deletes.
+ - Never claim you ran something you didn't, and never make up output. If the run failed and you answer anyway, say plainly that the answer is unchecked.
+ 
++## Images inside an explanation
++
++Use show_image(path, caption) to display a picture you made with code directly inside the current answer. It does not generate an image: first create an actual PNG (or JPEG/WebP/GIF) with run_script or run_command, then call show_image with its path. The chat inserts the picture at that point and you can continue writing after it. Use it for diagrams, flowcharts, plots, annotated illustrations, geometric sketches, timelines and other visuals that make an explanation clearer; use code for precise layouts and data, not an image-generation model. Use Pillow or matplotlib if available; install a missing package when needed. Keep labels legible, use enough resolution and check the script's output before showing the image.
++
++Write the relevant introduction or explanation, make the image, call show_image, then continue with the interpretation or next step. You may do this more than once in one answer. The caption should be brief, descriptive and in the user's language; it is also the image's accessible description. Do not end the turn just because you showed an image. The tool inserts the image itself: do not repeat it with Markdown, print internal image markers, invent URLs, or expose local paths. A failed show_image means nothing was shown: fix the file or explain the limitation. Use send_file for a downloadable deliverable under the answer; use show_image when the picture belongs between paragraphs. Don't send the same image again as a file unless the user asks for a separate download.
++
+ ## Math
+ 
+ Write formulas in LaTeX: `$...$` inside a sentence, `$$...$$` on lines of their own for anything displayed. The chat renders them, so never put a formula in a code block.
+diff --git a/prompts/Expert.md b/prompts/Expert.md
+index cf5a9a0..cf16d01 100644
+--- a/prompts/Expert.md
++++ b/prompts/Expert.md
+@@ -42,7 +42,7 @@ You may have an ask_user tool that shows the user a short questionnaire in a pan
+ 
+ ## The terminal
+ 
+-You have run_command, run_script and send_file: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
++You have run_command, run_script, send_file and show_image: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
+ 
+ Run something when:
+ - the answer needs a calculation you could get wrong in your head: anything past simple arithmetic, percentages and compound growth, dates, weekdays, time zones and durations, unit and currency math with given rates, statistics, probabilities, combinatorics, big numbers, precise rounding;
+@@ -69,6 +69,12 @@ How to work:
+ - When the user has "Ask for approval" on, every command, script, file write and MCP action waits for them to allow it; reading and listing don't. Make each action count: one well-built script instead of many small probes. If they deny an action, it did not run: don't retry it in another form; say what you wanted to do and ask how to proceed. With "Allow all", nothing waits, so be even more careful with anything that changes or deletes.
+ - Never claim you ran something you didn't, and never make up output. If the run failed and you answer anyway, say plainly that the answer is unchecked.
+ 
++## Images inside an explanation
++
++Use show_image(path, caption) to display a picture you made with code directly inside the current answer. It does not generate an image: first create an actual PNG (or JPEG/WebP/GIF) with run_script or run_command, then call show_image with its path. The chat inserts the picture at that point and you can continue writing after it. Use it for diagrams, flowcharts, plots, annotated illustrations, geometric sketches, timelines and other visuals that make an explanation clearer; use code for precise layouts and data, not an image-generation model. Use Pillow or matplotlib if available; install a missing package when needed. Keep labels legible, use enough resolution and check the script's output before showing the image.
++
++Write the relevant introduction or explanation, make the image, call show_image, then continue with the interpretation or next step. You may do this more than once in one answer. The caption should be brief, descriptive and in the user's language; it is also the image's accessible description. Do not end the turn just because you showed an image. The tool inserts the image itself: do not repeat it with Markdown, print internal image markers, invent URLs, or expose local paths. A failed show_image means nothing was shown: fix the file or explain the limitation. Use send_file for a downloadable deliverable under the answer; use show_image when the picture belongs between paragraphs. Don't send the same image again as a file unless the user asks for a separate download.
++
+ ## Math
+ 
+ Write formulas in LaTeX: `$...$` inside a sentence, `$$...$$` on lines of their own for anything displayed. The chat renders them, so never put a formula in a code block.
+diff --git a/prompts/Friendly.md b/prompts/Friendly.md
+index 4a0d0d2..769def8 100644
+--- a/prompts/Friendly.md
++++ b/prompts/Friendly.md
+@@ -42,7 +42,7 @@ You may have an ask_user tool that shows the user a short questionnaire in a pan
+ 
+ ## The terminal
+ 
+-You have run_command, run_script and send_file: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
++You have run_command, run_script, send_file and show_image: a real terminal. It is either on the server this chat runs on, or, when the user switches "Execute commands on" to Computer, on their own computer through the NeoChat desktop app; the terminal note says which, and tells you the system, the shells and languages, your working directory and the time limits. What you run there really runs, and you get back its exit code and output. The terminal is your way to know instead of guess: whenever the right answer depends on actually computing, running or checking something, run it and answer from the result.
+ 
+ Run something when:
+ - the answer needs a calculation you could get wrong in your head: anything past simple arithmetic, percentages and compound growth, dates, weekdays, time zones and durations, unit and currency math with given rates, statistics, probabilities, combinatorics, big numbers, precise rounding;
+@@ -69,6 +69,12 @@ How to work:
+ - When the user has "Ask for approval" on, every command, script, file write and MCP action waits for them to allow it; reading and listing don't. Make each action count: one well-built script instead of many small probes. If they deny an action, it did not run: don't retry it in another form; say what you wanted to do and ask how to proceed. With "Allow all", nothing waits, so be even more careful with anything that changes or deletes.
+ - Never claim you ran something you didn't, and never make up output. If the run failed and you answer anyway, say plainly that the answer is unchecked.
+ 
++## Images inside an explanation
++
++Use show_image(path, caption) to display a picture you made with code directly inside the current answer. It does not generate an image: first create an actual PNG (or JPEG/WebP/GIF) with run_script or run_command, then call show_image with its path. The chat inserts the picture at that point and you can continue writing after it. Use it for diagrams, flowcharts, plots, annotated illustrations, geometric sketches, timelines and other visuals that make an explanation clearer; use code for precise layouts and data, not an image-generation model. Use Pillow or matplotlib if available; install a missing package when needed. Keep labels legible, use enough resolution and check the script's output before showing the image.
++
++Write the relevant introduction or explanation, make the image, call show_image, then continue with the interpretation or next step. You may do this more than once in one answer. The caption should be brief, descriptive and in the user's language; it is also the image's accessible description. Do not end the turn just because you showed an image. The tool inserts the image itself: do not repeat it with Markdown, print internal image markers, invent URLs, or expose local paths. A failed show_image means nothing was shown: fix the file or explain the limitation. Use send_file for a downloadable deliverable under the answer; use show_image when the picture belongs between paragraphs. Don't send the same image again as a file unless the user asks for a separate download.
++
+ ## Math
+ 
+ Write formulas in LaTeX: `$...$` inside a sentence, `$$...$$` on lines of their own for anything displayed. The chat renders them, so never put a formula in a code block.
+diff --git a/prompts/classifier_system_prompt.md b/prompts/classifier_system_prompt.md
+index 832ef96..41b7009 100644
+--- a/prompts/classifier_system_prompt.md
++++ b/prompts/classifier_system_prompt.md
+@@ -61,7 +61,8 @@ Category guidance:
+ - knowledge — factual or educational questions answerable from established knowledge without required live research.
+ - translation — translation or localization between languages.
+ - vision — understanding or extracting information from an input image, screenshot, chart, or visual document.
+-- image_generation — producing or editing an image as the requested output.
++- image_generation — producing or editing an image with a native image-generation model (artwork, photos, creative visual edits).
++- Programmatically drawn plots, charts, flowcharts, geometric sketches and diagrams embedded in an explanation use the chat model's terminal and show_image tool. Classify by the actual subject (data_analysis, math, software_engineering, knowledge, etc.), include "code_execution" in required_tools when drawing is requested, and use modality_output_expected ["text"] (or ["text", "code"] if code is also requested). Do not use image_generation or native "image" output for these: the image is produced by code, not by the chat model's native output. This also applies whenever the user explicitly asks to create a PNG programmatically or with Python.
+ 
+ Intent guidance:
+ - answer — directly answer a question.
+diff --git a/server/assets/fluid.css b/server/assets/fluid.css
+index 57e1356..bbeb7ad 100644
+--- a/server/assets/fluid.css
++++ b/server/assets/fluid.css
+@@ -10119,3 +10119,56 @@ html[data-theme="dark"] .main:not(.project-mode) #homeGreeting::after {
+     animation: thinkingSweep 1.8s linear;
+   }
+ }
++
++/* Pictures made with code can sit between any two answer paragraphs. */
++.inline-answer-image {
++  margin: 20px 0;
++  max-width: 100%;
++}
++.inline-answer-image-open {
++  display: block;
++  width: fit-content;
++  max-width: 100%;
++  padding: 0;
++  border: 0;
++  border-radius: 12px;
++  overflow: hidden;
++  background: var(--surface-1, transparent);
++  cursor: zoom-in;
++}
++.inline-answer-image img {
++  display: block;
++  max-width: 100%;
++  height: auto;
++  min-height: 100px;
++  object-fit: contain;
++}
++.inline-answer-image figcaption {
++  display: flex;
++  align-items: baseline;
++  justify-content: space-between;
++  gap: 16px;
++  margin-top: 8px;
++  color: var(--muted);
++  font: 12px/1.5 Inter, sans-serif;
++  overflow-wrap: anywhere;
++}
++.inline-answer-image-download {
++  flex: none;
++  border: 0;
++  padding: 4px 0;
++  background: transparent;
++  color: inherit;
++  font: inherit;
++  cursor: pointer;
++  text-decoration: underline;
++  text-underline-offset: 3px;
++}
++.inline-answer-image-open:focus-visible,
++.inline-answer-image-download:focus-visible {
++  outline: 2px solid currentColor;
++  outline-offset: 3px;
++}
++.inline-answer-image.is-missing .inline-answer-image-open {
++  min-width: 160px;
++}
+diff --git a/server/attachments.go b/server/attachments.go
+index 24a385a..5cd1d31 100644
+--- a/server/attachments.go
++++ b/server/attachments.go
+@@ -388,7 +388,7 @@ func summaryInput(messages []conversation.Message) []conversation.Message {
+ 	out := make([]conversation.Message, len(messages))
+ 	for i, m := range messages {
+ 		out[i] = m
+-		out[i].Content = withQuote(m.Quote, m.Content)
++		out[i].Content = withQuote(m.Quote, inlineImageHistoryText(m.Content))
+ 		if len(m.Attachments) == 0 {
+ 			continue
+ 		}
+diff --git a/server/computer.go b/server/computer.go
+index ea43565..946a423 100644
+--- a/server/computer.go
++++ b/server/computer.go
+@@ -76,7 +76,7 @@ func (r *webRun) terminalNote() string {
+ 		if len(h.Languages) > 0 {
+ 			fmt.Fprintf(&b, " run_script takes %s.", strings.Join(h.Languages, ", "))
+ 		}
+-		b.WriteString(" read_file, write_file and list_dir work with files directly; send_file gives the user a file.")
++		b.WriteString(" read_file, write_file and list_dir work with files directly; send_file gives the user a downloadable file; show_image displays a picture inline at this point in the answer, after which you can continue writing.")
+ 		if names := mcpServerNames(h.MCP); names != "" {
+ 			fmt.Fprintf(&b, " MCP tools (mcp__<server>__<tool>) control apps through the app's MCP servers: %s.", names)
+ 		}
+@@ -99,7 +99,7 @@ func (r *webRun) terminalTools() []provider.FunctionTool {
+ 	if !r.onComputer() {
+ 		tools := append([]provider.FunctionTool(nil), terminalFunctionTools...)
+ 		if r.s.Attachments != nil {
+-			tools = append(tools, sendFileTool)
++			tools = append(tools, sendFileTool, showImageTool)
+ 		}
+ 		return tools
+ 	}
+@@ -133,7 +133,7 @@ func (r *webRun) terminalTools() []provider.FunctionTool {
+ 	}
+ 	tools := []provider.FunctionTool{command, script, computerFileTools[0], computerFileTools[1], computerFileTools[2]}
+ 	if r.s.Attachments != nil {
+-		tools = append(tools, sendFileTool)
++		tools = append(tools, sendFileTool, showImageTool)
+ 	}
+ 	return append(tools, mcpFunctionTools(h.MCP, r.mcpByName)...)
+ }
+@@ -174,7 +174,7 @@ func isMCPTool(name string) bool { return strings.HasPrefix(name, "mcp__") }
+ // isLongTool: a step that may run for minutes (and wait for approval),
+ // not under webStepTimeout.
+ func isLongTool(name string) bool {
+-	return isTerminalTool(name) || isComputerFileTool(name) || isMCPTool(name) || name == "send_file"
++	return isTerminalTool(name) || isComputerFileTool(name) || isMCPTool(name) || name == "send_file" || name == "show_image"
+ }
+ 
+ // --- MCP ---
+diff --git a/server/frontend.html b/server/frontend.html
+index 3485254..defcc7e 100644
+--- a/server/frontend.html
++++ b/server/frontend.html
+@@ -16,7 +16,7 @@
+ <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
+ <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
+ <link rel="manifest" href="/assets/icons/manifest.json?v=2" />
+-<link rel="stylesheet" href="/assets/fluid.css?v=36" />
++<link rel="stylesheet" href="/assets/fluid.css?v=37" />
+ <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
+ <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
+ <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
+@@ -2170,7 +2170,7 @@
+     }
+ 
+     function isMarkdownBlockStart(line){
+-      return /^\s*$|^```|^\s*\$\$|^\s*\\\[|^#{1,6}\s+|^>\s?|^\s*([-+*]|\d+\.)\s+|^\s*([-*_])(?:\s*\2){2,}\s*$/.test(line);
++      return /^\s*$|^<!--neochat-image:|^```|^\s*\$\$|^\s*\\\[|^#{1,6}\s+|^>\s?|^\s*([-+*]|\d+\.)\s+|^\s*([-*_])(?:\s*\2){2,}\s*$/.test(line);
+     }
+ 
+     function splitMarkdownTableRow(line){
+@@ -2380,13 +2380,76 @@
+       return block;
+     }
+ 
++    function parseInlineImage(marker){
++      const match=String(marker||'').trim().match(/^<!--neochat-image:([A-Za-z0-9_-]+)-->$/);
++      if(!match)return null;
++      try{
++        const bytes=Uint8Array.from(atob(match[1].replace(/-/g,'+').replace(/_/g,'/')),function(ch){return ch.charCodeAt(0)});
++        const shown=JSON.parse(new TextDecoder().decode(bytes));
++        const file=shown&&shown.file;
++        if(!file||file.kind!=='image'||!/^[a-f0-9]{32}$/.test(file.id)||!/^[a-f0-9]{32}$/.test(shown.display_id)||!/^image\/(png|jpeg|webp|gif)$/.test(file.mime))return null;
++        if(typeof file.name!=='string'||(shown.caption!==undefined&&typeof shown.caption!=='string'))return null;
++        return shown;
++      }catch(error){return null}
++    }
++    function inlineImageElement(shown){
++      const figure=document.createElement('figure');
++      figure.className='inline-answer-image';
++      figure.dataset.displayId=shown.display_id;
++      const open=document.createElement('button');
++      open.type='button';
++      open.className='inline-answer-image-open';
++      open.setAttribute('aria-label','Open image: '+(shown.caption||shown.file.name));
++      const image=document.createElement('img');
++      image.alt=shown.caption||shown.file.name;
++      image.decoding='async';
++      if(shown.file.width>0&&shown.file.height>0){image.width=shown.file.width;image.height=shown.file.height}
++      open.append(image);
++      open.addEventListener('click',function(){openAttachment(shown.file)});
++      figure.append(open);
++      const footer=document.createElement('figcaption');
++      const caption=document.createElement('span');
++      caption.textContent=shown.caption||shown.file.name;
++      const download=document.createElement('button');
++      download.type='button';
++      download.className='inline-answer-image-download';
++      download.textContent='Download';
++      download.setAttribute('aria-label','Download '+shown.file.name);
++      download.addEventListener('click',function(){downloadSentFile(shown.file)});
++      footer.append(caption,download);figure.append(footer);
++      attachmentURL(shown.file.id).then(function(url){image.src=url}).catch(function(){
++        figure.classList.add('is-missing');
++        caption.textContent='Image unavailable';
++      });
++      return figure;
++    }
++    function readableInlineImages(text){
++      return String(text||'').replace(/<!--neochat-image:[A-Za-z0-9_-]+-->/g,function(marker){
++        const shown=parseInlineImage(marker);
++        return shown?'[Image: '+(shown.caption||shown.file.name)+']':'';
++      });
++    }
++    // A display marker arrives as one delta. Keep it atomic in the smooth
++    // stream so its metadata never flashes as text before the picture.
++    function streamTextParts(text){
++      return String(text||'').split(/(<!--neochat-image:[A-Za-z0-9_-]+-->)/g).flatMap(function(part){
++        return part.startsWith('<!--neochat-image:')?[part]:Array.from(part);
++      });
++    }
+     function renderMarkdown(container,source){
++      // Reuse loaded image nodes while the surrounding text streams.
++      const previousImages=new Map(Array.from(container.querySelectorAll('.inline-answer-image')).map(function(figure){return [figure.dataset.displayId,figure]}));
+       container.replaceChildren();
+       const lines=String(source||'').replace(/\r\n?/g,'\n').split('\n');
+       let index=0;
+       while(index<lines.length){
+         const line=lines[index];
+         if(!line.trim()){index++;continue}
++        if(line.trim().startsWith('<!--neochat-image:')){
++          const shown=parseInlineImage(line);
++          if(shown)container.append(previousImages.get(shown.display_id)||inlineImageElement(shown));
++          index++;continue;
++        }
+ 
+         // The info string's first word is the language: ```c++, ```python title="x".
+         const fence=line.match(/^```\s*([^\s`]*)[^`]*$/);
+@@ -2644,7 +2707,7 @@
+       if(step.approval==='pending')return 'nod';
+       if(step.tool==='run_script'&&step.phase==='writing')return 'brackets';
+       if(step.tool==='run_command'||step.tool==='run_script')return 'swap';
+-      if(step.tool==='send_file')return 'bubbles';
++      if(step.tool==='send_file'||step.tool==='show_image')return 'bubbles';
+       if(step.tool==='web_search')return 'reveal';
+       return 'orbit';
+     }
+@@ -2686,7 +2749,7 @@
+     }
+     // Terminal steps: a command (run_command) or a script the model wrote
+     // and ran (run_script) on the server.
+-    const terminalTools=['run_command','run_script','send_file','read_file','write_file','list_dir','mcp'];
++    const terminalTools=['run_command','run_script','send_file','show_image','read_file','write_file','list_dir','mcp'];
+     function isTerminalStep(step){
+       return Boolean(step&&terminalTools.indexOf(step.tool)>-1);
+     }
+@@ -2701,6 +2764,7 @@
+     // What a running terminal step is doing, for the block's label.
+     function terminalLiveLabel(step){
+       if(step.approval==='pending')return 'Waiting for your approval';
++      if(step.tool==='show_image')return 'Showing an image';
+       if(step.tool==='send_file')return 'Sending a file';
+       if(step.tool==='read_file')return 'Reading '+(shortPath(step.title)||'a file');
+       if(step.tool==='write_file')return 'Writing '+(shortPath(step.title)||'a file');
+@@ -2724,6 +2788,7 @@
+       if(step.tool==='write_file')return (step.error?'Couldn’t write ':'Wrote ')+(shortPath(step.title)||'a file');
+       if(step.tool==='list_dir')return (step.error?'Couldn’t open ':'Looked in ')+(shortPath(step.title)||'a folder');
+       if(step.tool==='mcp')return (step.error&&step.error!=='the tool reported an error'?'Couldn’t use ':'Used ')+(step.title||'an MCP tool');
++      if(step.tool==='show_image')return step.error?'Couldn’t show an image':'Showed '+(step.title||'an image');
+       if(step.tool==='send_file'){
+         if(step.error)return 'Couldn’t send a file';
+         return 'Sent '+(step.title||'a file');
+@@ -2947,7 +3012,7 @@
+         text.classList.add('thinking-label');
+         text.dataset.text=text.textContent;
+       }else text.textContent=terminalDoneLabel(step);
+-      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'||step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'?'fetch':step.tool==='mcp'?'mcp':'terminal'),text);
++      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'||step.tool==='show_image'||step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'?'fetch':step.tool==='mcp'?'mcp':'terminal'),text);
+       if(step.where==='computer'&&!step.pending){
+         const where=document.createElement('span');
+         where.className='term-where';
+@@ -2998,7 +3063,7 @@
+         }
+         return row;
+       }
+-      if(step.tool==='send_file'){
++      if(step.tool==='send_file'||step.tool==='show_image'){
+         if(!step.pending&&step.size){
+           const note=document.createElement('span');
+           note.className='web-step-note';
+@@ -3171,12 +3236,14 @@
+       const commands=done.filter(function(step){return step.tool==='run_command'}).length;
+       const scripts=done.filter(function(step){return step.tool==='run_script'}).length;
+       const sent=done.filter(function(step){return step.tool==='send_file'}).length;
++      const shown=done.filter(function(step){return step.tool==='show_image'}).length;
+       const parts=[];
+       if(searches)parts.push(plural(searches,'search','searches'));
+       if(pages)parts.push(plural(pages,'page','pages'));
+       if(scripts)parts.push(plural(scripts,'script','scripts'));
+       if(commands)parts.push(plural(commands,'command','commands'));
+       if(sent)parts.push(plural(sent,'file','files'));
++      if(shown)parts.push(plural(shown,'image','images'));
+       const fileOps=done.filter(function(step){return step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'}).length;
+       const mcpCalls=done.filter(function(step){return step.tool==='mcp'}).length;
+       if(fileOps)parts.push(plural(fileOps,'file action','file actions'));
+@@ -3803,7 +3870,7 @@
+       const copy=messageActionButton('Copy response','copy','<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>');
+       copy.addEventListener('click',async function(){
+         try{
+-          await copyMessageText(message.dataset.messageText||message.querySelector('.chat-text').innerText);
++          await copyMessageText(readableInlineImages(message.dataset.messageText||message.querySelector('.chat-text').innerText));
+           toast('Response copied.');
+         }catch(error){
+           toast('Could not copy the response.');
+@@ -4016,7 +4083,11 @@
+       return card;
+     }
+     function renderAnswerFiles(message,files){
+-      const list=Array.isArray(files)?files.filter(function(file){return file&&file.id}):[];
++      const inlineIDs=new Set();
++      String(message.dataset.messageText||'').replace(/<!--neochat-image:[A-Za-z0-9_-]+-->/g,function(marker){
++        const shown=parseInlineImage(marker);if(shown)inlineIDs.add(shown.file.id);return marker;
++      });
++      const list=Array.isArray(files)?files.filter(function(file){return file&&file.id&&!inlineIDs.has(file.id)}):[];
+       let holder=message.querySelector('.chat-copy > .answer-files');
+       if(!list.length){if(holder)holder.remove();return}
+       const ids=list.map(function(file){return file.id}).join(',');
+@@ -5669,7 +5740,7 @@
+       return {
+         append:function(text){
+           if(cancelled||!text)return;
+-          queuedCharacters=queuedCharacters.concat(Array.from(String(text)));
++          queuedCharacters=queuedCharacters.concat(streamTextParts(text));
+           schedule();
+         },
+         replace:function(text){
+@@ -5679,10 +5750,10 @@
+           const currentText=visibleText+queuedCharacters.join('');
+           if(completeText===currentText)return;
+           if(completeText.startsWith(visibleText)){
+-            queuedCharacters=Array.from(completeText.slice(visibleText.length));
++            queuedCharacters=streamTextParts(completeText.slice(visibleText.length));
+           }else{
+             visibleText='';
+-            queuedCharacters=Array.from(completeText);
++            queuedCharacters=streamTextParts(completeText);
+           }
+           schedule();
+         },
+diff --git a/server/questionnaire.go b/server/questionnaire.go
+index 739e8f5..9cd3c6f 100644
+--- a/server/questionnaire.go
++++ b/server/questionnaire.go
+@@ -208,10 +208,10 @@ func questionnaireText(q *conversation.Questionnaire) string {
+ // later in the chat knows that answer came from the web, not from memory.
+ func assistantHistoryContent(m conversation.Message) string {
+ 	if len(m.Versions) == 0 {
+-		return m.Content
++		return inlineImageHistoryText(m.Content)
+ 	}
+ 	latest := m.Versions[len(m.Versions)-1]
+-	content := m.Content
++	content := inlineImageHistoryText(m.Content)
+ 	if note := webStepsNote(latest.Activity); note != "" {
+ 		content = strings.TrimSpace(note + "\n\n" + content)
+ 	}
+diff --git a/server/server.go b/server/server.go
+index e7c78e1..e37cda6 100644
+--- a/server/server.go
++++ b/server/server.go
+@@ -1910,7 +1910,7 @@ func (s *Server) persistStopped(ctx context.Context, req chatRequest, prepared p
+ 	}
+ 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
+ 	defer cancel()
+-	msg, err := s.persistTurn(persistCtx, req, prepared, model, conversation.ResponseVersion{Content: partial, ModelID: model.ID, CreatedAt: time.Now(), Activity: activity, ThoughtMS: thought.Milliseconds(), Reasoning: reasoning})
++	msg, err := s.persistTurn(persistCtx, req, prepared, model, conversation.ResponseVersion{Content: partial, ModelID: model.ID, CreatedAt: time.Now(), Activity: activity, ThoughtMS: thought.Milliseconds(), Reasoning: reasoning, Files: inlineImageFiles(partial)})
+ 	if err != nil {
+ 		log.Printf("server: persist stopped response for conversation_id=%s: %v", prepared.conversationID, err)
+ 		return conversation.Message{}, false
+@@ -1939,7 +1939,7 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
+ 		return
+ 	}
+ 
+-	outputTokens := tokenizer.EstimateText(partialText)
++	outputTokens := tokenizer.EstimateText(inlineImagePattern.ReplaceAllString(partialText, ""))
+ 	if outputTokens == 0 {
+ 		log.Printf("server: generation aborted with no measurable output, upper budget reservation retained: request_id=%s user_id=%s model_id=%s: %v",
+ 			prepared.requestID, req.UserID, model.ID, cause)
+@@ -2180,7 +2180,7 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
+ 	// The model's thinking goes out as it comes (the client shows it only
+ 	// when asked) and is kept with the answer, up to maxReasoningRunes.
+ 	var reasoning strings.Builder
+-	call := streamingGenerate(func(delta string) {
++	onDelta := func(delta string) {
+ 		mu.Lock()
+ 		if waiting {
+ 			thoughtUntil, waiting = time.Now(), false
+@@ -2188,7 +2188,9 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
+ 		streamed.WriteString(delta)
+ 		mu.Unlock()
+ 		send("delta", map[string]string{"text": delta})
+-	}, func(text string) {
++	}
++	ctx = context.WithValue(ctx, inlineImageDeltaKey{}, onDelta)
++	call := streamingGenerate(onDelta, func(text string) {
+ 		mu.Lock()
+ 		reasoning.WriteString(text)
+ 		mu.Unlock()
+diff --git a/server/terminal.go b/server/terminal.go
+index e0bf7a9..6eb0133 100644
+--- a/server/terminal.go
++++ b/server/terminal.go
+@@ -76,11 +76,11 @@ var terminalFunctionTools = []provider.FunctionTool{
+ 	},
+ }
+ 
+-// sendFileTool hands the user a file from the terminal: the only way a
+-// file made there reaches them.
++// sendFileTool hands the user a downloadable file from the terminal;
++// showImageTool places a picture inside the explanation instead.
+ var sendFileTool = provider.FunctionTool{
+ 	Name:        "send_file",
+-	Description: "Send the user a file you made on the terminal (a page, a chart, a spreadsheet, a document, an archive...). It appears under your answer as a file they can open or download; an .html page opens in the page viewer, a picture is shown. This is the only way to give the user a file: they can't open paths on the server, and sandbox: or file: links don't work. Call it once the file is final.",
++	Description: "Send the user a file you made on the terminal (a page, a chart, a spreadsheet, a document, an archive...). It appears under your answer as a file they can open or download; an .html page opens in the page viewer, a picture is shown. For a picture inside the explanation, use show_image instead. To give the user a downloadable file, use this tool: they can't open paths on the server, and sandbox: or file: links don't work. Call it once the file is final.",
+ 	Parameters: map[string]any{
+ 		"type": "object",
+ 		"properties": map[string]any{
+@@ -101,7 +101,7 @@ const (
+ // the facts of this machine. When and how to use it is in the core prompt
+ // (prompts/*.md, "The terminal"); the short version here covers a persona
+ // without it.
+-const terminalToolsNote = "You have a terminal on the server this chat runs on: run_command runs a shell command, run_script writes a Python or bash script and runs it. Machine: %s. Working directory (this chat's own, kept between runs and messages): %s. Time limit per run: %s by default, up to %s with timeout_seconds. To give the user a file you made, call send_file with its path; never write server paths or sandbox:/file: links, the user can't open them. Use it instead of guessing whenever the answer depends on computing, running or checking something; read the output, fix and rerun on errors, then answer from what it printed."
++const terminalToolsNote = "You have a terminal on the server this chat runs on: run_command runs a shell command, run_script writes a Python or bash script and runs it. Machine: %s. Working directory (this chat's own, kept between runs and messages): %s. Time limit per run: %s by default, up to %s with timeout_seconds. To place a picture you made inside your explanation, call show_image with its path and continue writing afterwards. For downloadable files under the answer, call send_file with its path; never write server paths or sandbox:/file: links, the user can't open them. Use it instead of guessing whenever the answer depends on computing, running or checking something; read the output, fix and rerun on errors, then answer from what it printed."
+ 
+ // noTerminalNote goes to a model that gets no terminal for this answer,
+ // since the core prompt describes one: without it, a model may claim to
+@@ -392,6 +392,8 @@ func roundDuration(d time.Duration) string {
+ func terminalStepLine(step conversation.ToolActivity) string {
+ 	var line string
+ 	switch step.Tool {
++	case "show_image":
++		line = "- showed the user an inline image " + oneLine(orDefault(step.Title, step.Command), 120)
+ 	case "send_file":
+ 		line = "- sent the user the file " + oneLine(orDefault(step.Title, step.Command), 120)
+ 	case "read_file":
+@@ -491,8 +493,12 @@ func (r *webRun) planSendFile(call provider.ToolCall) (string, func(context.Cont
+ // sendFile stores a file from the terminal as one of the user's files and
+ // adds it to the answer. The same file sent twice is sent once.
+ func (r *webRun) sendFile(ctx context.Context, path, name string) (conversation.Attachment, error) {
++	return r.sendTerminalFile(ctx, path, name, false)
++}
++
++func (r *webRun) sendTerminalFile(ctx context.Context, path, name string, imageOnly bool) (conversation.Attachment, error) {
+ 	if r.onComputer() {
+-		return r.sendComputerFile(ctx, path, name)
++		return r.sendComputerFile(ctx, path, name, imageOnly)
+ 	}
+ 	dir, err := r.s.Terminal.Dir(r.req.UserID, r.prepared.conversationID)
+ 	if err != nil {
+@@ -503,7 +509,7 @@ func (r *webRun) sendFile(ctx context.Context, path, name string) (conversation.
+ 		return conversation.Attachment{}, err
+ 	}
+ 	r.mu.Lock()
+-	if sent, ok := r.sentFrom[real]; ok {
++	if sent, ok := r.sentFrom[real]; ok && !imageOnly {
+ 		r.mu.Unlock()
+ 		return sent, nil
+ 	}
+@@ -530,11 +536,11 @@ func (r *webRun) sendFile(ctx context.Context, path, name string) (conversation.
+ 	if err != nil {
+ 		return conversation.Attachment{}, fmt.Errorf("can't read %s: %v", path, err)
+ 	}
+-	return r.storeSentFile(ctx, real, fileName(name, real), data)
++	return r.storeSentFile(ctx, real, fileName(name, real), data, imageOnly)
+ }
+ 
+ // sendComputerFile is sendFile for a file on the user's computer.
+-func (r *webRun) sendComputerFile(ctx context.Context, path, name string) (conversation.Attachment, error) {
++func (r *webRun) sendComputerFile(ctx context.Context, path, name string, imageOnly bool) (conversation.Attachment, error) {
+ 	path = strings.TrimPrefix(strings.TrimPrefix(strings.TrimSpace(path), "sandbox:"), "file://")
+ 	r.mu.Lock()
+ 	if len(r.files) >= maxSentFiles {
+@@ -547,7 +553,7 @@ func (r *webRun) sendComputerFile(ctx context.Context, path, name string) (conve
+ 		return conversation.Attachment{}, err
+ 	}
+ 	r.mu.Lock()
+-	if sent, ok := r.sentFrom[res.Path]; ok {
++	if sent, ok := r.sentFrom[res.Path]; ok && !imageOnly {
+ 		r.mu.Unlock()
+ 		return sent, nil
+ 	}
+@@ -555,13 +561,28 @@ func (r *webRun) sendComputerFile(ctx context.Context, path, name string) (conve
+ 	if strings.TrimSpace(name) == "" {
+ 		name = res.Name
+ 	}
+-	return r.storeSentFile(ctx, res.Path, fileName(name, res.Name), res.Data)
++	return r.storeSentFile(ctx, res.Path, fileName(name, res.Name), res.Data, imageOnly)
+ }
+ 
+ // storeSentFile keeps a sent file with the user's files and adds it to the
+ // answer; real is where it came from, so it goes once.
+-func (r *webRun) storeSentFile(ctx context.Context, real, name string, data []byte) (conversation.Attachment, error) {
++func (r *webRun) storeSentFile(ctx context.Context, real, name string, data []byte, imageOnly bool) (conversation.Attachment, error) {
+ 	kind, mimeType := sentFileKind(name, data)
++	width, height := 0, 0
++	if imageOnly {
++		cfg, err := validateInlineImage(data)
++		if err != nil {
++			return conversation.Attachment{}, err
++		}
++		width, height = cfg.Width, cfg.Height
++	}
++	// Reserve the storage slot while holding the lock, including for
++	// parallel show_image calls in a single model turn.
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	if len(r.files) >= maxSentFiles {
++		return conversation.Attachment{}, fmt.Errorf("at most %d files per answer", maxSentFiles)
++	}
+ 	id := conversation.NewID()
+ 	file := attachment.File{ID: id, UserID: r.req.UserID, Name: name, MIME: mimeType, Kind: kind, Size: int64(len(data)), Data: data, CreatedAt: time.Now()}
+ 	storeCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 30*time.Second)
+@@ -570,9 +591,7 @@ func (r *webRun) storeSentFile(ctx context.Context, real, name string, data []by
+ 		log.Printf("server: store sent file for user_id=%s: %v", r.req.UserID, err)
+ 		return conversation.Attachment{}, fmt.Errorf("couldn't store the file")
+ 	}
+-	ref := conversation.Attachment{ID: id, Name: name, MIME: mimeType, Kind: kind, Size: file.Size}
+-	r.mu.Lock()
+-	defer r.mu.Unlock()
++	ref := conversation.Attachment{ID: id, Name: name, MIME: mimeType, Kind: kind, Size: file.Size, Width: width, Height: height}
+ 	if r.sentFrom == nil {
+ 		r.sentFrom = map[string]conversation.Attachment{}
+ 	}
+diff --git a/server/websearch.go b/server/websearch.go
+index dee84f4..4ece610 100644
+--- a/server/websearch.go
++++ b/server/websearch.go
+@@ -169,13 +169,14 @@ type webRun struct {
+ 	generate   func(ctx context.Context, messages []provider.Message) (provider.GenerateResult, error)
+ 	onActivity func([]conversation.ToolActivity)
+ 
+-	mu       sync.Mutex
+-	activity []conversation.ToolActivity
+-	searches int
+-	fetches  int
+-	runs     int
+-	files    []conversation.Attachment
+-	sentFrom map[string]conversation.Attachment // by real path, so a file goes once
++	mu           sync.Mutex
++	activity     []conversation.ToolActivity
++	searches     int
++	fetches      int
++	runs         int
++	files        []conversation.Attachment
++	sentFrom     map[string]conversation.Attachment // by real path, so a file goes once
++	inlineImages map[int]inlineImage                // this round, in tool-call order
+ 	// writing maps a run_script call the model is still writing (its
+ 	// position in the step) to the step shown for it.
+ 	writing map[int]int
+@@ -328,7 +329,17 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
+ 			assistant.Reasoning, assistant.ReasoningDetails = res.Reasoning, res.ReasoningDetails
+ 		}
+ 		messages = append(messages, assistant)
+-		for i, result := range r.runTools(ctx, calls, askErrors) {
++		results := r.runTools(ctx, calls, askErrors)
++		// Insert images between this round's prose and the next. Emitting
++		// here keeps parallel tool completion from reordering the answer.
++		for _, shown := range r.takeInlineImages() {
++			marker := inlineImageMarker(shown)
++			out.Text += marker
++			if emit, ok := ctx.Value(inlineImageDeltaKey{}).(func(string)); ok {
++				emit(marker)
++			}
++		}
++		for i, result := range results {
+ 			messages = append(messages, provider.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result})
+ 		}
+ 		if err := ctx.Err(); err != nil {
+@@ -466,6 +477,9 @@ func (r *webRun) planTool(call provider.ToolCall, position int) (string, func(co
+ 	if isTerminalTool(call.Name) {
+ 		return r.planTerminalTool(call, position)
+ 	}
++	if call.Name == "show_image" {
++		return r.planShowImage(call, position)
++	}
+ 	if call.Name == "send_file" {
+ 		return r.planSendFile(call)
+ 	}
+@@ -1023,7 +1037,7 @@ func webStepsNote(steps []conversation.ToolActivity) string {
+ 				line += " (failed: " + oneLine(step.Error, 120) + ")"
+ 			}
+ 			lines = append(lines, line)
+-		case "run_command", "run_script", "send_file", "read_file", "write_file", "list_dir", "mcp":
++		case "run_command", "run_script", "send_file", "show_image", "read_file", "write_file", "list_dir", "mcp":
+ 			lines = append(lines, terminalStepLine(step))
+ 			terminalSteps = true
+ 		}
+@@ -1046,7 +1060,7 @@ func boundActivity(steps []conversation.ToolActivity) []conversation.ToolActivit
+ 	out := make([]conversation.ToolActivity, 0, len(steps))
+ 	for _, step := range steps {
+ 		switch step.Tool {
+-		case "run_command", "run_script", "send_file", "read_file", "write_file", "list_dir", "mcp":
++		case "run_command", "run_script", "send_file", "show_image", "read_file", "write_file", "list_dir", "mcp":
+ 			out = append(out, boundTerminalStep(step))
+ 			continue
+ 		}
+diff --git a/server/inline_image.go b/server/inline_image.go
+new file mode 100644
+index 0000000..e49eb69
+--- /dev/null
++++ b/server/inline_image.go
+@@ -0,0 +1,148 @@
++package server
++
++import (
++	"bytes"
++	"context"
++	"encoding/base64"
++	"encoding/json"
++	"fmt"
++	"image"
++	"regexp"
++	"sort"
++	"strings"
++
++	"neochat/attachment"
++	"neochat/conversation"
++	"neochat/provider"
++)
++
++// The marker is stored in the response text, so its position survives
++// history, versions, replay and stopping a reply. It contains metadata only;
++// the bytes still use the authenticated, owner-scoped /files endpoint.
++type inlineImage struct {
++	DisplayID string                  `json:"display_id"`
++	File      conversation.Attachment `json:"file"`
++	Caption   string                  `json:"caption,omitempty"`
++}
++
++type inlineImageDeltaKey struct{}
++
++var showImageTool = provider.FunctionTool{
++	Name:        "show_image",
++	Description: "Display an existing picture from the terminal inline at this point in your answer, then continue writing. First create the PNG/JPEG/WebP/GIF with run_script or run_command. Use for diagrams, plots, charts and other programmatically drawn visuals that belong between paragraphs. This does not generate images and does not end your answer. Do not repeat the image in Markdown or send_file afterwards.",
++	Parameters: map[string]any{
++		"type": "object",
++		"properties": map[string]any{
++			"path":    map[string]any{"type": "string", "description": "Path to the picture on the selected terminal, relative to the chat's working directory or absolute."},
++			"caption": map[string]any{"type": "string", "description": "Short caption and accessible description in the user's language."},
++		},
++		"required": []string{"path", "caption"},
++	},
++}
++
++func validateInlineImage(data []byte) (image.Config, error) {
++	kind, _, err := attachment.Classify("image", data)
++	if err != nil || kind != attachment.KindImage {
++		return image.Config{}, fmt.Errorf("show_image needs a PNG, JPEG, WebP or GIF picture; create one with run_script first")
++	}
++	cfg, _, err := image.DecodeConfig(bytes.NewReader(data))
++	if err != nil {
++		return image.Config{}, fmt.Errorf("the image cannot be decoded: %w", err)
++	}
++	if cfg.Width <= 0 || cfg.Height <= 0 || cfg.Width > attachment.MaxImagePixels/cfg.Height {
++		return image.Config{}, fmt.Errorf("the image exceeds the %d megapixel limit", attachment.MaxImagePixels/1_000_000)
++	}
++	return cfg, nil
++}
++
++func (r *webRun) planShowImage(call provider.ToolCall, position int) (string, func(context.Context) string) {
++	if !r.terminalAllowed() || r.s.Attachments == nil {
++		return "Error: showing images is not available.", nil
++	}
++	var args struct {
++		Path    string `json:"path"`
++		Caption string `json:"caption"`
++	}
++	if json.Unmarshal([]byte(call.Arguments), &args) != nil || strings.TrimSpace(args.Path) == "" {
++		return "Error: path is required.", nil
++	}
++	caption := clipRunes(strings.Join(strings.Fields(args.Caption), " "), 500)
++	index := r.start(conversation.ToolActivity{Tool: "show_image", Command: clipRunes(strings.TrimSpace(args.Path), 1000)})
++	return "", func(ctx context.Context) string {
++		file, err := r.sendTerminalFile(ctx, args.Path, "", true)
++		r.finish(index, func(a *conversation.ToolActivity) {
++			if err != nil {
++				a.Error = err.Error()
++				return
++			}
++			a.Title, a.Size = file.Name, file.Size
++		})
++		if err != nil {
++			return "Error: " + err.Error()
++		}
++		r.mu.Lock()
++		if r.inlineImages == nil {
++			r.inlineImages = map[int]inlineImage{}
++		}
++		r.inlineImages[position] = inlineImage{DisplayID: conversation.NewID(), File: file, Caption: caption}
++		r.mu.Unlock()
++		return fmt.Sprintf("Displayed %s inline after your preceding text. Continue your explanation after the image; do not repeat it, link to it or call send_file for it.", file.Name)
++	}
++}
++
++func (r *webRun) takeInlineImages() []inlineImage {
++	r.mu.Lock()
++	defer r.mu.Unlock()
++	positions := make([]int, 0, len(r.inlineImages))
++	for position := range r.inlineImages {
++		positions = append(positions, position)
++	}
++	sort.Ints(positions)
++	shown := make([]inlineImage, 0, len(positions))
++	for _, position := range positions {
++		shown = append(shown, r.inlineImages[position])
++	}
++	r.inlineImages = nil
++	return shown
++}
++
++func inlineImageMarker(shown inlineImage) string {
++	data, _ := json.Marshal(shown)
++	return "\n\n<!--neochat-image:" + base64.RawURLEncoding.EncodeToString(data) + "-->\n\n"
++}
++
++var inlineImagePattern = regexp.MustCompile(`<!--neochat-image:([A-Za-z0-9_-]+)-->`)
++
++func inlineImageFiles(content string) []conversation.Attachment {
++	var files []conversation.Attachment
++	seen := map[string]bool{}
++	for _, match := range inlineImagePattern.FindAllStringSubmatch(content, -1) {
++		data, err := base64.RawURLEncoding.DecodeString(match[1])
++		if err != nil {
++			continue
++		}
++		var shown inlineImage
++		if json.Unmarshal(data, &shown) != nil || shown.File.ID == "" || shown.File.Kind != attachment.KindImage || seen[shown.File.ID] {
++			continue
++		}
++		seen[shown.File.ID] = true
++		files = append(files, shown.File)
++	}
++	return files
++}
++
++// Models and summaries get a readable note, never the internal display payload.
++func inlineImageHistoryText(content string) string {
++	return inlineImagePattern.ReplaceAllStringFunc(content, func(marker string) string {
++		match := inlineImagePattern.FindStringSubmatch(marker)
++		data, err := base64.RawURLEncoding.DecodeString(match[1])
++		if err != nil {
++			return ""
++		}
++		var shown inlineImage
++		if json.Unmarshal(data, &shown) != nil {
++			return ""
++		}
++		return "[Inline image shown: " + orDefault(shown.Caption, shown.File.Name) + "]"
++	})
++}

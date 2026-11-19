@@ -208,10 +208,10 @@ func questionnaireText(q *conversation.Questionnaire) string {
 // later in the chat knows that answer came from the web, not from memory.
 func assistantHistoryContent(m conversation.Message) string {
 	if len(m.Versions) == 0 {
-		return m.Content
+		return inlineImageHistoryText(m.Content)
 	}
 	latest := m.Versions[len(m.Versions)-1]
-	content := m.Content
+	content := inlineImageHistoryText(m.Content)
 	if note := webStepsNote(latest.Activity); note != "" {
 		content = strings.TrimSpace(note + "\n\n" + content)
 	}

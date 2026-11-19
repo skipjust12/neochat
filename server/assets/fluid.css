@@ -10119,3 +10119,56 @@ html[data-theme="dark"] .main:not(.project-mode) #homeGreeting::after {
     animation: thinkingSweep 1.8s linear;
   }
 }
+
+/* Pictures made with code can sit between any two answer paragraphs. */
+.inline-answer-image {
+  margin: 20px 0;
+  max-width: 100%;
+}
+.inline-answer-image-open {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-1, transparent);
+  cursor: zoom-in;
+}
+.inline-answer-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  min-height: 100px;
+  object-fit: contain;
+}
+.inline-answer-image figcaption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+  color: var(--muted);
+  font: 12px/1.5 Inter, sans-serif;
+  overflow-wrap: anywhere;
+}
+.inline-answer-image-download {
+  flex: none;
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.inline-answer-image-open:focus-visible,
+.inline-answer-image-download:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.inline-answer-image.is-missing .inline-answer-image-open {
+  min-width: 160px;
+}

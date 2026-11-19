@@ -61,7 +61,8 @@ Category guidance:
 - knowledge — factual or educational questions answerable from established knowledge without required live research.
 - translation — translation or localization between languages.
 - vision — understanding or extracting information from an input image, screenshot, chart, or visual document.
-- image_generation — producing or editing an image as the requested output.
+- image_generation — producing or editing an image with a native image-generation model (artwork, photos, creative visual edits).
+- Programmatically drawn plots, charts, flowcharts, geometric sketches and diagrams embedded in an explanation use the chat model's terminal and show_image tool. Classify by the actual subject (data_analysis, math, software_engineering, knowledge, etc.), include "code_execution" in required_tools when drawing is requested, and use modality_output_expected ["text"] (or ["text", "code"] if code is also requested). Do not use image_generation or native "image" output for these: the image is produced by code, not by the chat model's native output. This also applies whenever the user explicitly asks to create a PNG programmatically or with Python.
 
 Intent guidance:
 - answer — directly answer a question.

@@ -76,7 +76,7 @@ func (r *webRun) terminalNote() string {
 		if len(h.Languages) > 0 {
 			fmt.Fprintf(&b, " run_script takes %s.", strings.Join(h.Languages, ", "))
 		}
-		b.WriteString(" read_file, write_file and list_dir work with files directly; send_file gives the user a file.")
+		b.WriteString(" read_file, write_file and list_dir work with files directly; send_file gives the user a downloadable file; show_image displays a picture inline at this point in the answer, after which you can continue writing.")
 		if names := mcpServerNames(h.MCP); names != "" {
 			fmt.Fprintf(&b, " MCP tools (mcp__<server>__<tool>) control apps through the app's MCP servers: %s.", names)
 		}
@@ -99,7 +99,7 @@ func (r *webRun) terminalTools() []provider.FunctionTool {
 	if !r.onComputer() {
 		tools := append([]provider.FunctionTool(nil), terminalFunctionTools...)
 		if r.s.Attachments != nil {
-			tools = append(tools, sendFileTool)
+			tools = append(tools, sendFileTool, showImageTool)
 		}
 		return tools
 	}
@@ -133,7 +133,7 @@ func (r *webRun) terminalTools() []provider.FunctionTool {
 	}
 	tools := []provider.FunctionTool{command, script, computerFileTools[0], computerFileTools[1], computerFileTools[2]}
 	if r.s.Attachments != nil {
-		tools = append(tools, sendFileTool)
+		tools = append(tools, sendFileTool, showImageTool)
 	}
 	return append(tools, mcpFunctionTools(h.MCP, r.mcpByName)...)
 }
@@ -174,7 +174,7 @@ func isMCPTool(name string) bool { return strings.HasPrefix(name, "mcp__") }
 // isLongTool: a step that may run for minutes (and wait for approval),
 // not under webStepTimeout.
 func isLongTool(name string) bool {
-	return isTerminalTool(name) || isComputerFileTool(name) || isMCPTool(name) || name == "send_file"
+	return isTerminalTool(name) || isComputerFileTool(name) || isMCPTool(name) || name == "send_file" || name == "show_image"
 }
 
 // --- MCP ---

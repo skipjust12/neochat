@@ -16,7 +16,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=2" />
-<link rel="stylesheet" href="/assets/fluid.css?v=36" />
+<link rel="stylesheet" href="/assets/fluid.css?v=37" />
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -2170,7 +2170,7 @@
     }
 
     function isMarkdownBlockStart(line){
-      return /^\s*$|^```|^\s*\$\$|^\s*\\\[|^#{1,6}\s+|^>\s?|^\s*([-+*]|\d+\.)\s+|^\s*([-*_])(?:\s*\2){2,}\s*$/.test(line);
+      return /^\s*$|^<!--neochat-image:|^```|^\s*\$\$|^\s*\\\[|^#{1,6}\s+|^>\s?|^\s*([-+*]|\d+\.)\s+|^\s*([-*_])(?:\s*\2){2,}\s*$/.test(line);
     }
 
     function splitMarkdownTableRow(line){
@@ -2380,13 +2380,76 @@
       return block;
     }
 
+    function parseInlineImage(marker){
+      const match=String(marker||'').trim().match(/^<!--neochat-image:([A-Za-z0-9_-]+)-->$/);
+      if(!match)return null;
+      try{
+        const bytes=Uint8Array.from(atob(match[1].replace(/-/g,'+').replace(/_/g,'/')),function(ch){return ch.charCodeAt(0)});
+        const shown=JSON.parse(new TextDecoder().decode(bytes));
+        const file=shown&&shown.file;
+        if(!file||file.kind!=='image'||!/^[a-f0-9]{32}$/.test(file.id)||!/^[a-f0-9]{32}$/.test(shown.display_id)||!/^image\/(png|jpeg|webp|gif)$/.test(file.mime))return null;
+        if(typeof file.name!=='string'||(shown.caption!==undefined&&typeof shown.caption!=='string'))return null;
+        return shown;
+      }catch(error){return null}
+    }
+    function inlineImageElement(shown){
+      const figure=document.createElement('figure');
+      figure.className='inline-answer-image';
+      figure.dataset.displayId=shown.display_id;
+      const open=document.createElement('button');
+      open.type='button';
+      open.className='inline-answer-image-open';
+      open.setAttribute('aria-label','Open image: '+(shown.caption||shown.file.name));
+      const image=document.createElement('img');
+      image.alt=shown.caption||shown.file.name;
+      image.decoding='async';
+      if(shown.file.width>0&&shown.file.height>0){image.width=shown.file.width;image.height=shown.file.height}
+      open.append(image);
+      open.addEventListener('click',function(){openAttachment(shown.file)});
+      figure.append(open);
+      const footer=document.createElement('figcaption');
+      const caption=document.createElement('span');
+      caption.textContent=shown.caption||shown.file.name;
+      const download=document.createElement('button');
+      download.type='button';
+      download.className='inline-answer-image-download';
+      download.textContent='Download';
+      download.setAttribute('aria-label','Download '+shown.file.name);
+      download.addEventListener('click',function(){downloadSentFile(shown.file)});
+      footer.append(caption,download);figure.append(footer);
+      attachmentURL(shown.file.id).then(function(url){image.src=url}).catch(function(){
+        figure.classList.add('is-missing');
+        caption.textContent='Image unavailable';
+      });
+      return figure;
+    }
+    function readableInlineImages(text){
+      return String(text||'').replace(/<!--neochat-image:[A-Za-z0-9_-]+-->/g,function(marker){
+        const shown=parseInlineImage(marker);
+        return shown?'[Image: '+(shown.caption||shown.file.name)+']':'';
+      });
+    }
+    // A display marker arrives as one delta. Keep it atomic in the smooth
+    // stream so its metadata never flashes as text before the picture.
+    function streamTextParts(text){
+      return String(text||'').split(/(<!--neochat-image:[A-Za-z0-9_-]+-->)/g).flatMap(function(part){
+        return part.startsWith('<!--neochat-image:')?[part]:Array.from(part);
+      });
+    }
     function renderMarkdown(container,source){
+      // Reuse loaded image nodes while the surrounding text streams.
+      const previousImages=new Map(Array.from(container.querySelectorAll('.inline-answer-image')).map(function(figure){return [figure.dataset.displayId,figure]}));
       container.replaceChildren();
       const lines=String(source||'').replace(/\r\n?/g,'\n').split('\n');
       let index=0;
       while(index<lines.length){
         const line=lines[index];
         if(!line.trim()){index++;continue}
+        if(line.trim().startsWith('<!--neochat-image:')){
+          const shown=parseInlineImage(line);
+          if(shown)container.append(previousImages.get(shown.display_id)||inlineImageElement(shown));
+          index++;continue;
+        }
 
         // The info string's first word is the language: ```c++, ```python title="x".
         const fence=line.match(/^```\s*([^\s`]*)[^`]*$/);
@@ -2644,7 +2707,7 @@
       if(step.approval==='pending')return 'nod';
       if(step.tool==='run_script'&&step.phase==='writing')return 'brackets';
       if(step.tool==='run_command'||step.tool==='run_script')return 'swap';
-      if(step.tool==='send_file')return 'bubbles';
+      if(step.tool==='send_file'||step.tool==='show_image')return 'bubbles';
       if(step.tool==='web_search')return 'reveal';
       return 'orbit';
     }
@@ -2686,7 +2749,7 @@
     }
     // Terminal steps: a command (run_command) or a script the model wrote
     // and ran (run_script) on the server.
-    const terminalTools=['run_command','run_script','send_file','read_file','write_file','list_dir','mcp'];
+    const terminalTools=['run_command','run_script','send_file','show_image','read_file','write_file','list_dir','mcp'];
     function isTerminalStep(step){
       return Boolean(step&&terminalTools.indexOf(step.tool)>-1);
     }
@@ -2701,6 +2764,7 @@
     // What a running terminal step is doing, for the block's label.
     function terminalLiveLabel(step){
       if(step.approval==='pending')return 'Waiting for your approval';
+      if(step.tool==='show_image')return 'Showing an image';
       if(step.tool==='send_file')return 'Sending a file';
       if(step.tool==='read_file')return 'Reading '+(shortPath(step.title)||'a file');
       if(step.tool==='write_file')return 'Writing '+(shortPath(step.title)||'a file');
@@ -2724,6 +2788,7 @@
       if(step.tool==='write_file')return (step.error?'Couldn’t write ':'Wrote ')+(shortPath(step.title)||'a file');
       if(step.tool==='list_dir')return (step.error?'Couldn’t open ':'Looked in ')+(shortPath(step.title)||'a folder');
       if(step.tool==='mcp')return (step.error&&step.error!=='the tool reported an error'?'Couldn’t use ':'Used ')+(step.title||'an MCP tool');
+      if(step.tool==='show_image')return step.error?'Couldn’t show an image':'Showed '+(step.title||'an image');
       if(step.tool==='send_file'){
         if(step.error)return 'Couldn’t send a file';
         return 'Sent '+(step.title||'a file');
@@ -2947,7 +3012,7 @@
         text.classList.add('thinking-label');
         text.dataset.text=text.textContent;
       }else text.textContent=terminalDoneLabel(step);
-      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'||step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'?'fetch':step.tool==='mcp'?'mcp':'terminal'),text);
+      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'||step.tool==='show_image'||step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'?'fetch':step.tool==='mcp'?'mcp':'terminal'),text);
       if(step.where==='computer'&&!step.pending){
         const where=document.createElement('span');
         where.className='term-where';
@@ -2998,7 +3063,7 @@
         }
         return row;
       }
-      if(step.tool==='send_file'){
+      if(step.tool==='send_file'||step.tool==='show_image'){
         if(!step.pending&&step.size){
           const note=document.createElement('span');
           note.className='web-step-note';
@@ -3171,12 +3236,14 @@
       const commands=done.filter(function(step){return step.tool==='run_command'}).length;
       const scripts=done.filter(function(step){return step.tool==='run_script'}).length;
       const sent=done.filter(function(step){return step.tool==='send_file'}).length;
+      const shown=done.filter(function(step){return step.tool==='show_image'}).length;
       const parts=[];
       if(searches)parts.push(plural(searches,'search','searches'));
       if(pages)parts.push(plural(pages,'page','pages'));
       if(scripts)parts.push(plural(scripts,'script','scripts'));
       if(commands)parts.push(plural(commands,'command','commands'));
       if(sent)parts.push(plural(sent,'file','files'));
+      if(shown)parts.push(plural(shown,'image','images'));
       const fileOps=done.filter(function(step){return step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'}).length;
       const mcpCalls=done.filter(function(step){return step.tool==='mcp'}).length;
       if(fileOps)parts.push(plural(fileOps,'file action','file actions'));
@@ -3803,7 +3870,7 @@
       const copy=messageActionButton('Copy response','copy','<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>');
       copy.addEventListener('click',async function(){
         try{
-          await copyMessageText(message.dataset.messageText||message.querySelector('.chat-text').innerText);
+          await copyMessageText(readableInlineImages(message.dataset.messageText||message.querySelector('.chat-text').innerText));
           toast('Response copied.');
         }catch(error){
           toast('Could not copy the response.');
@@ -4016,7 +4083,11 @@
       return card;
     }
     function renderAnswerFiles(message,files){
-      const list=Array.isArray(files)?files.filter(function(file){return file&&file.id}):[];
+      const inlineIDs=new Set();
+      String(message.dataset.messageText||'').replace(/<!--neochat-image:[A-Za-z0-9_-]+-->/g,function(marker){
+        const shown=parseInlineImage(marker);if(shown)inlineIDs.add(shown.file.id);return marker;
+      });
+      const list=Array.isArray(files)?files.filter(function(file){return file&&file.id&&!inlineIDs.has(file.id)}):[];
       let holder=message.querySelector('.chat-copy > .answer-files');
       if(!list.length){if(holder)holder.remove();return}
       const ids=list.map(function(file){return file.id}).join(',');
@@ -5669,7 +5740,7 @@
       return {
         append:function(text){
           if(cancelled||!text)return;
-          queuedCharacters=queuedCharacters.concat(Array.from(String(text)));
+          queuedCharacters=queuedCharacters.concat(streamTextParts(text));
           schedule();
         },
         replace:function(text){
@@ -5679,10 +5750,10 @@
           const currentText=visibleText+queuedCharacters.join('');
           if(completeText===currentText)return;
           if(completeText.startsWith(visibleText)){
-            queuedCharacters=Array.from(completeText.slice(visibleText.length));
+            queuedCharacters=streamTextParts(completeText.slice(visibleText.length));
           }else{
             visibleText='';
-            queuedCharacters=Array.from(completeText);
+            queuedCharacters=streamTextParts(completeText);
           }
           schedule();
         },

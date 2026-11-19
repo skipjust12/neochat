@@ -169,13 +169,14 @@ type webRun struct {
 	generate   func(ctx context.Context, messages []provider.Message) (provider.GenerateResult, error)
 	onActivity func([]conversation.ToolActivity)
 
-	mu       sync.Mutex
-	activity []conversation.ToolActivity
-	searches int
-	fetches  int
-	runs     int
-	files    []conversation.Attachment
-	sentFrom map[string]conversation.Attachment // by real path, so a file goes once
+	mu           sync.Mutex
+	activity     []conversation.ToolActivity
+	searches     int
+	fetches      int
+	runs         int
+	files        []conversation.Attachment
+	sentFrom     map[string]conversation.Attachment // by real path, so a file goes once
+	inlineImages map[int]inlineImage                // this round, in tool-call order
 	// writing maps a run_script call the model is still writing (its
 	// position in the step) to the step shown for it.
 	writing map[int]int
@@ -328,7 +329,17 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 			assistant.Reasoning, assistant.ReasoningDetails = res.Reasoning, res.ReasoningDetails
 		}
 		messages = append(messages, assistant)
-		for i, result := range r.runTools(ctx, calls, askErrors) {
+		results := r.runTools(ctx, calls, askErrors)
+		// Insert images between this round's prose and the next. Emitting
+		// here keeps parallel tool completion from reordering the answer.
+		for _, shown := range r.takeInlineImages() {
+			marker := inlineImageMarker(shown)
+			out.Text += marker
+			if emit, ok := ctx.Value(inlineImageDeltaKey{}).(func(string)); ok {
+				emit(marker)
+			}
+		}
+		for i, result := range results {
 			messages = append(messages, provider.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result})
 		}
 		if err := ctx.Err(); err != nil {
@@ -465,6 +476,9 @@ func recoverToolPanic(result *string) {
 func (r *webRun) planTool(call provider.ToolCall, position int) (string, func(context.Context) string) {
 	if isTerminalTool(call.Name) {
 		return r.planTerminalTool(call, position)
+	}
+	if call.Name == "show_image" {
+		return r.planShowImage(call, position)
 	}
 	if call.Name == "send_file" {
 		return r.planSendFile(call)
@@ -1023,7 +1037,7 @@ func webStepsNote(steps []conversation.ToolActivity) string {
 				line += " (failed: " + oneLine(step.Error, 120) + ")"
 			}
 			lines = append(lines, line)
-		case "run_command", "run_script", "send_file", "read_file", "write_file", "list_dir", "mcp":
+		case "run_command", "run_script", "send_file", "show_image", "read_file", "write_file", "list_dir", "mcp":
 			lines = append(lines, terminalStepLine(step))
 			terminalSteps = true
 		}
@@ -1046,7 +1060,7 @@ func boundActivity(steps []conversation.ToolActivity) []conversation.ToolActivit
 	out := make([]conversation.ToolActivity, 0, len(steps))
 	for _, step := range steps {
 		switch step.Tool {
-		case "run_command", "run_script", "send_file", "read_file", "write_file", "list_dir", "mcp":
+		case "run_command", "run_script", "send_file", "show_image", "read_file", "write_file", "list_dir", "mcp":
 			out = append(out, boundTerminalStep(step))
 			continue
 		}

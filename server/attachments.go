@@ -388,7 +388,7 @@ func summaryInput(messages []conversation.Message) []conversation.Message {
 	out := make([]conversation.Message, len(messages))
 	for i, m := range messages {
 		out[i] = m
-		out[i].Content = withQuote(m.Quote, m.Content)
+		out[i].Content = withQuote(m.Quote, inlineImageHistoryText(m.Content))
 		if len(m.Attachments) == 0 {
 			continue
 		}
