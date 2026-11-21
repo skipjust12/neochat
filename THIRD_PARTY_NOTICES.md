@@ -34,6 +34,8 @@ The unmodified font is bundled from Fluid Functionalism's public/fonts/InterVari
 
 The home heading uses the unmodified Bitstream Charter regular webfont distributed by charter-webfont. Copyright (c) 1989-1992 Bitstream Inc. The full font notice is in server/assets/Charter-LICENSE.txt.
 
+The optional response font uses XCharter 1.26, the Bitstream Charter extension with Cyrillic glyphs. Its OpenType fonts were converted to WOFF2 from https://ctan.org/pkg/xcharter. The original license and attribution are in server/assets/XCharter-LICENSE.txt.
+
 ## Lucide
 
 UI icons use Lucide SVG geometry (ISC): https://github.com/lucide-icons/lucide. Brand logos are separate from UI glyphs.
