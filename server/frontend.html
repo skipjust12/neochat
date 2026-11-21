@@ -16,7 +16,7 @@
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=2" />
-<link rel="stylesheet" href="/assets/fluid.css?v=37" />
+<link rel="stylesheet" href="/assets/fluid.css?v=38" />
 <script src="/assets/markdown/markdown-it.min.js?v=15.0.3"></script>
 <script src="/assets/markdown/texmath.js?v=1.0.0"></script>
 <script src="/assets/markdown/chat-markdown.js?v=1"></script>
@@ -554,6 +554,18 @@
             </span>
           </div>
           <div class="set-row">
+            <label class="label soft label-icon" for="responseFont">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-a-large-small" data-lucide-icon="a-large-small" aria-hidden="true"><path d="m15 16 2.536-7.328a1.02 1.02 0 1 1.928 0L22 16"/><path d="M15.697 14h5.606"/><path d="m2 16 4.039-9.69a.5.5 0 0 1 .923 0L11 16"/><path d="M3.304 13h6.392"/></svg>
+              Response font
+            </label>
+            <span class="val">
+              <select class="mini-select" id="responseFont">
+                <option value="default">Default</option>
+                <option value="charter">Charter</option>
+              </select>
+            </span>
+          </div>
+          <div class="set-row">
             <span class="label soft label-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 8 6 6"/><path d="m4 14 6-6 2-3"/><path d="M2 5h12"/><path d="M7 2h1"/><path d="m22 22-5-10-5 10"/><path d="M14 18h6"/></svg>Language</span>
             <span class="val">
               <select class="mini-select" id="language" aria-label="Language">
@@ -733,7 +745,6 @@
   </div>
 <script>
   (function(){
-    const textarea=document.getElementById('message');
     const picker=document.getElementById('modePicker');
     const trigger=picker.querySelector('.mode-trigger');
     const panel=picker.querySelector('.mode-panel');
@@ -1173,11 +1184,6 @@
     });
 
     window.addEventListener('blur',closePicker);
-
-    textarea.addEventListener('input',function(){
-      textarea.style.height='auto';
-      textarea.style.height=Math.min(Math.max(textarea.scrollHeight,parseFloat(getComputedStyle(textarea).minHeight)||56),176)+'px';
-    });
   })();
 </script>
 
@@ -6501,6 +6507,9 @@
     const promptEntry=document.getElementById('promptEntry');
     const connectorHighlights=document.getElementById('connectorHighlights');
     const textarea=document.getElementById('message');
+    // On iOS the visible text and the caret need to come from the same
+    // textarea. A separate text layer can wrap differently from the editor.
+    const mirrorMentions=!CSS.supports('-webkit-touch-callout','none');
     const reduced=window.matchMedia('(prefers-reduced-motion:reduce)');
     const connectorViewBoxes={gmail:'0 0 192 192',github:'0 0 24 24',notion:'0 0 24 24',slack:'0 0 24 24',canva:'0 0 50 50'};
     const CLOSE_MS=190,CONFIRM_MS=140;
@@ -6537,24 +6546,31 @@
       return value.replace(/[&<>]/g,function(character){return {'&':'&amp;','<':'&lt;','>':'&gt;'}[character]});
     }
     function renderConnectorMentions(){
+      const value=textarea.value;
+      promptEntry.classList.toggle('has-value',value.length>0);
+      if(!mirrorMentions)return;
+
       const pattern=/(^|\s)@(gmail|github|notion|slack|canva)(?=\s|$)/gi;
       let cursor=0;
       let markup='';
       let match;
-      while((match=pattern.exec(textarea.value))!==null){
+      while((match=pattern.exec(value))!==null){
         const id=match[2].toLowerCase();
         const mentionStart=match.index+match[1].length;
-        markup+=escapeMarkup(textarea.value.slice(cursor,mentionStart));
-        markup+='<span class="connector-mention"><span class="connector-mention-at">@<svg viewBox="'+connectorViewBoxes[id]+'" aria-hidden="true"><use href="#connector-'+id+'"></use></svg></span>'+escapeMarkup(textarea.value.slice(mentionStart+1,pattern.lastIndex))+'</span>';
+        markup+=escapeMarkup(value.slice(cursor,mentionStart));
+        markup+='<span class="connector-mention"><span class="connector-mention-at">@<svg viewBox="'+connectorViewBoxes[id]+'" aria-hidden="true"><use href="#connector-'+id+'"></use></svg></span>'+escapeMarkup(value.slice(mentionStart+1,pattern.lastIndex))+'</span>';
         cursor=pattern.lastIndex;
       }
-      markup+=escapeMarkup(textarea.value.slice(cursor));
-      connectorHighlights.innerHTML=markup+(textarea.value.endsWith('\n')?'\n':'');
-      promptEntry.classList.toggle('has-value',textarea.value.length>0);
+      promptEntry.classList.toggle('has-connector-mentions',cursor>0);
+      connectorHighlights.innerHTML=cursor?markup+escapeMarkup(value.slice(cursor))+(value.endsWith('\n')?'\n':''):'';
+      syncConnectorScroll();
+    }
+    function syncConnectorScroll(){
       connectorHighlights.scrollTop=textarea.scrollTop;
+      connectorHighlights.scrollLeft=textarea.scrollLeft;
     }
     textarea.addEventListener('input',renderConnectorMentions);
-    textarea.addEventListener('scroll',function(){connectorHighlights.scrollTop=textarea.scrollTop});
+    if(mirrorMentions)textarea.addEventListener('scroll',syncConnectorScroll);
     document.addEventListener('plugin:clear',renderConnectorMentions);
     renderConnectorMentions();
 
@@ -6895,6 +6911,7 @@
     const displayName=document.getElementById('displayName');
     const instructions=document.getElementById('instructions');
     const language=document.getElementById('language');
+    const responseFont=document.getElementById('responseFont');
     const themeSeg=document.getElementById('themeSeg');
     const toneWrap=document.getElementById('toneWrap');
     const modePicker=document.getElementById('modePicker');
@@ -6919,6 +6936,7 @@
         displayName:displayName.value,
         instructions:instructions.value,
         language:language.value,
+        responseFont:responseFont.value,
         theme:activeTheme?activeTheme.dataset.themeValue:'system',
         tone:document.getElementById('toneTriggerLabel').textContent.trim(),
         workMode:selectedMode?selectedMode.value:'Auto',
@@ -6949,7 +6967,15 @@
       apply:applyPreferences
     };
 
+    function applyResponseFont(value){
+      const charter=value==='charter';
+      responseFont.value=charter?'charter':'default';
+      if(charter)document.documentElement.dataset.responseFont='charter';
+      else delete document.documentElement.dataset.responseFont;
+    }
+
     function applyPreferencesNow(preferences){
+    applyResponseFont(preferences.responseFont);
     if(typeof preferences.displayName==='string'){
       displayName.value=preferences.displayName;
       displayName.dispatchEvent(new Event('input'));
@@ -7008,6 +7034,10 @@
     displayName.addEventListener('input',savePreferences);
     instructions.addEventListener('input',savePreferences);
     language.addEventListener('change',savePreferences);
+    responseFont.addEventListener('change',function(){
+      applyResponseFont(responseFont.value);
+      savePreferences();
+    });
     themeSeg.addEventListener('click',savePreferences);
     toneWrap.addEventListener('click',function(event){if(event.target.closest('.tone-option'))savePreferences()});
     modePicker.addEventListener('change',savePreferences);
@@ -7139,8 +7169,6 @@
     new ResizeObserver(function(){
       main.style.setProperty('--composer-clearance',(composerWrap.getBoundingClientRect().height+48)+'px');
     }).observe(composerWrap);
-    const highlights=document.getElementById('connectorHighlights');
-    textarea.addEventListener('scroll',function(){highlights.scrollTop=textarea.scrollTop;highlights.scrollLeft=textarea.scrollLeft});
     document.fonts.ready.then(resizeComposer);
 
     function cardFilter(input,selector,count){

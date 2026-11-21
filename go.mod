@@ -10,7 +10,7 @@ module neochat
 // to "1.25.0" silently reintroduces all of them. Moved to 1.26 when the
 // net/http, crypto/tls and crypto/x509 fixes of November 2026 shipped in
 // 1.26.9/1.26.10 only.
-go 1.26.10
+go 1.26.11
 
 require (
 	github.com/jackc/pgx/v5 v5.10.0
