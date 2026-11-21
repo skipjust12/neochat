@@ -382,8 +382,7 @@ type incognitoMessage struct {
 	// Questionnaire is what an assistant turn asked (ask_user), so the
 	// model sees it in later turns of a private chat too.
 	Questionnaire *conversation.Questionnaire `json:"questionnaire,omitempty"`
-	// Activity is the web steps an assistant turn took, so the model knows
-	// in later turns that the answer came from the web (webStepsNote).
+	// Activity records the tools used in an assistant turn for later context.
 	Activity []conversation.ToolActivity `json:"activity,omitempty"`
 }
 
@@ -1455,6 +1454,9 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 	}
 	if summaryText != "" {
 		messages = append(messages, provider.Message{Role: "system", Content: "Earlier in this conversation:\n" + summaryText})
+	}
+	if note := historyToolContext(tail); note != "" {
+		messages = append(messages, provider.Message{Role: "system", Content: note})
 	}
 	// Earlier files are re-attached newest first, so when the history byte
 	// budget runs out it's the oldest ones that turn into notes.

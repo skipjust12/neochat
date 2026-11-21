@@ -186,12 +186,12 @@ func TestPartialAbout(t *testing.T) {
 
 func TestTerminalStepsInTheHistoryNote(t *testing.T) {
 	zero, one := 0, 1
-	note := webStepsNote([]conversation.ToolActivity{
+	note := historyToolSteps([]conversation.ToolActivity{
 		{Tool: "run_command", Command: "ls -la", ExitCode: &zero},
 		{Tool: "run_script", Language: "python", Purpose: "parsing the log", ExitCode: &one},
 		{Tool: "run_command", Command: "sleep 99", TimedOut: true, ExitCode: new(int)},
 	})
-	for _, want := range []string{"used your tools", "- ran the command `ls -la` (exit code 0)", "- wrote and ran a python script for parsing the log (exit code 1)", "(killed at the time limit)"} {
+	for _, want := range []string{"- ran the command `ls -la` (exit code 0)", "- wrote and ran a python script for parsing the log (exit code 1)", "(killed at the time limit)"} {
 		if !strings.Contains(note, want) {
 			t.Errorf("note lacks %q:\n%s", want, note)
 		}
