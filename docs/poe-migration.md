@@ -96,3 +96,10 @@ to refund or change charges at Poe. An explicitly configured owner-selected
 fallback may run only if the refusal precedes all generated content/tool calls.
 The existing public Opus prompt bot is the confirmed working deployment path;
 other public prompt bots must be created and tested separately.
+
+The owner-selected Luna fallback is `neobottestapiGPT6Lun`. It also serves
+chat titles, search helpers and manual compaction when official GPT-6-Luna
+refuses API access. The bot must be public. An explicit `POE_BOT_FALLBACKS`
+environment value replaces the checked-in map; remove an obsolete override
+or include the Luna mapping there to use it. Existing explicitly configured
+`TITLE_MODEL` values still take precedence over the default Luna model.
