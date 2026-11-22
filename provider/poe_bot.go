@@ -299,6 +299,16 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 			}
 		}
 		result := GenerateResult{Poe: true, UsageEstimated: true}
+		filter := poeThinkingFilter{}
+		emitText := func(text string, final bool) bool {
+			answer, reasoning := filter.push(text, final)
+			result.Text += answer
+			result.Reasoning += reasoning
+			if answer == "" && reasoning == "" {
+				return true
+			}
+			return send(StreamChunk{Delta: answer, Reasoning: reasoning})
+		}
 		toolCalls := map[int]ToolCall{}
 		scanner := bufio.NewScanner(response.Body)
 		scanner.Buffer(make([]byte, 65536), 4<<20)
@@ -351,11 +361,18 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 					return false
 				}
 				if event == "replace_response" {
-					result.Text = text
-					return send(StreamChunk{Reset: true, Delta: text})
+					filter = poeThinkingFilter{}
+					answer, reasoning := filter.push(text, true)
+					result.Text = answer
+					if reasoning != "" && !strings.Contains(result.Reasoning, reasoning) {
+						result.Reasoning += reasoning
+						if !send(StreamChunk{Reasoning: reasoning}) {
+							return false
+						}
+					}
+					return send(StreamChunk{Reset: true, Delta: answer})
 				}
-				result.Text += text
-				return send(StreamChunk{Delta: text})
+				return emitText(text, false)
 			case "json":
 				var chunk struct {
 					Choices []struct {
@@ -379,9 +396,11 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 				}
 				for _, choice := range chunk.Choices {
 					d := choice.Delta
-					result.Text += d.Content
 					result.Reasoning += d.Reasoning
-					if (d.Content != "" || d.Reasoning != "") && !send(StreamChunk{Delta: d.Content, Reasoning: d.Reasoning}) {
+					if d.Reasoning != "" && !send(StreamChunk{Reasoning: d.Reasoning}) {
+						return false
+					}
+					if !emitText(d.Content, false) {
 						return false
 					}
 					for _, delta := range d.Calls {
@@ -435,6 +454,9 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 			} else {
 				send(StreamChunk{Err: fmt.Errorf("Poe Bot Query ended without done")})
 			}
+			return
+		}
+		if !emitText("", true) {
 			return
 		}
 		indices := []int{}

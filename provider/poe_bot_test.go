@@ -195,3 +195,27 @@ func TestBotQueryAccessDenialAndExplicitFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestBotQueryFormattedThinkingUsesReasoningChannel(t *testing.T) {
+	c := nativeFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "event: text\ndata: {\"text\":\"*Thinking...*\\n\\n> Private thought.\\n\\nVisible answer.\"}\n\nevent: done\ndata: {}\n\n")
+	})
+	ch, err := c.GenerateStream(context.Background(), "Claude-Opus-5.5", []Message{{Role: "user", Content: "hi"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	answer, thought := "", ""
+	for chunk := range ch {
+		if chunk.Err != nil {
+			t.Fatal(chunk.Err)
+		}
+		answer += chunk.Delta
+		thought += chunk.Reasoning
+		if chunk.Done && (strings.Contains(chunk.Final.Text, "Private") || !strings.Contains(chunk.Final.Reasoning, "Private thought.")) {
+			t.Fatalf("final %+v", chunk.Final)
+		}
+	}
+	if strings.Contains(answer, "Private") || strings.Contains(answer, "Thinking") || !strings.Contains(answer, "Visible answer.") || !strings.Contains(thought, "Private thought.") {
+		t.Fatalf("answer %q thought %q", answer, thought)
+	}
+}

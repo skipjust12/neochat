@@ -761,6 +761,7 @@ func (s *Server) handleConversationHistory(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	cleanPoeThinkingHistory(page.Messages)
 	response := conversationHistoryResponse{ConversationID: conversationID, Messages: page.Messages, NextCursor: page.NextCursor, CompactedThroughID: s.compactedThroughID(r, identity.UserID, conversationID)}
 	data, err := json.Marshal(response)
 	if err != nil {
