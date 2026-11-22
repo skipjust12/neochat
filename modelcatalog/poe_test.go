@@ -145,3 +145,36 @@ func TestPoeCatalogNewVersionAndUnstableRecovery(t *testing.T) {
 		t.Fatalf("old=%+v newer=%+v bot=%+v", old, newer, bot)
 	}
 }
+
+func TestPoeCurrentGoogleMediaAndOldOpenAIPlacement(t *testing.T) {
+	base, err := router.LoadCatalog("../configs/models.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	catalog, err := LoadPoe(base, "../configs/poe-models.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-5.4", "gpt-5.4-pro", "o3", "o3-pro"} {
+		m, ok := catalog.FindModel(id)
+		if !ok || !m.Legacy {
+			t.Errorf("old model remains current: %s %+v", id, m)
+		}
+	}
+	for _, id := range []string{"gemini-4-hydrogen", "gemini-3.8-flash", "gemini-omni-1.2-flash", "nano-banana-2.1"} {
+		m, ok := catalog.FindModel(id)
+		if !ok || m.Legacy {
+			t.Errorf("new Google model absent/current placement wrong: %s %+v", id, m)
+		}
+	}
+	m, _ := catalog.FindModel("nano-banana-2.1")
+	if m.Kind != router.KindImage || m.CostPerImageUSD <= 0 {
+		t.Errorf("multimodal image bot treated as chat: %+v", m)
+	}
+	for _, id := range []string{"gpt-6-luna", "gpt-6.1-sol"} {
+		m, ok := catalog.FindModel(id)
+		if !ok || m.Legacy {
+			t.Errorf("current GPT moved to Legacy: %+v", m)
+		}
+	}
+}

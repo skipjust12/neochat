@@ -24,7 +24,7 @@ import (
 
 // DefaultTitleModelID is the catalog model that names chats: the
 // cheapest current one.
-const DefaultTitleModelID = "gpt-5.4-nano"
+const DefaultTitleModelID = "gpt-6-luna"
 
 const (
 	// titleTimeout bounds the naming call; a slow model leaves the chat

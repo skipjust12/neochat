@@ -42,14 +42,14 @@ Only public metadata is shared; user keys, messages and generated responses
 are not part of this cache. A failed refresh keeps the previous catalog.
 
 A curated model omitted from Poe's list remains selectable in Manual mode,
-with **Unstable** below its name. It is called directly by its bot name (for
-example `gpt-6-luna`) through Chat Completions. Its original display name is
+using the same presentation as listed models. It is called directly by its exact bot name (for
+example `GPT-6-Luna`) through Chat Completions. Its original display name is
 preserved. Absence from `/v1/models` does not establish unavailability.
 Unlisted bots are excluded from automatic routing. Their tools, attachments,
 reasoning controls, pricing and availability have not been confirmed by the
 metadata. A refusal is shown to the user; no other bot is silently substituted.
 If Poe later lists the bot, its metadata replaces this provisional entry and
-the Unstable label disappears.
+the published capabilities and prices become available.
 
 ## Transport and capabilities
 
@@ -118,7 +118,7 @@ node scripts/frontend-poe.browser.cjs
 
 Poe-specific tests use local HTTP fixtures to check endpoint/body/auth,
 concurrent key isolation, tools, native thinking replay, cache usage/pricing,
-SSE termination, catalog TTL, direct Unstable bot calls, media inputs,
+SSE termination, catalog TTL, direct unlisted bot calls, media inputs,
 polling/downloads and points balance. They do not verify live availability,
 provider-side cache creation or real point charges.
 
@@ -181,3 +181,24 @@ References:
 - <https://creator.poe.com/docs/external-applications/external-application-guide>
 - <https://creator.poe.com/docs/server-bots/accessing-other-bots-on-poe>
 - <https://github.com/poe-platform/fastapi_poe/blob/main/src/fastapi_poe/client.py>
+
+## Personal model management
+
+Settings → General → Add a model accepts one of the six providers, a Poe URL
+(or exact bot handle), and an optional display name. The handle's case is
+preserved. Known bots reuse catalog capabilities; an unlisted bot uses Chat
+Completions with tool support and conservative internal reservation estimates.
+Poe remains responsible for whether that bot supports the requested inputs/tools.
+Unknown bots use the Max accounting pool and never enter automatic routing.
+
+The same section moves any model into Legacy or restores it. Both the custom
+list and explicit Legacy choices are per-account, persisted in `user_settings`,
+and retained across catalog refreshes. Public `/models` and the shared browser
+catalog cache never contain these private choices. `GET/POST /account/models`,
+`DELETE /account/models/{id}`, and `PATCH /account/models/{id}` (body
+`{"legacy":true}` or `false`) manage them. Ordinary settings saves preserve
+these server-managed fields. Re-adding the same bot updates its display name.
+
+Auxiliary search extraction, chat titles and manual history compaction default
+to `gpt-6-luna` (Poe handle `GPT-6-Luna`). `WEB_SEARCH_MODEL` and `TITLE_MODEL`
+can still override their respective defaults.

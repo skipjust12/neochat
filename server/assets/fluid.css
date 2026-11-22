@@ -10213,3 +10213,10 @@ html[data-theme="dark"] .main:not(.project-mode) #homeGreeting::after {
 .inline-answer-image.is-missing .inline-answer-image-open {
   min-width: 160px;
 }
+
+/* Model management follows the existing settings controls on phones too. */
+#customModelsSettings summary { cursor: pointer; }
+#customModelsSettings .set-row { flex-wrap: wrap; justify-content: space-between; }
+#customModelsSettings .name-input { max-width: 100%; min-width: 0; }
+#customModelStatus { color: var(--muted); overflow-wrap: anywhere; }
+#customModelsList .set-row > span { overflow-wrap: anywhere; min-width: 0; }

@@ -58,6 +58,33 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request, ident
 			return
 		}
 	}
+	// Model definitions are managed separately; a stale preferences save must
+	// never delete or replace them.
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+	stored, err := s.customSettings(r.Context(), identity.UserID)
+	if err != nil {
+		http.Error(w, "Could not load settings.", http.StatusInternalServerError)
+		return
+	}
+	protectedChanged := false
+	for _, name := range []string{"custom_models", "model_legacy"} {
+		if _, ok := object[name]; ok {
+			protectedChanged = true
+		}
+		delete(object, name)
+		if value, ok := stored[name]; ok {
+			object[name] = value
+			protectedChanged = true
+		}
+	}
+	if protectedChanged {
+		body, _ = json.Marshal(object)
+	}
+	if len(body) > maxSettingsBytes {
+		http.Error(w, "Settings exceed 32 KB.", 400)
+		return
+	}
 	if err := s.Settings.Put(r.Context(), identity.UserID, body); err != nil {
 		log.Printf("server: put settings for user_id=%s: %v", identity.UserID, err)
 		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
@@ -73,7 +100,7 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request, ident
 // cheaper and faster without losing its thread. The messages stay on
 // screen; the last exchange stays verbatim, which also keeps it
 // regenerable.
-const compactModelID = "gpt-5.4-nano"
+const compactModelID = "gpt-6-luna"
 
 type compactResponse struct {
 	// CompactedThroughID is the last message the summary covers.

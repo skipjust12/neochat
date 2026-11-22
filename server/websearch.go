@@ -69,7 +69,7 @@ const (
 
 // defaultWebSearchModelID runs web searches: the cheapest current catalog
 // model, with reasoning off. It only copies search results.
-const defaultWebSearchModelID = "gpt-5.4-nano"
+const defaultWebSearchModelID = "gpt-6-luna"
 
 // Legacy fixture fee. Poe usage is priced conservatively from token metadata;
 // this constant does not represent an actual Poe point charge.

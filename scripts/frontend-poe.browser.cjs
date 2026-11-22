@@ -9,10 +9,20 @@ const models={models:[
  {id:'gpt-6-luna',name:'GPT-6 Luna',provider:'openai',tier:'instant',description:'For complex work',inputs:['text','image'],unstable:true},
  {id:'disabled',name:'Disabled',provider:'openai',tier:'max',unavailable:true,inputs:['text']}
 ]};
+let customModels=[],legacyOverrides={};
 const server=http.createServer((req,res)=>{
  const url=new URL(req.url,'http://localhost');
  const json=data=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(data))};
- if(url.pathname==='/models')return json(models);
+ if(url.pathname==='/models'||url.pathname==='/models/refresh')return json(models);
+ if(url.pathname==='/account/models'&&req.method==='POST'){
+  let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{const input=JSON.parse(body);assert.equal(input.url,'https://poe.com/Claude-Fable-5.2');assert.equal(input.provider,'anthropic');customModels=[{id:'custom-fable',name:'Claude Fable 5.2',provider:'anthropic',tier:'max',inputs:['text']}];json({models:customModels,legacy_overrides:legacyOverrides})});return;
+ }
+ if(url.pathname.startsWith('/account/models/')&&req.method==='PATCH'){
+  let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{legacyOverrides[url.pathname.split('/').pop()]=JSON.parse(body).legacy;json({models:customModels,legacy_overrides:legacyOverrides})});return;
+ }
+ if(url.pathname==='/account/models')return json({models:customModels,legacy_overrides:legacyOverrides});
+ if(url.pathname==='/account/models/custom-fable'&&req.method==='DELETE'){customModels=[];return json({models:[],legacy_overrides:legacyOverrides})}
+
  if(url.pathname==='/auth/session')return json({signed_in:true,user_id:'test'});
  if(url.pathname==='/account/settings')return json({balanceWarnAt:300,balanceLowAt:100});
  if(url.pathname==='/account/balance')return json({current_point_balance:123456,unit:'points'});
@@ -35,12 +45,30 @@ const server=http.createServer((req,res)=>{
   const result=await page.evaluate(()=>{
    const row=document.querySelector('.model-row[data-model-id="gpt-6-luna"]');row.click();
    const disabled=document.querySelector('.model-row[data-model-id="disabled"]');disabled.click();
-   return {label:row.querySelector('.model-meta').textContent,enabled:!row.disabled,chosen:document.getElementById('manualState').dataset.modelId,disabledLabel:disabled.querySelector('.model-meta').textContent,disabled:disabled.disabled,warn:document.getElementById('balanceWarnAt').value,low:document.getElementById('balanceLowAt').value,keyStatus:document.getElementById('providerKeyStatus').textContent};
+   return {label:row.querySelector('.model-meta')?.textContent||'',enabled:!row.disabled,chosen:document.getElementById('manualState').dataset.modelId,disabledLabel:disabled.querySelector('.model-meta').textContent,disabled:disabled.disabled,warn:document.getElementById('balanceWarnAt').value,low:document.getElementById('balanceLowAt').value,keyStatus:document.getElementById('providerKeyStatus').textContent};
   });
   assert.equal(await page.locator('.model-row[data-model-id="gpt-5.4-mini"] .model-meta').count(),0);
-  assert.equal(result.label,'Unstable');assert.equal(result.enabled,true);assert.equal(result.chosen,'gpt-6-luna');assert.equal(result.disabled,true);assert.equal(result.disabledLabel,'N/A');
+  assert.equal(result.label,'');assert.equal(result.enabled,true);assert.equal(result.chosen,'gpt-6-luna');assert.equal(result.disabled,true);assert.equal(result.disabledLabel,'N/A');
   assert.equal(result.warn,'10000');assert.equal(result.low,'1000');assert.ok(!result.keyStatus.includes('pza_'));assert.equal(providerHeaders.length,0,'old vendor key was reused');
+  await page.waitForFunction(()=>!document.documentElement.classList.contains('is-guest'));
+  await page.evaluate(()=>{document.getElementById('customModelProvider').value='anthropic';document.getElementById('customModelURL').value='https://poe.com/Claude-Fable-5.2';document.getElementById('customModelForm').requestSubmit()});
+  await page.waitForFunction(()=>document.querySelector('.model-row[data-model-id="custom-fable"]'));
+  await page.evaluate(()=>{document.getElementById('manageModelProvider').value='anthropic';document.getElementById('manageModelProvider').dispatchEvent(new Event('change'));document.getElementById('manageModelSelect').value='custom-fable';document.getElementById('manageModelSelect').dispatchEvent(new Event('change'));document.getElementById('modelLegacyToggle').click()});
+  await page.waitForFunction(()=>document.querySelector('.model-list[data-legacy] .model-row[data-model-id="custom-fable"]'));
+  await page.evaluate(()=>document.querySelector('.model-row[data-model-id="custom-fable"]').click());
+  assert.equal(await page.locator('#manualState').getAttribute('data-model-id'),'custom-fable');
+  await page.evaluate(()=>window.NeoChatModels.apply({models:[{id:'fresh',name:'Fresh',provider:'openai',tier:'instant',inputs:['text']}]}));
+  assert.equal(await page.locator('.model-row[data-model-id="custom-fable"]').count(),1,'refresh lost custom models');
+  const cache=await page.evaluate(()=>JSON.parse(localStorage.getItem('neochat-models-poe-v2')));
+  assert.ok(!cache.models.some(m=>m.id==='custom-fable'),'private models leaked into shared cache');
+  await page.reload({waitUntil:'domcontentloaded'});
+  await page.waitForFunction(()=>document.querySelector('.model-row[data-model-id="custom-fable"]'));
+  assert.equal(await page.locator('.model-list[data-legacy] .model-row[data-model-id="custom-fable"]').count(),1,'Legacy choice lost on reload');
+  await page.evaluate(()=>{document.getElementById('manageModelProvider').value='anthropic';document.getElementById('manageModelProvider').dispatchEvent(new Event('change'));document.getElementById('manageModelSelect').value='custom-fable';document.getElementById('manageModelSelect').dispatchEvent(new Event('change'));document.getElementById('modelLegacyToggle').click()});
+  await page.waitForFunction(()=>document.querySelector('.model-list:not([data-legacy]) .model-row[data-model-id="custom-fable"]'));
+  await page.evaluate(()=>document.querySelector('#customModelsList button').click());
+  await page.waitForFunction(()=>!document.querySelector('.model-row[data-model-id="custom-fable"]'));
   assert.deepEqual(errors,[],'browser errors');
-  console.log('Poe UI: selectable Unstable bot, disabled N/A, old-key isolation, points threshold migration passed.');
+  console.log('Poe UI: exact bot labels, custom add/select/refresh/reload/remove, private cache isolation, disabled N/A, old-key isolation and points migration passed.');
  }finally{await browser.close();server.closeAllConnections();await new Promise(resolve=>server.close(resolve))}
 })().catch(error=>{console.error(error);process.exitCode=1});

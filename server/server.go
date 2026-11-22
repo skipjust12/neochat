@@ -82,6 +82,7 @@ var ErrInstantCapExceeded = errors.New("server: instant-tier spend cap exceeded 
 // Server holds everything one /chat request needs. All fields are
 // required; use New to build one with validation.
 type Server struct {
+	settingsMu     sync.Mutex
 	TrustedProxies []netip.Prefix
 	RequireHTTPS   bool
 	Router         router.Router
@@ -281,6 +282,7 @@ var reasoningEfforts = map[string]bool{"low": true, "medium": true, "high": true
 
 // chatRequest is the wire format for POST /chat.
 type chatRequest struct {
+	customModel             *router.Model
 	idempotencyOwner        string
 	regenerateMessageID     int64
 	regenerationHistoryDrop int
@@ -488,6 +490,10 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
 	mux.HandleFunc("GET /conversations/search", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleConversationSearch)))))
 	mux.HandleFunc("DELETE /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectDelete))))))
+	mux.HandleFunc("GET /account/models", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("POST /account/models", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("PATCH /account/models/{id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("DELETE /account/models/{id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
 	mux.HandleFunc("GET /account/settings", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleSettingsGet)))))
 	mux.HandleFunc("PUT /account/settings", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleSettingsPut)))))
 	mux.HandleFunc("POST /conversations/{conversation_id}/compact", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationCompact))))))
@@ -1729,7 +1735,7 @@ func streamingGenerate(onDelta func(delta string), onReasoning func(text string)
 func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared preparedRequest, onRoute func(router.RouteResult), call generateCaller, onActivity func([]conversation.ToolActivity)) (router.RouteResult, router.Model, webAnswer, error) {
 	excludedModelIDs := map[string]bool{}
 	for attempt := 0; ; attempt++ {
-		catalogRouter := s.router()
+		catalogRouter := s.requestRouter(req)
 		result, err := catalogRouter.Route(prepared.classified, req.RequestedMode, req.ManualModelID, prepared.estimatedContextTokens, prepared.locked, excludedModelIDs)
 		if err != nil {
 			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("route: %w", err)
@@ -2052,6 +2058,9 @@ func (s *Server) finishIdempotent(ctx context.Context, req chatRequest, resp cha
 // directly with a fixed request/plan and inspect the typed result instead
 // of parsing HTTP output.
 func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
+	if err := s.loadCustomModel(ctx, &req); err != nil {
+		return chatResponse{}, err
+	}
 	s.knowModel(ctx, req.ManualModelID)
 	if err := s.validateRequest(req); err != nil {
 		return chatResponse{}, err
@@ -2113,6 +2122,9 @@ func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.Pl
 // way handle is split from handleChat, for the same reason: testable
 // without parsing SSE wire output.
 func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.PlanLimits, send func(event string, payload any)) error {
+	if err := s.loadCustomModel(ctx, &req); err != nil {
+		return err
+	}
 	s.knowModel(ctx, req.ManualModelID)
 	if err := s.validateRequest(req); err != nil {
 		return err

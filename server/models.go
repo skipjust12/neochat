@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"neochat/auth"
@@ -45,8 +46,9 @@ type modelEntry struct {
 }
 
 type modelsResponse struct {
-	Models    []modelEntry `json:"models"`
-	UpdatedAt *time.Time   `json:"updated_at,omitempty"`
+	Models          []modelEntry    `json:"models"`
+	UpdatedAt       *time.Time      `json:"updated_at,omitempty"`
+	LegacyOverrides map[string]bool `json:"legacy_overrides,omitempty"`
 }
 
 // router is the router over the current catalog: the live one when the
@@ -62,7 +64,7 @@ func (s *Server) router() router.Router {
 // (picked in another tab, or right after a restart) through: an unknown
 // manual model refreshes a stale catalog before the request is checked.
 func (s *Server) knowModel(ctx context.Context, modelID string) {
-	if s.Models == nil || modelID == "" {
+	if s.Models == nil || modelID == "" || strings.HasPrefix(modelID, "custom-") {
 		return
 	}
 	if _, ok := s.Models.Current().Catalog.FindModel(modelID); ok {
@@ -131,7 +133,7 @@ func encodeModels(w http.ResponseWriter, response modelsResponse) {
 }
 
 // modelEntries is the picker's view of a catalog, in catalog order:
-// unlisted Poe bots remain visible as Unstable, and recent additions are new.
+// unlisted Poe bots remain selectable, and recent additions are marked new.
 func modelEntries(catalog router.Catalog, retired map[string]bool, added map[string]time.Time) []modelEntry {
 	entries := make([]modelEntry, 0, len(catalog.Models))
 	for _, m := range catalog.Models {

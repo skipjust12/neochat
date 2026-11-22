@@ -493,6 +493,19 @@
             <span class="label label-icon"><svg class="lucide lucide-boxes" data-lucide-icon="boxes" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg><span class="models-label">Models<span class="models-updated" id="modelsUpdated"></span></span></span>
             <span class="val"><button class="link-btn" id="refreshModels" type="button"><svg class="lucide lucide-refresh-cw" data-lucide-icon="refresh-cw" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>Refresh models list</button></span>
           </div>
+          <details id="customModelsSettings">
+            <summary class="set-row">Add a model</summary>
+            <form id="customModelForm">
+              <div class="set-row"><label for="customModelProvider">Provider</label><select id="customModelProvider" class="name-input"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google</option><option value="spacexai">xAI</option><option value="deepseek">DeepSeek</option><option value="moonshot">Moonshot</option></select></div>
+              <div class="set-row"><label for="customModelURL">Poe link or bot name</label><input id="customModelURL" class="name-input" placeholder="https://poe.com/Claude-Fable-5.2" required maxlength="200" /></div>
+              <div class="set-row"><label for="customModelName">Display name (optional)</label><input id="customModelName" class="name-input" placeholder="Claude Fable 5.2" maxlength="80" /></div>
+              <div class="set-row"><span id="customModelStatus" role="status"></span><button class="link-btn" type="submit">Add model</button></div>
+            </form>
+            <div id="customModelsList"></div>
+            <div class="set-row"><label for="manageModelProvider">Manage provider</label><select id="manageModelProvider" class="name-input"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google</option><option value="spacexai">xAI</option><option value="deepseek">DeepSeek</option><option value="moonshot">Moonshot</option></select></div>
+            <div class="set-row"><label for="manageModelSelect">Model</label><select id="manageModelSelect" class="name-input"></select></div>
+            <div class="set-row"><span class="label soft">Choose which models appear in Legacy.</span><button id="modelLegacyToggle" type="button" class="link-btn">Move to Legacy</button></div>
+          </details>
           <div class="tone-wrap" id="toneWrap">
             <button class="set-row tone-trigger-row" id="toneTrigger" type="button" aria-expanded="false">
               <span class="label" style="display:flex;align-items:center;gap:10px">
@@ -1094,7 +1107,7 @@
       trigger.title=name?'Manual · '+name:'';
     }
     new MutationObserver(syncManualTrigger).observe(manualState,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['data-model-id']});
-    let modelsData=null;
+    let modelsData=null, publicModels=null, customModels=[], modelLegacy={};
     function modelRowFor(model){
       const row=document.createElement('button');
       row.type='button';
@@ -1103,7 +1116,6 @@
       row.dataset.modelId=model.id;
       row.dataset.inputs=(Array.isArray(model.inputs)&&model.inputs.length?model.inputs:['text']).join(',');
       if(model.kind)row.dataset.kind=model.kind;
-      if(model.unstable)row.dataset.unstable='true';
       if(model.unavailable){row.disabled=true;row.setAttribute('aria-disabled','true');row.dataset.unavailable='Not available through Poe (N/A).';row.style.opacity='0.45';}
       if(model.kind==='video'&&model.video){
         row.dataset.maxReferences=String(model.max_references||0);
@@ -1123,22 +1135,23 @@
         name.append(badge);
       }
       copy.append(name);
-      if(model.unavailable||model.unstable){
+      if(model.unavailable){
         const meta=document.createElement('span');
         meta.className='model-meta';
         const text=document.createElement('span');
-        text.textContent=model.unavailable?'N/A':'Unstable';
+        text.textContent='N/A';
         meta.append(text);
         copy.append(meta);
       }
       const tier=document.createElement('span');
-      tier.className='model-tier'+(model.unstable?'':' is-solo');
+      tier.className='model-tier is-solo';
       tier.textContent=(tierNames[model.tier]||'Instant')+(model.kind==='image'?'/image':model.kind==='video'?'/video':'')+' tier';
       if(!model.unavailable)copy.append(tier);
       row.append(symbol,copy);
       return row;
     }
     function renderModels(data){
+      data=Object.assign({},data,{models:((data&&data.models)||[]).map(function(model){return Object.prototype.hasOwnProperty.call(modelLegacy,model.id)?Object.assign({},model,{legacy:modelLegacy[model.id]}):model})});
       const models=data&&Array.isArray(data.models)?data.models:[];
       if(!models.length)return false;
       const lists=panel.querySelectorAll('.model-list[data-provider]');
@@ -1161,7 +1174,8 @@
       return true;
     }
     function applyModels(data){
-      if(!renderModels(data))return;
+      publicModels=data;
+      if(!renderModels(Object.assign({},data,{models:(data.models||[]).concat(customModels)})))return;
       try{localStorage.setItem(MODELS_CACHE,JSON.stringify(data))}catch(error){}
     }
     panel.querySelectorAll('.model-row').forEach(function(row){row.disabled=true});
@@ -1171,7 +1185,7 @@
     fetch('/models',{credentials:'same-origin'}).then(function(response){
       return response.ok?response.json():null;
     }).then(function(data){if(data)applyModels(data)}).catch(function(){});
-    window.NeoChatModels={apply:applyModels,current:function(){return modelsData}};
+    window.NeoChatModels={apply:applyModels,current:function(){return modelsData},custom:function(models,legacy){modelLegacy=legacy||{};customModels=Array.isArray(models)?models:[];renderModels(Object.assign({},publicModels||modelsData||{},{models:((publicModels||modelsData||{}).models||[]).filter(function(m){return !m.id.startsWith("custom-")}).concat(customModels)}))}};
     syncManualTrigger();
 
     document.addEventListener('pointerdown',function(event){
@@ -1978,6 +1992,55 @@
       settingsTimer=setTimeout(function(){saveSettingsNow(event.detail)},800);
     });
 
+    let customModelsGeneration=0;
+    const customModelForm=document.getElementById('customModelForm');
+    const customModelStatus=document.getElementById('customModelStatus');
+    function applyCustomModels(data){
+      window.NeoChatModels.custom(data.models||[],data.legacy_overrides||{});
+      const list=document.getElementById('customModelsList');list.replaceChildren();
+      (data.models||[]).forEach(function(model){
+        const row=document.createElement('div');row.className='set-row';
+        const label=document.createElement('span');label.textContent=model.name;
+        const remove=document.createElement('button');remove.type='button';remove.className='link-btn';remove.textContent='Remove';
+        remove.addEventListener('click',async function(){
+          const generation=customModelsGeneration;remove.disabled=true;
+          try{const response=await apiFetch('/account/models/'+encodeURIComponent(model.id),{method:'DELETE'});if(!response.ok)throw new Error((await response.text()).trim());const data=await response.json();if(generation===customModelsGeneration){applyCustomModels(data);if(document.getElementById('manualState').dataset.modelId===model.id){const first=document.querySelector('.model-row:not([disabled])');if(first)first.click()}}}catch(error){toast(error.message)}finally{remove.disabled=false}
+        });row.append(label,remove);list.append(row);
+      });
+    }
+    const manageModelProvider=document.getElementById('manageModelProvider'),manageModelSelect=document.getElementById('manageModelSelect'),modelLegacyToggle=document.getElementById('modelLegacyToggle');
+    function updateModelManager(){
+      const chosen=manageModelSelect.value;manageModelSelect.replaceChildren();
+      const data=window.NeoChatModels.current();
+      (data&&data.models||[]).filter(function(model){return model.provider===manageModelProvider.value}).forEach(function(model){
+        const option=document.createElement('option');option.value=model.id;option.textContent=model.name+(model.legacy?' (Legacy)':'');option.dataset.legacy=String(Boolean(model.legacy));manageModelSelect.append(option);
+      });
+      if(Array.from(manageModelSelect.options).some(function(option){return option.value===chosen}))manageModelSelect.value=chosen;
+      updateLegacyButton();
+    }
+    function updateLegacyButton(){const option=manageModelSelect.selectedOptions[0];modelLegacyToggle.disabled=!option;modelLegacyToggle.textContent=option&&option.dataset.legacy==='true'?'Restore from Legacy':'Move to Legacy'}
+    manageModelProvider.addEventListener('change',updateModelManager);manageModelSelect.addEventListener('change',updateLegacyButton);document.addEventListener('models:change',updateModelManager);updateModelManager();
+    modelLegacyToggle.addEventListener('click',async function(){
+      if(!sessionUser){promptForSignIn();return}
+      const option=manageModelSelect.selectedOptions[0];if(!option)return;
+      const generation=customModelsGeneration;modelLegacyToggle.disabled=true;
+      try{const response=await apiFetch('/account/models/'+encodeURIComponent(option.value),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({legacy:option.dataset.legacy!=='true'})});if(!response.ok)throw new Error((await response.text()).trim());const data=await response.json();if(generation===customModelsGeneration)applyCustomModels(data)}catch(error){toast(error.message)}finally{updateLegacyButton()}
+    });
+    async function loadCustomModels(){
+      const generation=++customModelsGeneration;applyCustomModels({models:[]});customModelStatus.textContent='';
+      if(!sessionUser)return;
+      try{const response=await apiFetch('/account/models',{});if(response.ok){const data=await response.json();if(generation===customModelsGeneration)applyCustomModels(data)}}catch(error){}
+    }
+    customModelForm.addEventListener('submit',async function(event){
+      event.preventDefault();if(!sessionUser){promptForSignIn();return}
+      const generation=customModelsGeneration,button=customModelForm.querySelector('[type="submit"]');button.disabled=true;customModelStatus.textContent='';
+      try{
+        const response=await apiFetch('/account/models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:document.getElementById('customModelProvider').value,url:document.getElementById('customModelURL').value,name:document.getElementById('customModelName').value})});
+        if(!response.ok)throw new Error((await response.text()).trim()||'Could not add model.');
+        const data=await response.json();if(generation!==customModelsGeneration)return;applyCustomModels(data);customModelForm.reset();customModelStatus.textContent='Model added.';
+      }catch(error){if(generation===customModelsGeneration)customModelStatus.textContent=error.message}finally{button.disabled=false}
+    });
+
     // Settings -> General -> Refresh models list: the server checks Poe
     // right away (and holds back repeats within half a minute).
     const refreshModelsButton=document.getElementById('refreshModels');
@@ -2016,6 +2079,8 @@
     function switchSession(userID){
       if(userID===sessionUser)return;
       sessionUser=userID;
+      settingsReady=false;clearTimeout(settingsTimer);
+      loadCustomModels();
       if(userID&&window.NeoChatPreferences)syncSettings();
       conversationID='';
       setConversationTitle('New chat');

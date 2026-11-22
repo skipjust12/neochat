@@ -8,6 +8,8 @@ import (
 	"math"
 	"net/http"
 	"os"
+	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -204,6 +206,9 @@ func applyPoe(m router.Model, p PoeModel) router.Model {
 	return m
 }
 
+var poeGPTGeneration = regexp.MustCompile(`^gpt-(\d+)(?:[.a-z-]|$)`)
+var poeOldReasoner = regexp.MustCompile(`^o[1-4](?:-|$)`)
+
 func MergePoe(base router.Catalog, live []PoeModel, now time.Time) (*State, error) {
 	if len(live) == 0 {
 		return nil, fmt.Errorf("Poe returned an empty model list")
@@ -265,13 +270,13 @@ func MergePoe(base router.Catalog, live []PoeModel, now time.Time) (*State, erro
 		for i := range base.Models {
 			m := &base.Models[i]
 			kind := ""
-			if !contains(p.Architecture.Output, "text") {
-				if contains(p.Architecture.Output, "image") {
-					kind = router.KindImage
-				}
-				if contains(p.Architecture.Output, "video") {
-					kind = router.KindVideo
-				}
+			// Image bots can also return text. Their media output still
+			// determines the transport and the picker (e.g. Nano Banana 2.1).
+			if contains(p.Architecture.Output, "image") && (!contains(p.Architecture.Output, "text") || (!contains(p.Features, "tools") && len(p.Endpoints) == 0)) {
+				kind = router.KindImage
+			}
+			if contains(p.Architecture.Output, "video") {
+				kind = router.KindVideo
 			}
 			if len(p.Architecture.Output) == 0 || (kind == "" && !contains(p.Architecture.Output, "text")) {
 				continue
@@ -302,7 +307,7 @@ func MergePoe(base router.Catalog, live []PoeModel, now time.Time) (*State, erro
 		state.Added[m.ID] = time.UnixMilli(p.Created)
 	}
 	// Keep older versions in Legacy when a listed model continues their line.
-	// Unlisted bots stay where the curated catalog put them, with Unstable.
+	// Unlisted bots retain the curated placement unless an older GPT generation.
 	for i, m := range state.Catalog.Models {
 		if m.Unstable {
 			continue
@@ -322,6 +327,42 @@ func MergePoe(base router.Catalog, live []PoeModel, now time.Time) (*State, erro
 			}
 		}
 	}
+	// A name such as GPT-4o has no plain numeric version token, and
+	// GPT-5-mini is a different line from GPT-6 Luna. Both still belong
+	// in Legacy when the curated catalog already offers a newer GPT generation.
+	latestGPT := 0
+	for _, m := range state.Catalog.Models {
+		if m.Provider == "openai" && m.Kind == "" {
+			if match := poeGPTGeneration.FindStringSubmatch(m.ID); match != nil {
+				n, _ := strconv.Atoi(match[1])
+				latestGPT = max(latestGPT, n)
+			}
+		}
+	}
+	for i, m := range state.Catalog.Models {
+		if m.Provider == "openai" && m.Kind == "" {
+			if match := poeGPTGeneration.FindStringSubmatch(m.ID); match != nil {
+				n, _ := strconv.Atoi(match[1])
+				if n < latestGPT {
+					state.Catalog.Models[i].Legacy = true
+				}
+			} else if latestGPT >= 5 && poeOldReasoner.MatchString(m.ID) {
+				state.Catalog.Models[i].Legacy = true
+			}
+		}
+	}
+	// Newly listed models should not be buried below an entire provider's
+	// back catalog. Stable sorting preserves curated order for unlisted bots.
+	sort.SliceStable(state.Catalog.Models, func(i, j int) bool {
+		a, b := state.Catalog.Models[i], state.Catalog.Models[j]
+		if a.Provider != b.Provider {
+			return a.Provider < b.Provider
+		}
+		if a.Legacy != b.Legacy {
+			return !a.Legacy
+		}
+		return byID[strings.ToLower(a.ResolveAPIModelID())].Created > byID[strings.ToLower(b.ResolveAPIModelID())].Created
+	})
 	matched := len(known)
 	if matched == 0 {
 		return nil, fmt.Errorf("Poe catalog has no recognized curated models")

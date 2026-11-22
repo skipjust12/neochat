@@ -2,7 +2,7 @@
 
 `cmd/server` is the HTTP entry point. All AI calls use Poe; see
 [the Poe migration guide](poe-migration.md) for transports, model/bot names,
-Unstable entries, prompt-cache telemetry, media and point accounting.
+Unlisted bot entries, prompt-cache telemetry, media and point accounting.
 
 The existing chat features remain: personas, streaming, terminal/desktop/MCP
 tools, inline script images, files, web search, chat history, summaries,
@@ -117,7 +117,7 @@ curl -s localhost:8080/chat -X POST \
 
 With the router disabled (the default), use `requested_mode: manual` and a
 model ID from `GET /models`. Effort values are mapped to the selected bot's
-advertised parameters. Unlisted curated bots remain selectable as Unstable.
+advertised parameters. Unlisted curated bots remain selectable by their exact Poe handles.
 The `*_cost_usd` response fields are internal estimates; Poe charges points.
 
 Expected response shape:

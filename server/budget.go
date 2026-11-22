@@ -148,7 +148,7 @@ func (c auxiliaryClient) Generate(ctx context.Context, modelID string, messages 
 }
 
 func (s *Server) validateRequest(req chatRequest) error {
-	if m, ok := s.router().Catalog.FindModel(req.ManualModelID); req.RequestedMode == "manual" && ok && m.Unavailable {
+	if m, ok := s.requestRouter(req).Catalog.FindModel(req.ManualModelID); req.RequestedMode == "manual" && ok && m.Unavailable {
 		return userErrorf("%s is not available through Poe (N/A). Choose another model.", modelName(m))
 	}
 	if s.RouterDisabled {
@@ -157,7 +157,7 @@ func (s *Server) validateRequest(req chatRequest) error {
 		}
 		// Image and video models run on the image key alone (image.go,
 		// video.go).
-		model, found := s.router().Catalog.FindModel(req.ManualModelID)
+		model, found := s.requestRouter(req).Catalog.FindModel(req.ManualModelID)
 		switch {
 		case found && (model.Kind == router.KindImage || model.Kind == router.KindVideo):
 			if req.imageKey == "" && model.Kind == router.KindVideo {
@@ -206,7 +206,7 @@ func (s *Server) validateRequest(req chatRequest) error {
 	switch req.RequestedMode {
 	case "auto", "instant", "thinking", "max":
 	case "manual":
-		if _, ok := s.router().Catalog.FindModel(req.ManualModelID); !ok {
+		if _, ok := s.requestRouter(req).Catalog.FindModel(req.ManualModelID); !ok {
 			return fmt.Errorf("%w: unknown manual model", errInvalidRequest)
 		}
 	default:
