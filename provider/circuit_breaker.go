@@ -129,7 +129,11 @@ func (c *CircuitBreakerClient) GenerateStream(ctx context.Context, apiModelID st
 			}
 		}()
 		for chunk := range upstream {
-			out <- chunk
+			select {
+			case out <- chunk:
+			case <-ctx.Done():
+				return
+			}
 			if chunk.Err != nil {
 				c.recordResult(apiModelID, chunk.Err)
 				return

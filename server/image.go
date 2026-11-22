@@ -19,7 +19,7 @@ import (
 )
 
 // Image answers. A model of kind router.KindImage doesn't chat: the user's
-// message becomes the prompt for Polza's Media API (package imagegen), run
+// message becomes the prompt for Poe's Media API (package imagegen), run
 // on the user's separate image key (X-Image-Key, Settings -> Account,
 // never stored), and the answer is the picture it makes. Pictures are
 // kept as the chat's files (package attachment), claimed by the chat once
@@ -35,7 +35,7 @@ import (
 // chat key.
 const imageKeyHeader = "X-Image-Key"
 
-// rubPerUSD converts what Polza reports an image cost (rubles) back to
+// rubPerUSD converts what Poe reports an image cost (rubles) back to
 // the dollars the catalog prices in.
 const rubPerUSD = modelcatalog.RUBPerUSD
 
@@ -68,12 +68,12 @@ func (s *Server) imageAnswer(ctx context.Context, req chatRequest, prepared prep
 	if err != nil {
 		return webAnswer{}, err
 	}
-	made, genErr := s.Images.Generate(ctx, req.imageKey, imagegen.Request{Model: model.ResolveAPIModelID(), Prompt: prompt, References: references})
+	made, genErr := s.Images.Generate(ctx, req.imageKey, imagegen.Request{Endpoint: poeMediaEndpoint(model), Model: model.ResolveAPIModelID(), Prompt: prompt, References: references})
 
-	// Settle like billedCall: a refusal or a generation Polza reports as
-	// failed costs nothing; a finished one costs what Polza says (or the
+	// Settle like billedCall: a refusal or a generation Poe reports as
+	// failed costs nothing; a finished one costs what Poe says (or the
 	// catalog price); a stop or a timeout keeps the picture's price, since
-	// Polza goes on making it; anything else keeps the reservation for
+	// Poe goes on making it; anything else keeps the reservation for
 	// reconciliation.
 	var statusErr *provider.StatusError
 	var failed *imagegen.FailedError
@@ -176,7 +176,7 @@ func imageExtension(mime string) string {
 
 // mediaError turns a failed generation of an "image" or a "video" into
 // what the user is told. The key, balance and limit cases name the image
-// key, since that's the one to check; Polza's own explanation of a failed
+// key, since that's the one to check; Poe's own explanation of a failed
 // generation (a content policy refusal, say) is shown as is.
 func mediaError(err error, what string) error {
 	var statusErr *provider.StatusError
@@ -198,14 +198,14 @@ func mediaError(err error, what string) error {
 	case errors.As(err, &statusErr) && statusErr.StatusCode < 500:
 		switch statusErr.StatusCode {
 		case http.StatusUnauthorized, http.StatusForbidden:
-			return userError{text: "Polza AI rejected your Image API key. Check it in Settings → Account."}
+			return userError{text: "Poe rejected your Image API key. Check it in Settings → Account."}
 		case http.StatusPaymentRequired:
-			return userErrorf("The balance behind your Image API key is too low for this %s. Top it up on polza.ai.", what)
+			return userErrorf("The balance behind your Image API key is too low for this %s. Top it up on poe.com.", what)
 		case http.StatusTooManyRequests:
-			return userError{text: "Polza AI is rate limiting your Image API key. Wait a moment and try again."}
+			return userError{text: "Poe is rate limiting your Image API key. Wait a moment and try again."}
 		}
 		if detail := provider.VendorMessage(statusErr.Body); detail != "" {
-			return userErrorf("Polza AI: %s (HTTP %d)", clipRunes(detail, 300), statusErr.StatusCode)
+			return userErrorf("Poe: %s (HTTP %d)", clipRunes(detail, 300), statusErr.StatusCode)
 		}
 	}
 	return err
@@ -234,4 +234,18 @@ func imageNote(images []conversation.Attachment) string {
 		return "[You made an image for this request; the user sees it in the chat.]"
 	}
 	return fmt.Sprintf("[You made %d images for this request; the user sees them in the chat.]", len(images))
+}
+
+func poeMediaEndpoint(m router.Model) string {
+	if !m.Poe {
+		return ""
+	}
+	for _, endpoint := range []string{"/v1/videos", "/v1/responses", "/v1/chat/completions"} {
+		for _, v := range m.PoeEndpoints {
+			if v == endpoint {
+				return strings.TrimPrefix(v, "/v1")
+			}
+		}
+	}
+	return "/chat/completions"
 }

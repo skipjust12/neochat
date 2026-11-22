@@ -55,7 +55,7 @@ if [[ -n "$domain" ]]; then
     bash "$release/rollback.sh"
     exit 1
   fi
-  if ! grep -qF '/assets/markdown/markdown-it.min.js?v=15.0.3' "$release/served.html" || ! grep -qF 'responseFont' "$release/served.html"; then
+  if ! grep -qF '/assets/markdown/markdown-it.min.js?v=15.0.3' "$release/served.html" || ! grep -qF 'responseFont' "$release/served.html" || ! grep -qF 'neochat-poe-provider-key-v1' "$release/served.html"; then
     echo 'Public frontend does not match the release; rolling back.' >&2
     bash "$release/rollback.sh"
     exit 1

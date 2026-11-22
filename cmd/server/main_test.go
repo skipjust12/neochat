@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"neochat/router"
+	"testing"
+)
 
 func TestFreeModelPricingCanBeZero(t *testing.T) {
 	for _, key := range []string{
@@ -31,5 +34,12 @@ func TestTerminalIsOnByDefaultForEveryone(t *testing.T) {
 	t.Setenv("TERMINAL_ENABLED", "false")
 	if terminalRunner() != nil {
 		t.Fatal("TERMINAL_ENABLED=false should turn it off")
+	}
+}
+
+func TestSummaryTriggerIgnoresMediaAndUncalibratedBots(t *testing.T) {
+	catalog := router.Catalog{Models: []router.Model{{ID: "text", ContextWindow: 200000}, {ID: "video", Kind: router.KindVideo, ContextWindow: 480}, {ID: "new-bot", ManualOnly: true, ContextWindow: 1024}}}
+	if got := smallestContextWindow(catalog); got != 200000 {
+		t.Fatalf("summary context=%d", got)
 	}
 }

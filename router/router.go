@@ -79,7 +79,7 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 			return RouteResult{}, fmt.Errorf("router: manual_model_id %q is currently unavailable (circuit open)", manualModelID)
 		}
 		model, ok := r.Catalog.FindModel(manualModelID)
-		if !ok {
+		if !ok || model.Unavailable {
 			return RouteResult{}, fmt.Errorf("router: manual_model_id %q not found in catalog", manualModelID)
 		}
 		// Manual bypasses scoring, but not the spend lock -- docs/unit-economics.md
@@ -249,7 +249,7 @@ func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens 
 
 	var kept []Model
 	for _, m := range r.Catalog.Models {
-		if excludedModelIDs[m.ID] || m.ManualOnly {
+		if excludedModelIDs[m.ID] || m.ManualOnly || m.Unavailable {
 			continue
 		}
 		if m.ContextWindow < estimatedContextTokens {

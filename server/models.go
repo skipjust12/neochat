@@ -13,11 +13,11 @@ import (
 )
 
 // The Manual picker's model list. GET /models answers from the live
-// catalog (package modelcatalog), refreshing it from Polza first when it's
+// catalog (package modelcatalog), refreshing it from Poe first when it's
 // older than its TTL -- so opening the app brings in models released since
-// -- but waiting at most modelsWait for that: a slow Polza gets the list as
+// -- but waiting at most modelsWait for that: a slow Poe gets the list as
 // it was. POST /models/refresh (Settings -> General -> Refresh) fetches
-// right away. Polza is asked at most once per cooldown however many people
+// right away. Poe is asked at most once per cooldown however many people
 // open the app or press Refresh.
 
 const (
@@ -27,6 +27,8 @@ const (
 )
 
 type modelEntry struct {
+	Unstable    bool     `json:"unstable,omitempty"`
+	Unavailable bool     `json:"unavailable,omitempty"`
 	ID          string   `json:"id"`
 	Name        string   `json:"name"`
 	Provider    string   `json:"provider"`
@@ -100,7 +102,7 @@ func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request, ide
 	state, err := s.Models.Refresh(r.Context(), true)
 	if err != nil {
 		log.Printf("server: refresh models for user_id=%s: %v", identity.UserID, err)
-		http.Error(w, "Couldn't reach Polza AI for the model list. Try again in a minute.", http.StatusBadGateway)
+		http.Error(w, "Couldn't reach Poe for the model list. Try again in a minute.", http.StatusBadGateway)
 		return
 	}
 	writeModelsState(w, state)
@@ -129,19 +131,18 @@ func encodeModels(w http.ResponseWriter, response modelsResponse) {
 }
 
 // modelEntries is the picker's view of a catalog, in catalog order:
-// models Polza retired are left out, and models added in the last
-// newModelDays are marked new.
+// unlisted Poe bots remain visible as Unstable, and recent additions are new.
 func modelEntries(catalog router.Catalog, retired map[string]bool, added map[string]time.Time) []modelEntry {
 	entries := make([]modelEntry, 0, len(catalog.Models))
 	for _, m := range catalog.Models {
-		if retired[m.ID] {
+		if retired[m.ID] && !m.Poe {
 			continue
 		}
 		inputs := m.InputModalities
 		if len(inputs) == 0 {
 			inputs = []string{"text"}
 		}
-		entry := modelEntry{ID: m.ID, Name: modelName(m), Provider: m.Provider, Tier: modelTier(m), Kind: m.Kind, Inputs: inputs, Legacy: m.Legacy}
+		entry := modelEntry{Unstable: m.Unstable, Unavailable: m.Unavailable || retired[m.ID], ID: m.ID, Name: modelName(m), Provider: m.Provider, Tier: modelTier(m), Kind: m.Kind, Inputs: inputs, Legacy: m.Legacy}
 		if m.Kind == router.KindVideo {
 			entry.Video, entry.MaxReferences = m.Video, m.MaxReferenceImages
 		}

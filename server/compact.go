@@ -73,7 +73,7 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request, ident
 // cheaper and faster without losing its thread. The messages stay on
 // screen; the last exchange stays verbatim, which also keeps it
 // regenerable.
-const compactModelID = "gpt-6-luna"
+const compactModelID = "gpt-5.4-nano"
 
 type compactResponse struct {
 	// CompactedThroughID is the last message the summary covers.

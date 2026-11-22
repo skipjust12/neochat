@@ -72,7 +72,7 @@ const PolzaBaseURL = "https://polza.ai/api/v1"
 
 // ErrMissingAPIKey is returned when neither the request context nor the
 // client carries a Polza key -- the user has not added one in Settings.
-var ErrMissingAPIKey = errors.New("provider: no Polza AI API key configured")
+var ErrMissingAPIKey = errors.New("provider: no Poe API key configured")
 
 // NewPolzaClient builds a client against the real Polza API. fallbackKey
 // may be empty: per-user keys arrive through WithAPIKey.

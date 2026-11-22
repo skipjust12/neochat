@@ -15,7 +15,7 @@ FROM alpine:3.20
 # bash, Python and pip for the models' terminal (server/terminal.go, on
 # by default): commands and scripts run in this container as the neochat
 # user.
-RUN apk add --no-cache bash python3 py3-pip py3-pillow font-dejavu \
+RUN apk add --no-cache ca-certificates bash python3 py3-pip py3-pillow font-dejavu ffmpeg \
     && addgroup -S neochat && adduser -S -G neochat neochat
 
 WORKDIR /app

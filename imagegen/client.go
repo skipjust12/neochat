@@ -44,8 +44,12 @@ const (
 	maxImages            = 4
 )
 
-// Client talks to the Media API. The zero value is ready to use.
+// NewPoeClient selects Poe media transports. Legacy Media API support is
+// retained for compatibility fixtures; production always uses this constructor.
+func NewPoeClient() *Client { return &Client{Poe: true} }
+
 type Client struct {
+	Poe bool
 	// BaseURL is the API root; empty means Polza's.
 	BaseURL string
 	// PollInterval is how often a running generation is checked.
@@ -76,6 +80,7 @@ type Reference struct {
 // Request is one generation.
 type Request struct {
 	Model       string
+	Endpoint    string
 	Prompt      string
 	AspectRatio string // optional, e.g. "1:1"; empty lets the model pick
 	References  []Reference
@@ -137,6 +142,9 @@ type mediaStatus struct {
 
 // Generate runs one generation to the end and downloads what it made.
 func (c *Client) Generate(ctx context.Context, apiKey string, req Request) (Result, error) {
+	if c.Poe {
+		return c.generatePoeImage(ctx, apiKey, req)
+	}
 	if strings.TrimSpace(apiKey) == "" {
 		return Result{}, ErrMissingKey
 	}

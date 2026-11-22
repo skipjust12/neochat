@@ -85,7 +85,7 @@ func newTitleServer(t *testing.T, title string) (*Server, *titleStandIn) {
 	for name := range s.Generators {
 		s.Generators[name] = client
 	}
-	s.TitleModelID = DefaultTitleModelID
+	s.TitleModelID = "gpt-6-luna" // legacy fixture ID; Poe wire contracts are tested separately.
 	return s, standIn
 }
 

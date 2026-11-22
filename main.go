@@ -8,11 +8,16 @@ import (
 	"time"
 
 	"neochat/limits"
+	"neochat/modelcatalog"
 	"neochat/router"
 )
 
 func main() {
 	catalog, err := router.LoadCatalog("configs/models.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	catalog, err = modelcatalog.LoadPoe(catalog, "configs/poe-models.json")
 	if err != nil {
 		log.Fatal(err)
 	}

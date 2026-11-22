@@ -206,7 +206,7 @@ func TestVideoModelRefusals(t *testing.T) {
 		body    map[string]any
 		want    string
 	}{
-		{"no image key", map[string]string{providerKeyHeader: "pza_chat"}, videoTurn(map[string]any{"message": "кот"}), "Image API key in Settings → Account to make videos"},
+		{"no image key", nil, videoTurn(map[string]any{"message": "кот"}), "Image API key in Settings → Account to make videos"},
 		{"no prompt", key, videoTurn(map[string]any{"message": ""}), "message is required"},
 		{"length it doesn't offer", key, videoTurn(map[string]any{"message": "кот", "video": map[string]any{"duration": "7"}}), "doesn't offer length 7. Pick one of: 4, 6, 8, 10."},
 		{"shape it doesn't offer", key, videoTurn(map[string]any{"message": "кот", "video": map[string]any{"aspect_ratio": "1:1"}}), "doesn't offer shape 1:1."},

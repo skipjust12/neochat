@@ -591,10 +591,10 @@
         </div>
         <div class="set-sec" id="providerKeySec">
           <div class="set-sec-title"><svg class="lucide lucide-key-round" data-lucide-icon="key-round" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" /></svg>API key</div>
-          <p class="set-note">Your Polza AI key (it starts with <code>pza_</code>). NeoChat sends it with each message to call the model you pick in Manual mode, so usage is billed to your Polza balance. It stays in this browser and is never stored on the server. <a href="https://polza.ai" target="_blank" rel="noopener noreferrer">Get a key at polza.ai</a></p>
+          <p class="set-note">Your Poe API key. NeoChat sends it with each message to call the model you pick in Manual mode, so usage is billed to your Poe balance. It stays in this browser and is never stored on the server. <a href="https://poe.com/api_key" target="_blank" rel="noopener noreferrer">Get a Poe API key</a></p>
           <form class="set-row provider-key-row" id="providerKeyForm" autocomplete="off">
-            <label class="label soft" for="providerKey">Polza AI key</label>
-            <span class="val"><input class="api-key-input" id="providerKey" type="password" autocomplete="off" spellcheck="false" placeholder="pza_…" maxlength="512" /><button class="link-btn" id="providerKeySave" type="submit">Save</button></span>
+            <label class="label soft" for="providerKey">Poe key</label>
+            <span class="val"><input class="api-key-input" id="providerKey" type="password" autocomplete="off" spellcheck="false" placeholder="Poe API key…" maxlength="512" /><button class="link-btn" id="providerKeySave" type="submit">Save</button></span>
           </form>
           <div class="set-row">
             <span class="label soft" id="providerKeyStatus" aria-live="polite">No key added yet.</span>
@@ -603,10 +603,10 @@
         </div>
         <div class="set-sec" id="imageKeySec">
           <div class="set-sec-title"><svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>Image API</div>
-          <p class="set-note">A separate Polza AI key for image and video models (Nano Banana, Gemini Omni). NeoChat sends it only when you make a picture or a video, so they are billed apart from chat. It stays in this browser and is never stored on the server.</p>
+          <p class="set-note">An optional separate Poe API key for image and video models. Leave it empty to use your chat key. A separate key lets you track media usage apart from chat. It stays in this browser and is never stored on the server.</p>
           <form class="set-row provider-key-row" id="imageKeyForm" autocomplete="off">
             <label class="label soft" for="imageKey">Image API key</label>
-            <span class="val"><input class="api-key-input" id="imageKey" type="password" autocomplete="off" spellcheck="false" placeholder="pza_…" maxlength="512" /><button class="link-btn" type="submit">Save</button></span>
+            <span class="val"><input class="api-key-input" id="imageKey" type="password" autocomplete="off" spellcheck="false" placeholder="Poe API key…" maxlength="512" /><button class="link-btn" type="submit">Save</button></span>
           </form>
           <div class="set-row">
             <span class="label soft" id="imageKeyStatus" aria-live="polite">No key added yet.</span>
@@ -652,24 +652,24 @@
       </section>
 
       <section class="settings-pane" data-pane="usage" role="tabpanel" aria-label="Usage">
-        <h3 class="pane-heading">Usage</h3><p class="pane-description">What's left on your Polza AI balance.</p>
+        <h3 class="pane-heading">Usage</h3><p class="pane-description">What's left on your Poe balance.</p>
         <div class="set-sec">
           <div class="set-sec-title"><svg class="lucide lucide-chart-no-axes-column" data-lucide-icon="chart-no-axes-column" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></svg>Balance</div>
           <div class="usage usage-single">
-            <div class="usage-item"><span class="usage-figure"><strong id="balanceAmount">—</strong><span>Polza AI balance</span></span></div>
+            <div class="usage-item"><span class="usage-figure"><strong id="balanceAmount">—</strong><span>Poe balance</span></span></div>
           </div>
-          <p class="set-note" id="balanceNote" style="margin-top:22px">The balance behind the Polza AI key in Account.</p>
+          <p class="set-note" id="balanceNote" style="margin-top:22px">The balance behind the Poe key in Account.</p>
         </div>
         <div class="set-sec">
           <div class="set-sec-title"><svg class="lucide lucide-bell" data-lucide-icon="bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0" /><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /></svg>Low balance alerts</div>
           <p class="set-note">A note above the message box when the balance gets close to running out, and when it does. Sending is never blocked. Leave a field empty to turn that note off.</p>
           <div class="set-row">
             <label class="label soft" for="balanceWarnAt">Low balance approaching below</label>
-            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceWarnAt" type="number" min="0" step="10" inputmode="decimal" value="300" /><span aria-hidden="true">₽</span></span></span>
+            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceWarnAt" type="number" min="0" step="10" inputmode="decimal" value="10000" /><span aria-hidden="true">points</span></span></span>
           </div>
           <div class="set-row">
             <label class="label soft" for="balanceLowAt">Low balance below</label>
-            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceLowAt" type="number" min="0" step="10" inputmode="decimal" value="100" /><span aria-hidden="true">₽</span></span></span>
+            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceLowAt" type="number" min="0" step="10" inputmode="decimal" value="1000" /><span aria-hidden="true">points</span></span></span>
           </div>
         </div>
       </section>
@@ -1067,10 +1067,10 @@
 
     /* ---------- model list ---------- */
     // The rows come from GET /models (server/models.go), which follows
-    // Polza's releases: a new model joins its vendor's list and the one it
-    // replaces moves to Legacy. The last list is kept in this browser so
+    // Poe's public metadata: new models join their vendor's list.
+    // Unlisted curated bots remain selectable as Unstable. The last list is kept in this browser so
     // the picker is filled before the server answers.
-    const MODELS_CACHE='neochat-models-v1';
+    const MODELS_CACHE='neochat-models-poe-v1';
     const tierNames={max:'Max',thinking:'Thinking',instant:'Instant'};
     const modelIcons={};
     document.getElementById('modelIcons').content.querySelectorAll('[data-provider]').forEach(function(icon){
@@ -1103,6 +1103,8 @@
       row.dataset.modelId=model.id;
       row.dataset.inputs=(Array.isArray(model.inputs)&&model.inputs.length?model.inputs:['text']).join(',');
       if(model.kind)row.dataset.kind=model.kind;
+      if(model.unstable)row.dataset.unstable='true';
+      if(model.unavailable){row.disabled=true;row.setAttribute('aria-disabled','true');row.dataset.unavailable='Not available through Poe (N/A).';row.style.opacity='0.45';}
       if(model.kind==='video'&&model.video){
         row.dataset.maxReferences=String(model.max_references||0);
         row.dataset.maxVideos=String(model.video.max_reference_videos||0);
@@ -1114,25 +1116,25 @@
       copy.className='model-copy';
       const name=document.createElement('strong');
       name.textContent=model.name;
-      if(model.new){
+      if(model.new&&!model.unavailable){
         const badge=document.createElement('span');
         badge.className='model-new';
         badge.textContent='New';
         name.append(badge);
       }
       copy.append(name);
-      if(model.description){
+      if(model.description||model.unavailable||model.unstable){
         const meta=document.createElement('span');
         meta.className='model-meta';
         const text=document.createElement('span');
-        text.textContent=model.description;
+        text.textContent=model.unavailable?'N/A':model.unstable?'Unstable':model.description;
         meta.append(text);
         copy.append(meta);
       }
       const tier=document.createElement('span');
       tier.className='model-tier'+(model.description?'':' is-solo');
       tier.textContent=(tierNames[model.tier]||'Instant')+(model.kind==='image'?'/image':model.kind==='video'?'/video':'')+' tier';
-      copy.append(tier);
+      if(!model.unavailable)copy.append(tier);
       row.append(symbol,copy);
       return row;
     }
@@ -1162,8 +1164,9 @@
       if(!renderModels(data))return;
       try{localStorage.setItem(MODELS_CACHE,JSON.stringify(data))}catch(error){}
     }
+    panel.querySelectorAll('.model-row').forEach(function(row){row.disabled=true});
     try{renderModels(JSON.parse(localStorage.getItem(MODELS_CACHE)||'null'))}catch(error){}
-    // Opening the app brings the list up to date; the server asks Polza at
+    // Opening the app brings the list up to date; the server asks Poe at
     // most every few minutes however often this runs.
     fetch('/models',{credentials:'same-origin'}).then(function(response){
       return response.ok?response.json():null;
@@ -1240,7 +1243,7 @@
     });
 
     /* ---------- low balance ---------- */
-    // A note above the message box once the Polza balance behind the chat
+    // A note above the message box once the Poe balance behind the chat
     // key nears or passes the thresholds set in Usage. Sending is never
     // blocked. The balance is asked when the app opens, a moment after
     // each answer, when the key changes, and when the app comes back after
@@ -1255,11 +1258,10 @@
       const value=Number(raw);
       return raw!==''&&Number.isFinite(value)&&value>=0?value:null;
     }
-    // What can be spent: the available amount when Polza holds some back.
+    // Poe reports the current point balance directly.
     function noteBalance(data){
-      const amount=Number(data&&data.amount_rub)||0;
-      const available=Number(data&&data.available_rub);
-      knownBalance=Number.isFinite(available)&&available>0?Math.min(amount,available):amount;
+      const points=Number(data&&data.current_point_balance);
+      knownBalance=Number.isFinite(points)?points:null;
       balanceCheckedAt=Date.now();
       renderBalanceBanner();
     }
@@ -1287,7 +1289,7 @@
         noteBalance(await response.json());
       }catch(error){}
     }
-    // After an answer Polza needs a moment to charge for it.
+    // After an answer Poe needs a moment to charge for it.
     function scheduleBalanceCheck(){
       clearTimeout(balanceTimer);
       balanceTimer=setTimeout(refreshBalance,2500);
@@ -1301,22 +1303,21 @@
     });
 
     /* ---------- usage bars ---------- */
-    // The Polza balance behind the chat key, asked fresh each time the
+    // The Poe balance behind the chat key, asked fresh each time the
     // tab opens (through the server: the page may only talk to it).
     async function runUsage(){
       const amount=document.getElementById('balanceAmount');
       const note=document.getElementById('balanceNote');
       const key=providerKey();
-      if(!key){amount.textContent='—';note.textContent='Add your Polza AI key in Account to see the balance.';return}
+      if(!key){amount.textContent='—';note.textContent='Add your Poe key in Account to see the balance.';return}
       amount.textContent='…';
       try{
         const response=await apiFetch('/account/balance',{headers:{'X-Provider-Key':key}});
         if(!response.ok)throw new Error((await response.text()).trim()||'Could not load the balance.');
         const data=await response.json();
         noteBalance(data);
-        const rub=function(value){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(Number(value)||0)};
-        amount.textContent=rub(data.amount_rub);
-        note.textContent=Math.abs((data.available_rub||0)-(data.amount_rub||0))>0.005?'Available to spend: '+rub(data.available_rub)+'.':'The balance behind the Polza AI key in Account.';
+        amount.textContent=new Intl.NumberFormat('en-US').format(data.current_point_balance)+' points';
+        note.textContent='The balance behind the Poe API key in Account.';
       }catch(error){amount.textContent='—';note.textContent=error.message}
     }
 
@@ -1580,12 +1581,12 @@
     // and so other tabs notice a sign-in, a sign-out or a switch of user.
     const signedInHintKey='neochat-signed-in';
     const currentConversationStorageKey='neochat-current-conversation';
-    // The user's own Polza AI key (Settings -> Account). Sent per request
+    // The user's own Poe key (Settings -> Account). Sent per request
     // as X-Provider-Key; the server never stores it.
-    const providerKeyStorageKey='neochat-provider-key';
+    const providerKeyStorageKey='neochat-poe-provider-key-v1';
     // The separate key for image models (Settings -> Account -> Image API),
     // sent as X-Image-Key only with requests to an image model.
-    const imageKeyStorageKey='neochat-image-key';
+    const imageKeyStorageKey='neochat-poe-image-key-v1';
     const providerKeyForm=document.getElementById('providerKeyForm');
     const providerKeyField=document.getElementById('providerKey');
     const providerKeyStatus=document.getElementById('providerKeyStatus');
@@ -1656,10 +1657,10 @@
     }
 
     function providerKey(){return storedValue(localStorage,providerKeyStorageKey).trim()}
-    function imageKey(){return storedValue(localStorage,imageKeyStorageKey).trim()}
+    function imageKey(){return storedValue(localStorage,imageKeyStorageKey).trim()||providerKey()}
     function maskedProviderKey(key){return key.length>12?key.slice(0,6)+'…'+key.slice(-4):'••••'}
 
-    // A key kept in this browser (Settings -> Account): the Polza key for
+    // A key kept in this browser (Settings -> Account): the Poe key for
     // chat, and the separate one for image models. Both work the same way.
     function keySetting(storageKey,form,field,status,remove,name){
       function render(){
@@ -1667,17 +1668,17 @@
         status.textContent=key?'Saved: '+maskedProviderKey(key):'No key added yet.';
         remove.hidden=!key;
         field.value='';
-        field.placeholder=key?maskedProviderKey(key):'pza_…';
+        field.placeholder=key?maskedProviderKey(key):'Poe API key…';
       }
       form.addEventListener('submit',function(event){
         event.preventDefault();
         const key=field.value.trim();
         if(!key){toast('Paste your '+name+' first.');return}
-        if(/\s/.test(key)){toast('That key contains spaces — copy it again from polza.ai.');return}
+        if(/\s/.test(key)){toast('That key contains spaces — copy it again from poe.com/api_key.');return}
         storeValue(localStorage,storageKey,key);
         render();
         document.dispatchEvent(new CustomEvent('key:change',{detail:storageKey}));
-        toast(key.startsWith('pza_')?name+' saved.':'Saved. Polza keys usually start with pza_ — double-check it.');
+        toast(name+' saved.');
       });
       remove.addEventListener('click',function(){
         storeValue(localStorage,storageKey,'');
@@ -1688,7 +1689,7 @@
       render();
       return render;
     }
-    const renderProviderKey=keySetting(providerKeyStorageKey,providerKeyForm,providerKeyField,providerKeyStatus,providerKeyRemove,'Polza AI key');
+    const renderProviderKey=keySetting(providerKeyStorageKey,providerKeyForm,providerKeyField,providerKeyStatus,providerKeyRemove,'Poe key');
     const renderImageKey=keySetting(imageKeyStorageKey,document.getElementById('imageKeyForm'),document.getElementById('imageKey'),document.getElementById('imageKeyStatus'),document.getElementById('imageKeyRemove'),'Image API key');
 
     function modelRow(modelID){
@@ -1707,7 +1708,7 @@
     // A video model (Gemini Omni) is asked for a length, a quality and a
     // shape. Once one is picked, a pill next to the model shows them and
     // opens a small panel to change them, with what the clip costs on the
-    // Image API key (Polza's price tiers, sent with /models). The choice is
+    // Image API key. Poe reports charges in points. The choice is
     // kept per model in this browser. With a video attached the model edits
     // it instead, and picks the length itself.
     const videoSettings=(function(){
@@ -1748,24 +1749,11 @@
         });
         return choice;
       }
-      // The most specific of Polza's price tiers that applies (the server's
-      // router.VideoOptions.PriceRUB).
-      function priceRUB(entry,choice,hasVideo){
-        const facts={duration:choice.duration,resolution:choice.resolution,has_video:String(hasVideo)};
-        let best=-1,price=null;
-        (entry.video.prices||[]).forEach(function(tier){
-          const when=tier&&tier.when||{};
-          const keys=Object.keys(when);
-          if(keys.every(function(key){return facts[key]===when[key]})&&keys.length>best){best=keys.length;price=Number(tier.rub)}
-        });
-        return price;
-      }
       function valueLabel(key,value){
-        if(key==='duration')return value+'s';
+        if(key==='duration')return value==='auto'?'Auto':value+'s';
         if(key==='resolution')return value==='4k'?'4K':value;
         return value;
       }
-      function rubles(value){return Math.round(value).toLocaleString('en-US')+' ₽'}
 
       function render(){
         const modelID=manualMode()?manualState.dataset.modelId||'':'';
@@ -1799,16 +1787,16 @@
             return button;
           }));
         });
-        const price=priceRUB(model,choice,editing);
+
         label.replaceChildren();
         const main=document.createElement('span');
         main.textContent=editing?'Edit':valueLabel('duration',choice.duration);
         const extra=document.createElement('span');
         extra.className='video-options-extra';
-        extra.textContent=' · '+valueLabel('resolution',choice.resolution)+(price!==null?' · '+rubles(price):'');
+        extra.textContent=' · '+valueLabel('resolution',choice.resolution);
         label.append(main,extra);
-        trigger.title='Video: '+(editing?'edit the attached clip':valueLabel('duration',choice.duration))+', '+valueLabel('resolution',choice.resolution)+', '+choice.aspect_ratio+(price!==null?', '+rubles(price):'');
-        note.textContent=(editing?'Edits the attached video (its first 10 seconds); the model picks the length. ':'')+(price!==null?rubles(price)+' per video, billed to your Image API key.':'');
+        trigger.title='Video: '+(editing?'edit the attached clip':valueLabel('duration',choice.duration))+', '+valueLabel('resolution',choice.resolution)+', '+choice.aspect_ratio;
+        note.textContent=(editing?'Edits the attached video (its first 10 seconds); the model picks the length. ':'')+'Billed by Poe in points.';
       }
       function choose(key,value){
         if(!model)return;
@@ -1927,7 +1915,7 @@
         return true;
       }
       if(!providerKey()){
-        toast('Add your Polza AI API key in Settings → Account.');
+        toast('Add your Poe API key in Settings → Account.');
         if(window.openSettings)window.openSettings('account');
         return false;
       }
@@ -1990,7 +1978,7 @@
       settingsTimer=setTimeout(function(){saveSettingsNow(event.detail)},800);
     });
 
-    // Settings -> General -> Refresh models list: the server checks Polza
+    // Settings -> General -> Refresh models list: the server checks Poe
     // right away (and holds back repeats within half a minute).
     const refreshModelsButton=document.getElementById('refreshModels');
     const modelsUpdated=document.getElementById('modelsUpdated');
@@ -4988,7 +4976,7 @@
       document.getElementById('attachBtn').click();
       if(sending){toast('Wait for the current response.');return}
       if(activeChatIncognito||!conversationID){toast('Compact works on a saved chat with a few messages in it.');return}
-      if(!providerKey()){toast('Add your Polza AI API key in Settings → Account.');return}
+      if(!providerKey()){toast('Add your Poe API key in Settings → Account.');return}
       const yes=await askYesNo('Compact this chat?','GPT-6 Luna will summarize the conversation so far, except the last exchange. Later answers use that summary instead of the full history: cheaper and faster, but they may miss fine details. The messages stay on screen.','Compact');
       if(!yes)return;
       const id=conversationID;
@@ -5223,7 +5211,7 @@
 
     document.getElementById('logOut').addEventListener('click',function(){
       document.getElementById('settingsClose').click();
-      // Logging out on this device forgets the Polza keys too.
+      // Logging out on this device forgets the Poe keys too.
       storeValue(localStorage,providerKeyStorageKey,'');
       storeValue(localStorage,imageKeyStorageKey,'');
       renderProviderKey();
@@ -6923,7 +6911,7 @@
     function loadPreferences(){
       try{return JSON.parse(localStorage.getItem(storageKey)||'{}')}catch(error){return {}}
     }
-    // A low-balance threshold in rubles, or null when the field is empty.
+    // A low-balance threshold in Poe points, or null when the field is empty.
     function thresholdValue(id){
       const raw=document.getElementById(id).value.trim();
       const value=Number(raw);
@@ -6947,6 +6935,7 @@
         extendedThinking:document.getElementById('thinkingState').textContent.trim()!=='Off',
         executeOn:document.getElementById('executeOnState').textContent.trim(),
         approval:document.getElementById('approvalState').textContent.trim()==='Allow all'?'allow':'ask',
+        balanceUnit:'poe_points',
         balanceWarnAt:thresholdValue('balanceWarnAt'),
         balanceLowAt:thresholdValue('balanceLowAt')
       };
@@ -7014,6 +7003,7 @@
       reasoningRange.dispatchEvent(new Event('input'));
     }
     ['balanceWarnAt','balanceLowAt'].forEach(function(id){
+      if(preferences.balanceUnit!=='poe_points')return;
       if(preferences[id]===null)document.getElementById(id).value='';
       else if(Number.isFinite(preferences[id]))document.getElementById(id).value=String(preferences[id]);
     });

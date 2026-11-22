@@ -1,5 +1,5 @@
 // Package provider calls model vendors. Today every catalog model goes
-// through Polza AI (PolzaClient); Client is the seam a hybrid-sourcing
+// through Poe (PoeClient); Client is the seam a hybrid-sourcing
 // setup (an aggregator for most models, direct contracts for a few) sits
 // behind, so adding a vendor later means writing a new Client
 // implementation, not touching callers.
@@ -67,13 +67,17 @@ type Part struct {
 // limits.RecordThinkingMaxSpend -- estimates are only good enough for
 // pre-flight checks, billing runs on this.
 type GenerateResult struct {
-	Text         string
-	InputTokens  int
-	OutputTokens int
+	Poe bool
+	// USD per million tokens, only when the Poe catalog supplies the rate.
+	CacheReadPrice  *float64
+	CacheWritePrice *float64
+	Text            string
+	InputTokens     int
+	OutputTokens    int
 
 	// CachedTokens and CacheWriteTokens are the part of InputTokens read
 	// from and written to the vendor's prompt cache (see cache.go).
-	// CostRUB is what Polza charged for the call, cache discounts and
+	// CostRUB is what Poe charged for the call, cache discounts and
 	// server tools included; 0 when it didn't say.
 	CachedTokens     int
 	CacheWriteTokens int

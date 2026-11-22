@@ -16,6 +16,7 @@ const (
 
 // VideoRequest is one video generation.
 type VideoRequest struct {
+	Endpoint    string
 	Model       string
 	Prompt      string
 	Duration    string // seconds, e.g. "6"; the model picks it when editing a video
@@ -48,6 +49,9 @@ type VideoResult struct {
 // clip. Generations are asynchronous on Polza's side ("async": true) and
 // take minutes, so it polls for up to MaxVideoWait.
 func (c *Client) GenerateVideo(ctx context.Context, apiKey string, req VideoRequest) (VideoResult, error) {
+	if c.Poe {
+		return c.generatePoeVideo(ctx, apiKey, req)
+	}
 	if strings.TrimSpace(apiKey) == "" {
 		return VideoResult{}, ErrMissingKey
 	}

@@ -30,9 +30,8 @@ import (
 // the model goes on -- up to webMaxRounds model calls per answer.
 //   - web_search returns up to webSearchResults results from the server's
 //     own SearXNG (Server.Searcher) when there is one; otherwise it runs
-//     Polza's web plugin (Yandex search) through a small helper model
-//     call; see searchWeb. (Polza's own server tools, polza:*, are not
-//     open to every account; the plugin is.)
+//     Poe Responses built-in web search through a helper model call;
+//     see searchWeb.
 //   - web_fetch downloads the page on this server (package webfetch) and
 //     keeps its text per chat (package pagestore), so the model can read a
 //     long page in parts or come back to it in a later message.
@@ -70,10 +69,10 @@ const (
 
 // defaultWebSearchModelID runs web searches: the cheapest current catalog
 // model, with reasoning off. It only copies search results.
-const defaultWebSearchModelID = "gpt-6-luna"
+const defaultWebSearchModelID = "gpt-5.4-nano"
 
-// webPluginFeeUSD is what Polza charges per web plugin search on top of
-// tokens: 0 RUB at the time of writing ("уточняется" in /v2/plugins).
+// Legacy fixture fee. Poe usage is priced conservatively from token metadata;
+// this constant does not represent an actual Poe point charge.
 const webPluginFeeUSD = 0.0
 
 // WebSearcher runs a search by itself, without a model call
@@ -144,10 +143,14 @@ type webAnswer struct {
 	calls     int
 }
 
-// add counts one more model call's usage into the answer's. What Polza
-// charged only adds up while every call says; one that doesn't leaves the
-// answer priced by its tokens (callCostUSD).
+// add accumulates usage and preserves cache pricing across tool rounds.
+// Legacy cost fields are retained only for backward-compatible accounting.
 func (a *webAnswer) add(res provider.GenerateResult) {
+	if a.calls == 0 {
+		a.Poe = res.Poe
+		a.CacheReadPrice = res.CacheReadPrice
+		a.CacheWritePrice = res.CacheWritePrice
+	}
 	a.InputTokens += res.InputTokens
 	a.OutputTokens += res.OutputTokens
 	a.CachedTokens += res.CachedTokens
@@ -262,7 +265,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 		if err != nil {
 			r.dropWriting()
 		}
-		if err != nil && rejectedRequest(err) {
+		if err != nil && rejectedModelRequest(r.model, err) {
 			if round == 0 {
 				return r.withoutTools(ctx, base, err, web)
 			}
@@ -352,7 +355,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 }
 
 // searchFirst is "on" mode for a model without function calling: the
-// server's Searcher, or else Polza's web plugin, searches for the user's
+// server's Searcher, or else Poe's web plugin, searches for the user's
 // message before the model answers.
 func (r *webRun) searchFirst(ctx context.Context, messages []provider.Message) (webAnswer, error) {
 	step := r.start(conversation.ToolActivity{Tool: "web_search", Query: clipRunes(strings.TrimSpace(r.req.Message), 200)})
@@ -363,11 +366,11 @@ func (r *webRun) searchFirst(ctx context.Context, messages []provider.Message) (
 	if r.req.Quote != "" {
 		searchPrompt += "\n(about: " + clipRunes(r.req.Quote, 200) + ")"
 	}
-	callCtx := provider.WithWebPlugin(ctx, provider.WebPlugin{Engine: "yandex", MaxResults: webSearchResults, SearchPrompt: searchPrompt})
+	callCtx := provider.WithWebPlugin(ctx, provider.WebPlugin{MaxResults: webSearchResults, SearchPrompt: searchPrompt})
 	// The search runs before the model, so it is over by the first text.
 	callCtx = withFirstDelta(callCtx, func() { r.finish(step, func(*conversation.ToolActivity) {}) })
 	res, err := r.generate(callCtx, withSystemNote(messages, webPluginNote))
-	if err != nil && rejectedRequest(err) {
+	if err != nil && rejectedModelRequest(r.model, err) {
 		r.finish(step, func(a *conversation.ToolActivity) { a.Error = webRefusal(err) })
 		res, err = r.generate(ctx, withSystemNote(messages, webUnavailableNote))
 		return webAnswer{GenerateResult: res, Activity: r.snapshot()}, err
@@ -622,7 +625,7 @@ const searchExtractPrompt = `The web search results for the user's query were ad
 Copy every URL exactly. The snippet is the result's own text, at most 300 characters. Never add a result that isn't in your context; if there are none, output {"results":[]}.`
 
 // searchWeb runs one search: on the server's Searcher when there is one,
-// otherwise a call to the web search model with Polza's web plugin, which
+// otherwise a call to the web search model with Poe's web plugin, which
 // puts the results into that call's context. They come back as
 // url_citation annotations; the model also copies them out as JSON, used
 // when a route returns no annotations.
@@ -639,14 +642,14 @@ func (s *Server) searchWeb(ctx context.Context, req chatRequest, prepared prepar
 		modelID = defaultWebSearchModelID
 	}
 	model, ok := s.router().Catalog.FindModel(modelID)
-	if !ok {
+	if !ok || model.Unavailable {
 		return nil, fmt.Errorf("web search model %q is not in the catalog", modelID)
 	}
 	gen, ok := s.Generators[model.Provider]
 	if !ok {
 		return nil, fmt.Errorf("no generator for web search model %q", modelID)
 	}
-	callCtx := provider.WithWebPlugin(ctx, provider.WebPlugin{Engine: "yandex", MaxResults: webSearchResults, SearchPrompt: query})
+	callCtx := provider.WithWebPlugin(ctx, provider.WebPlugin{MaxResults: webSearchResults, SearchPrompt: query})
 	withReasoningOff := callCtx
 	if model.Reasoning != "" {
 		withReasoningOff = provider.WithReasoning(callCtx, provider.Reasoning{Disabled: true, Adaptive: model.Reasoning == "adaptive"})
@@ -656,7 +659,7 @@ func (s *Server) searchWeb(ctx context.Context, req chatRequest, prepared prepar
 		return s.billedCall(ctx, req, prepared.plan, limits.PoolInstant, model.CostInputPerMTok, model.CostOutputPerMTok, 3000, gen, model.ResolveAPIModelID(), messages, directGenerate)
 	}
 	res, err := call(withReasoningOff)
-	if err != nil && rejectedRequest(err) && model.Reasoning != "" {
+	if err != nil && rejectedModelRequest(model, err) && model.Reasoning != "" {
 		res, err = call(callCtx)
 	}
 	if err != nil {
@@ -877,7 +880,7 @@ func rejectedRequest(err error) bool {
 }
 
 // webRefusal describes a vendor's refusal of the web settings for the
-// user: the status and Polza's own message.
+// user: the status and Poe's own message.
 func webRefusal(err error) string {
 	var statusErr *provider.StatusError
 	if !errors.As(err, &statusErr) {
@@ -885,9 +888,9 @@ func webRefusal(err error) string {
 	}
 	reason := provider.VendorMessage(statusErr.Body)
 	if reason == "" {
-		return fmt.Sprintf("Polza refused web search for this model (HTTP %d).", statusErr.StatusCode)
+		return fmt.Sprintf("Poe refused web search for this model (HTTP %d).", statusErr.StatusCode)
 	}
-	return fmt.Sprintf("Polza refused web search for this model (HTTP %d): %s", statusErr.StatusCode, reason)
+	return fmt.Sprintf("Poe refused web search for this model (HTTP %d): %s", statusErr.StatusCode, reason)
 }
 
 // identityNote tells the model answering which model it is and where it
@@ -1093,4 +1096,13 @@ func boundActivity(steps []conversation.ToolActivity) []conversation.ToolActivit
 		out = append(out, kept)
 	}
 	return out
+}
+
+// Poe 404 means a missing bot/endpoint, not unsupported tool parameters.
+func rejectedModelRequest(model router.Model, err error) bool {
+	var status *provider.StatusError
+	if model.Poe && errors.As(err, &status) && status.StatusCode == http.StatusNotFound {
+		return false
+	}
+	return rejectedRequest(err)
 }

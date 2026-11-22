@@ -1,5 +1,5 @@
 // Package websearch runs web searches for the web_search tool on a
-// SearXNG instance (https://docs.searxng.org), in place of Polza's web
+// SearXNG instance (https://docs.searxng.org), in place of Poe's web
 // plugin. SearXNG keeps no index of its own: each query goes out live to
 // the engines it is set up with (Google, Bing, DuckDuckGo, Brave, ...),
 // and their results come back merged.

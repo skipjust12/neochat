@@ -222,7 +222,7 @@ type Server struct {
 	// Web access (see websearch.go). Fetcher downloads pages for the
 	// web_fetch tool (nil: a default webfetch.Fetcher); Pages keeps what was
 	// read per chat (nil: nothing is kept); Searcher runs web_search on
-	// the server's own SearXNG (nil: Polza's web plugin, through
+	// the server's own SearXNG (nil: Poe's web plugin, through
 	// WebSearchModelID, the catalog model that runs each search there;
 	// empty: defaultWebSearchModelID).
 	Fetcher          *webfetch.Fetcher
@@ -249,7 +249,7 @@ type Server struct {
 	// answer that image generation isn't available.
 	Images *imagegen.Client
 
-	// BalanceURL is Polza's balance endpoint for GET /account/balance
+	// BalanceURL is Poe's balance endpoint for GET /account/balance
 	// (workspace.go); empty means the real one.
 	BalanceURL string
 
@@ -257,7 +257,7 @@ type Server struct {
 	// (compact.go). Nil: settings stay in each browser.
 	Settings settings.Store
 
-	// Models keeps the catalog current with Polza's releases (models.go);
+	// Models keeps the catalog current with Poe's releases (models.go);
 	// when set, it is the catalog every lookup and route uses, with
 	// Router's weights. Nil: Router's catalog, fixed at startup.
 	Models *modelcatalog.Live
@@ -267,7 +267,7 @@ type Server struct {
 	streams streamRegistry
 }
 
-// providerKeyHeader carries the user's own Polza AI key on chat requests.
+// providerKeyHeader carries the user's own Poe key on chat requests.
 // It is used for that one request and never stored server-side.
 const providerKeyHeader = "X-Provider-Key"
 
@@ -995,6 +995,9 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 	req.PlanID = identity.PlanID
 	req.providerKey = strings.TrimSpace(r.Header.Get(providerKeyHeader))
 	req.imageKey = strings.TrimSpace(r.Header.Get(imageKeyHeader))
+	if req.imageKey == "" {
+		req.imageKey = req.providerKey
+	}
 	req.Quote = cleanQuote(req.Quote)
 
 	if req.Message == "" && len(req.Attachments) == 0 {
@@ -1053,7 +1056,7 @@ func clientErrorMessage(err error) string {
 	return "an internal error occurred processing this request"
 }
 
-// vendorErrorMessage turns a Polza refusal into something the user can act
+// vendorErrorMessage turns a Poe refusal into something the user can act
 // on. Requests run on the user's own key, so the vendor's own explanation
 // (bad key, empty balance, unknown model) is about their account and is
 // safe -- and necessary -- to show. 5xx bodies stay hidden.
@@ -1065,11 +1068,11 @@ func vendorErrorMessage(err error) string {
 	detail := provider.VendorMessage(statusErr.Body)
 	switch statusErr.StatusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return "Polza AI rejected your API key. Check it in Settings → Account."
+		return "Poe rejected your API key. Check it in Settings → Account."
 	case http.StatusPaymentRequired:
-		return "Your Polza AI balance is too low for this request. Top it up on polza.ai."
+		return "Your Poe balance is too low for this request. Top it up on poe.com."
 	case http.StatusTooManyRequests:
-		return "Polza AI is rate limiting this key. Wait a moment and try again."
+		return "Poe is rate limiting this key. Wait a moment and try again."
 	}
 	if detail == "" {
 		detail = http.StatusText(statusErr.StatusCode)
@@ -1077,7 +1080,7 @@ func vendorErrorMessage(err error) string {
 	if len([]rune(detail)) > 300 {
 		detail = string([]rune(detail)[:300]) + "…"
 	}
-	return fmt.Sprintf("Polza AI: %s (HTTP %d)", detail, statusErr.StatusCode)
+	return fmt.Sprintf("Poe: %s (HTTP %d)", detail, statusErr.StatusCode)
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
@@ -1213,6 +1216,9 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		providerKey:         strings.TrimSpace(r.Header.Get(providerKeyHeader)),
 		imageKey:            strings.TrimSpace(r.Header.Get(imageKeyHeader)),
 		regenerateMessageID: target.ID, regenerationHistoryDrop: 2,
+	}
+	if req.imageKey == "" {
+		req.imageKey = req.providerKey
 	}
 	if req.Persona != "" && !isValidPersona(req.Persona) {
 		http.Error(w, "unknown persona", http.StatusBadRequest)

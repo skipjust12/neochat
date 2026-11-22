@@ -249,11 +249,11 @@ func TestImageModelErrors(t *testing.T) {
 	token := issueTestKey(t, s, "u1")
 
 	// No image key: told where to add it, nothing generated.
-	if out := sendStream(t, mux, "/chat/stream", token, map[string]string{providerKeyHeader: "pza_chat"}, imageTurn(map[string]any{"message": "кот"})); !strings.Contains(out, "Add your Image API key") || len(media.created) != 0 {
+	if out := sendStream(t, mux, "/chat/stream", token, nil, imageTurn(map[string]any{"message": "кот"})); !strings.Contains(out, "Add your Image API key") || len(media.created) != 0 {
 		t.Fatalf("no image key: %s", out)
 	}
 	// A chat model still wants the chat key, not the image key.
-	if out := sendStream(t, mux, "/chat/stream", token, map[string]string{imageKeyHeader: "pza_images"}, map[string]any{"message": "привет", "requested_mode": "manual", "manual_model_id": "gpt-6-luna"}); !strings.Contains(out, "Polza AI API key") {
+	if out := sendStream(t, mux, "/chat/stream", token, map[string]string{imageKeyHeader: "pza_images"}, map[string]any{"message": "привет", "requested_mode": "manual", "manual_model_id": "gpt-6-luna"}); !strings.Contains(out, "Poe API key") {
 		t.Fatalf("chat model without chat key: %s", out)
 	}
 

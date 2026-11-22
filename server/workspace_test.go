@@ -85,11 +85,11 @@ func TestConversationListAndSearch(t *testing.T) {
 	}
 }
 
-func TestBalanceComesFromPolza(t *testing.T) {
+func TestBalanceComesFromPoe(t *testing.T) {
 	polza := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.Header.Get("Authorization") {
 		case "Bearer pza_good":
-			fmt.Fprint(w, `{"amount":"1234.56000000","available":"1200.06000000","reservedAmount":"12.5"}`)
+			fmt.Fprint(w, `{"current_point_balance":123456}`)
 		default:
 			w.WriteHeader(http.StatusUnauthorized)
 			fmt.Fprint(w, `{"error":{"code":"UNAUTHORIZED","message":"bad key"}}`)
@@ -101,7 +101,7 @@ func TestBalanceComesFromPolza(t *testing.T) {
 	srv := &Server{Auth: authStore, BalanceURL: polza.URL}
 
 	var balance balanceResponse
-	if code := getJSON(t, srv, "GET", "/account/balance", token, map[string]string{providerKeyHeader: "pza_good"}, &balance); code != 200 || balance.AmountRUB != 1234.56 || balance.AvailableRUB != 1200.06 {
+	if code := getJSON(t, srv, "GET", "/account/balance", token, map[string]string{providerKeyHeader: "pza_good"}, &balance); code != 200 || balance.CurrentPointBalance != 123456 || balance.Unit != "points" {
 		t.Fatalf("balance: %d %+v", code, balance)
 	}
 	if code := getJSON(t, srv, "GET", "/account/balance", token, map[string]string{providerKeyHeader: "pza_bad"}, nil); code != http.StatusBadGateway {

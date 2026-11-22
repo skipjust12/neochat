@@ -56,8 +56,8 @@ services:
       REDIS_HOST: redis
       REQUIRE_HTTPS: "true"
       TRUSTED_PROXY_CIDRS: "172.30.77.2/32"
-      # web_search runs on the searxng service below instead of Polza's
-      # Yandex plugin.
+      # web_search runs on the searxng service below instead of Poe's
+      # built-in search.
       SEARXNG_URL: http://searxng:8080
     networks:
       backend:

@@ -182,7 +182,7 @@ func TestDirectMode_RequiresProviderKey(t *testing.T) {
 	if !errors.Is(err, errMissingProviderKey) {
 		t.Fatalf("err = %v, want errMissingProviderKey", err)
 	}
-	if !strings.Contains(clientErrorMessage(err), "Polza AI API key") {
+	if !strings.Contains(clientErrorMessage(err), "Poe API key") {
 		t.Fatalf("client message = %q", clientErrorMessage(err))
 	}
 }

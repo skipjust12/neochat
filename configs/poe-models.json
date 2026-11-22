@@ -1,0 +1,4131 @@
+{
+  "data": [
+    {
+      "id": "gemini-4-hydrogen",
+      "description": "Google's Gemini 4 Hydrogen for fast reasoning, coding, and agentic workflows.",
+      "owned_by": "Google",
+      "created": 1794517257576,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video,audio->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": null
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "thinking_level",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "medium",
+          "description": "Control the maximum reasoning depth."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000015152",
+        "completion": "0.0000075758",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000758",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-4-Hydrogen"
+      }
+    },
+    {
+      "id": "grok-4.7",
+      "description": "Grok 4.7 is xAI’s frontier model for coding and professional knowledge work, built to handle longer, harder tasks and check its work more carefully. In xAI’s xhigh evaluations, it scored 46.3% on CursorBench 4.0 and 1,695 Elo on GDPval.",
+      "owned_by": "XAI",
+      "created": 1790012963916,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 500000,
+        "max_output_tokens": null
+      },
+      "context_length": 500000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "high"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.0000060606",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000005051",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Grok-4.7"
+      }
+    },
+    {
+      "id": "kimi-k3.1-pro",
+      "description": "Moonshot AI’s Kimi K3.1 Pro for complex reasoning, coding, and long-context work. Supports image input and a 1M-token context window.",
+      "owned_by": "Moonshot AI",
+      "created": 1792787857069,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": null
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "high",
+              "max"
+            ]
+          },
+          "default_value": "high",
+          "description": "Choose low, high, or maximum reasoning effort."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.000010101",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000202",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Kimi-K3.1-Pro"
+      }
+    },
+    {
+      "id": "claude-sonnet-5.5",
+      "description": "Anthropic's Claude Sonnet 5.5 for fast everyday work, coding, and document creation, with a 1M-token context window, image understanding, adjustable reasoning effort, and web search.",
+      "owned_by": "Anthropic",
+      "created": 1790627430327,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1000000,
+        "max_output_tokens": null
+      },
+      "context_length": 1000000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true
+        },
+        {
+          "name": "effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "default_value": "high"
+        },
+        {
+          "name": "thinking_display",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.000010101",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000202",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Claude-Sonnet-5.5"
+      }
+    },
+    {
+      "id": "gemini-3.8-flash",
+      "description": "Google’s fast, cost-efficient workhorse model for coding and agents. Gemini 3.8 Flash delivers strong reasoning at Flash speed, with a 1M-token context window, web search, and adjustable thinking levels.",
+      "owned_by": "Google",
+      "created": 1788366093119,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video,audio->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": null
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "thinking_level",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium",
+          "description": "Control the maximum reasoning depth."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000007576",
+        "completion": "0.0000037879",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000758",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-3.8-Flash"
+      }
+    },
+    {
+      "id": "gemini-omni-1.2-flash",
+      "description": "Google's Gemini Omni 1.2 Flash generates and edits videos up to 15 seconds from text, images, or video, with improved reference following, character consistency, and natural dialogue.",
+      "owned_by": "Google",
+      "created": 1793910443396,
+      "supported_features": [],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output_modalities": [
+          "video"
+        ],
+        "modality": "text,image,video->video"
+      },
+      "context_window": {
+        "context_length": 131072,
+        "max_output_tokens": null
+      },
+      "context_length": 131072,
+      "parameters": [
+        {
+          "name": "task",
+          "schema": {
+            "enum": [
+              "auto",
+              "reference_to_video",
+              "image_to_video",
+              "extend"
+            ]
+          },
+          "default_value": "auto",
+          "description": "How your attachments are used. Auto decides from what you attach. First and last frame needs two images; with one it animates from that frame."
+        },
+        {
+          "name": "resolution",
+          "schema": {
+            "enum": [
+              "360p",
+              "720p",
+              "1080p",
+              "4k"
+            ]
+          },
+          "default_value": "720p",
+          "description": "Higher resolutions cost more. Ignored when extending or editing a video."
+        },
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "16:9",
+              "9:16"
+            ]
+          },
+          "default_value": "16:9",
+          "description": "Ignored when extending or editing a video, which keeps the shape of the video you attach."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000015152",
+        "completion": "0.0000090909",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-Omni-1.2-Flash"
+      }
+    },
+    {
+      "id": "nano-banana-2-lite",
+      "description": "Google's fastest, most efficient Gemini Image model, delivering high-speed generation and editing at the lowest cost yet. It maintains strong character consistency, precise visual editing, and real-world knowledge—accelerated for rapid-fire creative exploration with dramatically reduced latency.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "Google",
+      "created": 1782842473518,
+      "supported_features": [],
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "image"
+        ],
+        "modality": "text->image"
+      },
+      "context_window": {
+        "context_length": 65536,
+        "max_output_tokens": null
+      },
+      "context_length": 65536,
+      "parameters": [
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "1:1",
+              "2:3",
+              "3:2",
+              "3:4",
+              "4:3",
+              "4:5",
+              "5:4",
+              "9:16",
+              "16:9",
+              "21:9"
+            ]
+          }
+        },
+        {
+          "name": "image_only",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "The model defaults to returning text and images. Turn on to only return images."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000002525",
+        "completion": "0.0000015152",
+        "image": "0.000030303",
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Nano-Banana-2-Lite"
+      }
+    },
+    {
+      "id": "gemini-3.5-flash-lite",
+      "description": "Google’s fastest, most cost-efficient Gemini 3.5 model, built for high-volume work. Analyze text, images, audio, and video, adjust reasoning effort, search the web for current information, and work with up to 1M tokens of context.",
+      "owned_by": "Google",
+      "created": 1784651151616,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video,audio->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": null
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable Google Search grounding for current information."
+        },
+        {
+          "name": "thinking_level",
+          "schema": {
+            "enum": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "minimal",
+          "description": "Choose how much reasoning effort Gemini uses."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.000000303",
+        "completion": "0.0000025253",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000303",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-3.5-Flash-Lite"
+      }
+    },
+    {
+      "id": "claude-opus-4.8",
+      "description": "Anthropic's flagship model for enterprise-grade knowledge work, now with sharper judgment and significantly improved honesty. Powered by Dynamic Workflows and effort control, Opus 4.8 excels at codebase-scale migrations, multi-agent coordination, and long-running autonomous tasks with hundreds of parallel subagents. It leverages a massive 1M-token context window and best-in-class computer-use capabilities to seamlessly execute intricate workflows with elite reasoning, safety, and reliability.\n\nThis bot supports optional parameters for advanced customization.",
+      "owned_by": "Anthropic",
+      "created": 1779988699777,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/messages",
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": 128000
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "output_effort",
+          "schema": {
+            "enum": [
+              "max",
+              "xhigh",
+              "high",
+              "medium",
+              "low",
+              "none"
+            ]
+          },
+          "default_value": "high"
+        },
+        {
+          "name": "thinking_display",
+          "schema": {
+            "enum": [
+              "omitted",
+              "summarized"
+            ]
+          },
+          "default_value": "omitted"
+        },
+        {
+          "name": "task_budget",
+          "schema": {
+            "type": "number",
+            "minimum": 20000,
+            "maximum": 1048576
+          },
+          "default_value": 128000,
+          "description": "Advisory token budget for agentic turns. The model will attempt to stay within budget."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000042929",
+        "completion": "0.0000214646",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000004293",
+        "input_cache_write": "0.0000053662"
+      },
+      "metadata": {
+        "display_name": "Claude-Opus-4.8"
+      }
+    },
+    {
+      "id": "gemini-3.7-flash",
+      "description": "Google’s most intelligent workhorse model for coding and agents. Gemini 3.7 Flash delivers fast, powerful reasoning for complex tasks.",
+      "owned_by": "Google",
+      "created": 1786584567164,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video,audio->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": null
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "thinking_level",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium",
+          "description": "Control the maximum reasoning depth."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000015152",
+        "completion": "0.0000075758",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000001515",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-3.7-Flash"
+      }
+    },
+    {
+      "id": "grok-4.6",
+      "description": "xAI’s Grok 4.6 model for coding, agents, and knowledge work. For the newer model, use Grok-4.7.",
+      "owned_by": "XAI",
+      "created": 1786486412907,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 500000,
+        "max_output_tokens": null
+      },
+      "context_length": 500000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "high"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.0000060606",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000005051",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Grok-4.6"
+      }
+    },
+    {
+      "id": "kimi-k3",
+      "description": "For the newer model, try [Kimi-K3.1-Pro](https://poe.com/Kimi-K3.1-Pro). Kimi K3 supports long-horizon coding and end-to-end knowledge work with a 1M-token context window.",
+      "owned_by": "Moonshot AI",
+      "created": 1784317799914,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1000000,
+        "max_output_tokens": null
+      },
+      "context_length": 1000000,
+      "parameters": [
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium",
+          "description": "Controls how much reasoning Kimi K3 uses before answering."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000030303",
+        "completion": "0.0000151515",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000303",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Kimi-K3"
+      }
+    },
+    {
+      "id": "grok-4.5",
+      "description": "xAI's prior smartest model (before Grok-4.6) with frontier performance on coding, knowledge work, and STEM.",
+      "owned_by": "XAI",
+      "created": 1783461241901,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 500000,
+        "max_output_tokens": null
+      },
+      "context_length": 500000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "high"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.0000060606",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000303",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Grok-4.5"
+      }
+    },
+    {
+      "id": "nano-banana-2.1",
+      "description": "Google’s Gemini Nano Banana 2.1 generates and edits images with precise text rendering and consistent subjects across edits. Supports 1K, 2K, and 4K output with adjustable aspect ratios. Upload an image to edit it.",
+      "owned_by": "Google",
+      "created": 1791302187206,
+      "supported_features": [],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text",
+          "image"
+        ],
+        "modality": "text,image->text,image"
+      },
+      "context_window": null,
+      "context_length": null,
+      "parameters": [
+        {
+          "name": "image_size",
+          "schema": {
+            "enum": [
+              "1K",
+              "2K",
+              "4K"
+            ]
+          },
+          "default_value": "1K"
+        },
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "1:1",
+              "1:4",
+              "1:8",
+              "2:3",
+              "3:2",
+              "3:4",
+              "4:1",
+              "4:3",
+              "4:5",
+              "5:4",
+              "8:1",
+              "9:16",
+              "16:9",
+              "21:9"
+            ]
+          },
+          "default_value": "1:1"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000015152",
+        "completion": "0.0000075758",
+        "image": "0.000030303",
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Nano-Banana-2.1"
+      }
+    },
+    {
+      "id": "gemini-omni-1.1-flash",
+      "description": "Google's previous-generation Gemini Omni video model. Generate from text, images, or video, then extend scenes, or interpolate between start and end frames, with natural-language editing and multimodal referencing. For the newer model, try Gemini-Omni-1.2-Flash: https://poe.com/Gemini-Omni-1.2-Flash",
+      "owned_by": "Google",
+      "created": 1787860044178,
+      "supported_features": [],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output_modalities": [
+          "video"
+        ],
+        "modality": "text,image,video->video"
+      },
+      "context_window": {
+        "context_length": 131072,
+        "max_output_tokens": null
+      },
+      "context_length": 131072,
+      "parameters": [
+        {
+          "name": "task",
+          "schema": {
+            "enum": [
+              "auto",
+              "reference_to_video",
+              "image_to_video",
+              "extend"
+            ]
+          },
+          "default_value": "auto",
+          "description": "How your attachments are used. Auto decides from what you attach. First and last frame needs two images; with one it animates from that frame."
+        },
+        {
+          "name": "resolution",
+          "schema": {
+            "enum": [
+              "360p",
+              "720p",
+              "1080p",
+              "4k"
+            ]
+          },
+          "default_value": "720p",
+          "description": "Higher resolutions cost more. Ignored when extending or editing a video."
+        },
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "16:9",
+              "9:16"
+            ]
+          },
+          "default_value": "16:9",
+          "description": "Ignored when extending or editing a video, which keeps the shape of the video you attach."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000015152",
+        "completion": "0.0000090909",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-Omni-1.1-Flash"
+      }
+    },
+    {
+      "id": "grok-4.3",
+      "description": "Grok-4.3 is a reasoning model from xAI designed for agentic workflows, instruction-following tasks, and applications requiring high factual accuracy. It accepts text and image inputs with text output, and supports a large 1M-token context window, making it useful for long-document analysis, deep research, and multi-step problem solving.\n\nReasoning is always active and cannot be disabled or configured by effort level.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "XAI",
+      "created": 1777658230984,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1000000,
+        "max_output_tokens": null
+      },
+      "context_length": 1000000,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000012626",
+        "completion": "0.0000025253",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000202",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Grok-4.3"
+      }
+    },
+    {
+      "id": "gpt-5.4",
+      "description": "GPT-5.4 is the most capable AI model from OpenAI, built for advanced real-world tasks across coding, computer use, deep research, complex document understanding, and multi-step problem solving. It outperforms previous versions on agentic workflows and tool use, delivering stronger reasoning, higher accuracy, and more reliable results on complex tasks.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "OpenAI",
+      "created": 1772143119942,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text",
+          "image"
+        ],
+        "modality": "text,image->text,image"
+      },
+      "context_window": {
+        "context_length": 1050000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 1050000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "none"
+        },
+        {
+          "name": "verbosity",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000022727",
+        "completion": "0.0000136364",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000002273",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5.4"
+      }
+    },
+    {
+      "id": "gpt-5.4-nano",
+      "description": "GPT‑5.4 Nano is the fastest and most cost‑efficient model in the GPT‑5 family, built for high‑volume tasks such as summarization, categorization, extraction, and lightweight multimodal workflows. It supports native vision and a 400k‑token context window for efficient large‑scale processing.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "OpenAI",
+      "created": 1773272021193,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text",
+          "image"
+        ],
+        "modality": "text,image->text,image"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "none"
+        },
+        {
+          "name": "verbosity",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000001818",
+        "completion": "0.0000011364",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000182",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5.4-Nano"
+      }
+    },
+    {
+      "id": "gpt-5.4-mini",
+      "description": "GPT‑5.4 Mini is a fast, affordable general‑purpose model designed for production assistants, coding support, document analysis, and multimodal reasoning. With a 400k‑token context window, it handles complex inputs and scalable workflows with strong reliability. \n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "OpenAI",
+      "created": 1773276546626,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text",
+          "image"
+        ],
+        "modality": "text,image->text,image"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "none"
+        },
+        {
+          "name": "verbosity",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000006818",
+        "completion": "0.0000040909",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000682",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5.4-Mini"
+      }
+    },
+    {
+      "id": "gemini-3.5-flash",
+      "description": "Gemini 3.5 Flash is Google’s latest Flash-family AI model, built for frontier intelligence with fast, reliable action. It delivers major upgrades in agentic workflows, coding, long-horizon reasoning, multimodal understanding, and rich interactive UI/graphics generation while retaining the Flash series’ focus on speed, low latency, and cost efficiency. Optimized for multi-step tool use and subagent orchestration through platforms like Google Antigravity and the Gemini API. Serves the latest gemini-3.5-flash release.",
+      "owned_by": "Google",
+      "created": 1779214721657,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": 65536
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "thinking_level",
+          "schema": {
+            "enum": [
+              "minimal",
+              "low",
+              "high"
+            ]
+          },
+          "default_value": "low"
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000015152",
+        "completion": "0.0000090909",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000001515",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-3.5-Flash"
+      }
+    },
+    {
+      "id": "gpt-image-2",
+      "description": "OpenAI’s state-of-the-art image generation model as of April 21, 2026, designed for fast, high-quality image generation and editing with strong prompt adherence and flexible image sizes. It supports generating, editing, restyling, and combining images attached to the latest user query.\n\nOptional Parameters:\n\nSet aspect ratio, with options 3:2, 1:1, and 2:3.\nSet quality to low, medium, and high.\nEnable use mask by toggling it on or by typing use_mask in the prompt. This option is turned off by default.",
+      "owned_by": "OpenAI",
+      "created": 1776802127647,
+      "supported_features": [],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "image"
+        ],
+        "modality": "text,image->image"
+      },
+      "context_window": {
+        "context_length": 128000,
+        "max_output_tokens": null
+      },
+      "context_length": 128000,
+      "parameters": [
+        {
+          "name": "size",
+          "schema": {
+            "enum": [
+              "auto",
+              "1024x1024",
+              "1536x1024",
+              "1024x1536"
+            ]
+          },
+          "default_value": "auto"
+        },
+        {
+          "name": "quality",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "high"
+        },
+        {
+          "name": "use_mask",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Indicates that the last attached image is a mask for inpainting (editing specific regions). The mask must match the dimensions of the base image, with transparent (zero-alpha) areas showing which parts to edit. Only takes effect when an image is attached."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000050505",
+        "completion": "0.000030303",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000012626",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-Image-2"
+      }
+    },
+    {
+      "id": "nano-banana-2",
+      "description": "Try Google’s newer Gemini Nano Banana 2.1 for image generation and editing: https://poe.com/Nano-Banana-2.1\n\nGoogle’s Nano Banana 2 image model combines Pro-level intelligence with lightning-fast generation. It features advanced world knowledge, precise text rendering, strong subject consistency, and 4K production-ready outputs.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "Google",
+      "created": 1772107200000,
+      "supported_features": [],
+      "supported_endpoints": [
+        "/v1/responses"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "image"
+        ],
+        "modality": "text->image"
+      },
+      "context_window": {
+        "context_length": 65536,
+        "max_output_tokens": null
+      },
+      "context_length": 65536,
+      "parameters": [
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "1:1",
+              "2:3",
+              "3:2",
+              "3:4",
+              "4:3",
+              "4:5",
+              "5:4",
+              "9:16",
+              "16:9",
+              "21:9"
+            ]
+          }
+        },
+        {
+          "name": "image_only",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "The model defaults to returning text and images. Turn on to only return images."
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "image_size",
+          "schema": {
+            "enum": [
+              "1K",
+              "2K",
+              "4K"
+            ]
+          }
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000005051",
+        "completion": "0.0000030303",
+        "image": "0.0000606061",
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Nano-Banana-2"
+      }
+    },
+    {
+      "id": "gpt-5.4-pro",
+      "description": "A smarter, more precise version of GPT-5.4 that leverages additional compute to think harder and provide consistently better answers. Designed to tackle your toughest problems, this model operates with the highest reasoning capability to ensure maximum accuracy on complex tasks.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "OpenAI",
+      "created": 1772735432534,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text",
+          "image"
+        ],
+        "modality": "text,image->text,image"
+      },
+      "context_window": {
+        "context_length": 1050000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 1050000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "medium"
+        },
+        {
+          "name": "verbosity",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000272727",
+        "completion": "0.0001636364",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5.4-Pro"
+      }
+    },
+    {
+      "id": "claude-opus-4.7",
+      "description": "Anthropic’s flagship model for enterprise-grade knowledge work. Powered by an Extended Thinking Mode and an optimized Model Context Protocol (MCP), Opus 4.7 excels at multi-agent coordination, complex coding, and long-running autonomous tasks. It leverages a massive 1M-token context window to seamlessly execute intricate workflows with elite reasoning, safety, and reliability.\n\nThis bot supports optional parameters for advanced customization.",
+      "owned_by": "Anthropic",
+      "created": 1776230250028,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/messages",
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": 128000
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "output_effort",
+          "schema": {
+            "enum": [
+              "max",
+              "xhigh",
+              "high",
+              "medium",
+              "low",
+              "none"
+            ]
+          },
+          "default_value": "high"
+        },
+        {
+          "name": "thinking_display",
+          "schema": {
+            "enum": [
+              "omitted",
+              "summarized"
+            ]
+          },
+          "default_value": "omitted"
+        },
+        {
+          "name": "task_budget",
+          "schema": {
+            "type": "number",
+            "minimum": 20000,
+            "maximum": 1048576
+          },
+          "default_value": 128000,
+          "description": "Advisory token budget for agentic turns. The model will attempt to stay within budget."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000042929",
+        "completion": "0.0000214646",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000004293",
+        "input_cache_write": "0.0000053662"
+      },
+      "metadata": {
+        "display_name": "Claude-Opus-4.7"
+      }
+    },
+    {
+      "id": "gemini-3.1-flash-lite",
+      "description": "Gemini 3.1 Flash Lite Preview is the fastest and cheapest model in the Gemini 3.1 family. It provides multimodal understanding and intelligence similar to or better than Gemini 2.5 Flash at a low price that makes it perfect for high volume workloads. Supports 1M tokens of context\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "Google",
+      "created": 1771380296910,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video,audio->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": 65536
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "thinking_level",
+          "schema": {
+            "enum": [
+              "minimal",
+              "low",
+              "high"
+            ]
+          },
+          "default_value": "low"
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000002525",
+        "completion": "0.0000015152",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-3.1-Flash-Lite"
+      }
+    },
+    {
+      "id": "gemini-3.1-pro",
+      "description": "For Google’s latest model, try Gemini 4 Argon: https://poe.com/Gemini-4-Argon\n\nGemini 3.1 Pro is a state-of-the-art model for complex problem-solving, advanced reasoning, creative coding, and ambitious agentic workflows, delivering top benchmark results including a verified score of 77.1% on the ARC-AGI-2 benchmark (more than double the reasoning performance of Gemini 3 Pro).\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "Google",
+      "created": 1771460884211,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video,audio->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": 65536
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "thinking_level",
+          "schema": {
+            "enum": [
+              "low",
+              "high"
+            ]
+          },
+          "default_value": "low"
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.0000121212",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000202",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-3.1-Pro"
+      }
+    },
+    {
+      "id": "gpt-5.3-codex",
+      "description": "GPT‑5.3‑Codex excels in software development. It understands complex codebases, provides accurate completions, explains algorithms, and assists with debugging across modern programming languages. Designed for developers, it elevates productivity and supports full‑stack coding workflows with precision. Supports 400k tokens of input context.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "OpenAI",
+      "created": 1770761529560,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000015909",
+        "completion": "0.0000127273",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000001591",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5.3-Codex"
+      }
+    },
+    {
+      "id": "gemma-4-31b",
+      "description": "Google's most capable open model, delivering frontier-class reasoning and multimodal understanding in a 31 billion parameter dense architecture. Gemma 4 supports a 256K token context window, understands over 140 languages, and accepts both text and image inputs. It features built-in chain-of-thought reasoning for complex multi-step tasks, strong coding and math performance, and function calling support. Released under the Apache 2.0 license, Gemma 4 31B offers competitive performance with leading proprietary models while being fully open-weight. This bot may experience degraded performance due to high traffic to this model.",
+      "owned_by": "Google",
+      "created": 1775161622456,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 262144,
+        "max_output_tokens": 8192
+      },
+      "context_length": 262144,
+      "parameters": [],
+      "pricing": {
+        "prompt": null,
+        "completion": null,
+        "image": null,
+        "request": "0.00",
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemma-4-31B"
+      }
+    },
+    {
+      "id": "grok-4.20-multi-agent",
+      "description": "Realtime Multi-agent Research enables Grok to orchestrate multiple AI agents that work together in real time to perform deep, multi-step research tasks. Each agent specializes in a particular aspect of the research (searching the web, analyzing data, synthesizing findings) and they collaborate to deliver comprehensive, well-sourced answers.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "XAI",
+      "created": 1773433661072,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 128000,
+        "max_output_tokens": null
+      },
+      "context_length": 128000,
+      "parameters": [
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium",
+          "description": "Controls how deeply the bot researches before answering."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.0000060606",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.000000202",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Grok-4.20-Multi-Agent"
+      }
+    },
+    {
+      "id": "gemma-4-26b-a4b",
+      "description": "Google’s efficient Gemma 4 model for writing, coding, and image understanding, with a 262K-token context window.",
+      "owned_by": "Google",
+      "created": 1792604038364,
+      "supported_features": [],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 262144,
+        "max_output_tokens": null
+      },
+      "context_length": 262144,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000001515",
+        "completion": "0.0000006061",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000152",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemma-4-26B-A4B"
+      }
+    },
+    {
+      "id": "claude-opus-4.6",
+      "description": "Claude Opus 4.6 is Anthropic’s most advanced AI model, built for deep reasoning, complex coding, and long‑running autonomous tasks. It excels at planning, debugging, and working across large codebases, and supports a 1M‑token context window for understanding massive amounts of information. Designed for professional knowledge work, it combines state‑of‑the‑art performance with strong safety and reliability.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "Anthropic",
+      "created": 1770248062467,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/messages",
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 983040,
+        "max_output_tokens": 128000
+      },
+      "context_length": 983040,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "output_effort",
+          "schema": {
+            "enum": [
+              "max",
+              "high",
+              "medium",
+              "low",
+              "none"
+            ]
+          },
+          "default_value": "high"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000042929",
+        "completion": "0.0000214646",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000004293",
+        "input_cache_write": "0.0000053662"
+      },
+      "metadata": {
+        "display_name": "Claude-Opus-4.6"
+      }
+    },
+    {
+      "id": "claude-haiku-5.5",
+      "description": "Anthropic's Claude Haiku 5.5 for fast, cost-efficient coding and everyday tasks, with a 1M-token context window, image understanding, adjustable reasoning effort, and web search.",
+      "owned_by": "Anthropic",
+      "created": 1791398405546,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1000000,
+        "max_output_tokens": null
+      },
+      "context_length": 1000000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true
+        },
+        {
+          "name": "effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high",
+              "xhigh",
+              "max"
+            ]
+          },
+          "default_value": "medium"
+        },
+        {
+          "name": "thinking_display",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true
+        }
+      ],
+      "pricing": {
+        "prompt": "0.000000101",
+        "completion": "0.0000005051",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000101",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Claude-Haiku-5.5"
+      }
+    },
+    {
+      "id": "claude-sonnet-4.6",
+      "description": "Claude Sonnet 4.6 from Anthropic is built for high-quality conversations, advanced coding, and agentic workflows at scale. It excels at iterative development and navigating complex codebases, supports end-to-end project management with memory, and produces polished documents. The model also enables confident computer use for web QA and workflow automation, along with financial modeling, compliance review, and accurate data summarization. It features a 1M token context window for handling extensive projects and long-form content with ease.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "Anthropic",
+      "created": 1770262891433,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/messages",
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 983040,
+        "max_output_tokens": 128000
+      },
+      "context_length": 983040,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "output_effort",
+          "schema": {
+            "enum": [
+              "max",
+              "high",
+              "medium",
+              "low",
+              "none"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000025758",
+        "completion": "0.0000128788",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000002576",
+        "input_cache_write": "0.0000032197"
+      },
+      "metadata": {
+        "display_name": "Claude-Sonnet-4.6"
+      }
+    },
+    {
+      "id": "gemma-4-31b-vercel",
+      "description": "Google’s Gemma 4 31B model for writing, coding, and image understanding, with a 262K-token context window. Served through Vercel.",
+      "owned_by": "Google",
+      "created": 1792697358458,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 262144,
+        "max_output_tokens": null
+      },
+      "context_length": 262144,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000001515",
+        "completion": "0.000000404",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000606",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemma-4-31B-Vercel"
+      }
+    },
+    {
+      "id": "gpt-5.2",
+      "description": "GPT-5.2 is a state-of-the-art AI model from OpenAI designed for real work across writing, analysis, coding, and problem solving. It handles long contexts and multi-step tasks better than earlier versions, and it’s tuned to give accurate responses with fewer errors. Supports 400k tokens of context, and native vision.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "OpenAI",
+      "created": 1765227300074,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "none"
+        },
+        {
+          "name": "verbosity",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000015909",
+        "completion": "0.0000127273",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000001591",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5.2"
+      }
+    },
+    {
+      "id": "gemini-3-flash",
+      "description": "Building on the reasoning capabilities of Gemini 3 Pro, Gemini 3 Flash is a powerful but affordable and performant model. It has exceptional world knowledge, multimodal understanding and reasoning capabilities at a fraction of the cost of equivalent models (as of December 2025).\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "Google",
+      "created": 1759803302884,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image",
+          "video",
+          "audio"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image,video,audio->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": 65536
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "thinking_level",
+          "schema": {
+            "enum": [
+              "minimal",
+              "low",
+              "high"
+            ]
+          },
+          "default_value": "low"
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.000000404",
+        "completion": "0.0000024242",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000404",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Gemini-3-Flash"
+      }
+    },
+    {
+      "id": "veo-3.1-lite",
+      "description": "Google’s Veo 3.1 Lite is the most cost-efficient model in the Veo 3.1 family, delivering high-quality video generation with native audio at a fraction of the cost. It supports both text-to-video and image-to-video workflows, with synchronized dialogue, sound effects, and ambient audio. While optimized for affordability, it still benefits from the Veo 3.1 generation’s improved prompt adherence and cinematic understanding.\n\nThis bot supports optional parameters for additional customization.\n\nNote: 1080p requires 8s duration\nReference mode: Use up to 3 input images as references for video generation\nReference images require 8s duration\nPlease only upload photos that you own or have the right to use. Otherwise, the bot will return an error.",
+      "owned_by": "Google",
+      "created": 1774976562653,
+      "supported_features": [],
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "video"
+        ],
+        "modality": "text,image->video"
+      },
+      "context_window": {
+        "context_length": 480,
+        "max_output_tokens": null
+      },
+      "context_length": 480,
+      "parameters": [
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "16:9",
+              "9:16"
+            ]
+          },
+          "default_value": "16:9"
+        },
+        {
+          "name": "duration",
+          "schema": {
+            "enum": [
+              "4",
+              "6",
+              "8"
+            ]
+          },
+          "default_value": "8"
+        },
+        {
+          "name": "seed",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "resolution",
+          "schema": {
+            "enum": [
+              "720p",
+              "1080p"
+            ]
+          },
+          "default_value": "720p"
+        }
+      ],
+      "pricing": null,
+      "metadata": {
+        "display_name": "Veo-3.1-Lite"
+      }
+    },
+    {
+      "id": "grok-imagine-video",
+      "description": "Create artistic and creative videos with Grok Imagine Video. Supports text to video, image to video (single jpeg/png/webp attachment), and video editing (single mp4 video attachment). Check parameter controls for all supported controls (duration and aspect_ratio).",
+      "owned_by": "XAI",
+      "created": 1769805671349,
+      "supported_features": [],
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "video"
+        ],
+        "modality": "text,image->video"
+      },
+      "context_window": {
+        "context_length": 256,
+        "max_output_tokens": null
+      },
+      "context_length": 256,
+      "parameters": [
+        {
+          "name": "duration",
+          "schema": {
+            "type": "number",
+            "minimum": 1,
+            "maximum": 15
+          },
+          "default_value": 5
+        },
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "auto",
+              "16:9",
+              "4:3",
+              "1:1",
+              "9:16",
+              "3:4",
+              "3:2",
+              "2:3"
+            ]
+          },
+          "default_value": "16:9"
+        }
+      ],
+      "pricing": {
+        "prompt": null,
+        "completion": null,
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Grok-Imagine-Video"
+      }
+    },
+    {
+      "id": "claude-sonnet-4.5",
+      "description": "Claude Sonnet 4.5 represents a major leap forward in AI capability and alignment. It is the most advanced model released by Anthropic to date, distinguished by dramatic improvements in reasoning, mathematics, and real-world coding. Supports 200k tokens of context - Anthropic retired the 1M-token beta for this model on 2026-04-30 (platform.claude.com/docs/en/release-notes/api).",
+      "owned_by": "Anthropic",
+      "created": 1758868894776,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/messages",
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 196608,
+        "max_output_tokens": 32768
+      },
+      "context_length": 196608,
+      "parameters": [
+        {
+          "name": "thinking_budget",
+          "schema": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 31999
+          },
+          "default_value": 0,
+          "description": "The maximum number of tokens to spend on thinking."
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000025758",
+        "completion": "0.0000128788",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000002576",
+        "input_cache_write": "0.0000032197"
+      },
+      "metadata": {
+        "display_name": "Claude-Sonnet-4.5"
+      }
+    },
+    {
+      "id": "gpt-image-1.5",
+      "description": "OpenAI's frontier image generation model in ChatGPT as of December 2025, offering exceptional prompt adherence, world knowledge, precise edits, facial preservation, level of detail, and overall quality with improved latency/generation times. It supports editing, restyling, and combining images attached to the latest user query. For a conversational image generation and editing experience use: https://poe.com/GPT-5.2\n\nOptional Parameters:\nSet aspect ratio, with options 3:2, 1:1 and 2:3. \nSet quality to low, medium and high. Default is set to high.\nEnable use mask by toggling it on or by typing 'use_mask' in the prompt. This option is turned off by default.\nDisable high fidelity by toggling it off or by typing 'use_high_fidelity'. This option is turned on by default.",
+      "owned_by": "OpenAI",
+      "created": 1765850472161,
+      "supported_features": [],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "image"
+        ],
+        "modality": "text,image->image"
+      },
+      "context_window": {
+        "context_length": 128000,
+        "max_output_tokens": null
+      },
+      "context_length": 128000,
+      "parameters": [
+        {
+          "name": "aspect",
+          "schema": {
+            "enum": [
+              "1:1",
+              "3:2",
+              "2:3"
+            ]
+          }
+        },
+        {
+          "name": "quality",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "high"
+        },
+        {
+          "name": "use_mask",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Indicates that the last attached image is a mask for inpainting (editing specific regions). The mask must match the dimensions of the base image, with transparent (zero-alpha) areas showing which parts to edit."
+        },
+        {
+          "name": "use_high_fidelity",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "High input fidelity allows you to make subtle edits to an image without altering unrelated areas. This is ideal for controlled, localized changes."
+        }
+      ],
+      "pricing": null,
+      "metadata": {
+        "display_name": "GPT-Image-1.5"
+      }
+    },
+    {
+      "id": "claude-opus-4.5",
+      "description": "Claude Opus 4.5 from Anthropic, supports customizable thinking budget (up to 64k tokens) and 200k context window.",
+      "owned_by": "Anthropic",
+      "created": 1763768938036,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/messages",
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 196608,
+        "max_output_tokens": 64000
+      },
+      "context_length": 196608,
+      "parameters": [
+        {
+          "name": "thinking_budget",
+          "schema": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 63999
+          },
+          "default_value": 0,
+          "description": "The maximum number of tokens to spend on thinking."
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "output_effort",
+          "schema": {
+            "enum": [
+              "high",
+              "medium",
+              "low"
+            ]
+          },
+          "default_value": "high"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000042929",
+        "completion": "0.0000214646",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000004293",
+        "input_cache_write": "0.0000053662"
+      },
+      "metadata": {
+        "display_name": "Claude-Opus-4.5"
+      }
+    },
+    {
+      "id": "gpt-5.2-pro",
+      "description": "A powerful reasoning model that is ideal for your most complex, highest difficulty tasks. On x-high reasoning effort, scores a 90.5% on ARC-AGI-1 benchmark, an incredibly difficult problem-solving benchmark where humans score 100%. Note: the model can take up to 30 minutes to think through a problem and is quite expensive. Supports 400k tokens of context and native vision.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "OpenAI",
+      "created": 1765479729564,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "medium",
+              "high",
+              "xhigh"
+            ]
+          },
+          "default_value": "medium"
+        },
+        {
+          "name": "verbosity",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000190909",
+        "completion": "0.0001527273",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5.2-Pro"
+      }
+    },
+    {
+      "id": "gpt-5.1",
+      "description": "OpenAI’s flagship general‑purpose model, built for advanced reasoning, comprehension, and creativity. It delivers robust performance across text and code, with significant improvements in factual accuracy, long‑context understanding, and multilingual fluency. Ideal for research, content creation, analysis, and problem‑solving in any domain. \n\nSupports 400k of input context window.",
+      "owned_by": "OpenAI",
+      "created": 1762989903319,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "websearch_reasoning_effort",
+          "schema": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "low"
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "none",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "none"
+        },
+        {
+          "name": "verbosity",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000011364",
+        "completion": "0.0000090909",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000001136",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5.1"
+      }
+    },
+    {
+      "id": "gpt-5-pro",
+      "description": "OpenAI’s latest flagship model with significantly improved coding skills, long context (400k tokens), and improved instruction following. Supports native vision, and generally has more intelligence than GPT-4.1.\n\nNote: \nGPT-5-Pro thinks long and hard. When using this bot through the API, consider increasing your request timeouts.",
+      "owned_by": "OpenAI",
+      "created": 1759789057270,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000136364",
+        "completion": "0.0001090909",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5-Pro"
+      }
+    },
+    {
+      "id": "nano-banana-pro",
+      "description": "Nano Banana Pro (Gemini 3 Pro Image Preview) can make detailed, context-rich visuals, precisely edit or restyle input images with exceptional fidelity, and even generate legible text in images in multiple languages.\n\nThis bot supports optional parameters for additional customization.",
+      "owned_by": "Google",
+      "created": 1763518946353,
+      "supported_features": [],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "image"
+        ],
+        "modality": "text,image->image"
+      },
+      "context_window": {
+        "context_length": 65536,
+        "max_output_tokens": null
+      },
+      "context_length": 65536,
+      "parameters": [
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "1:1",
+              "2:3",
+              "3:2",
+              "3:4",
+              "4:3",
+              "4:5",
+              "5:4",
+              "9:16",
+              "16:9",
+              "21:9"
+            ]
+          }
+        },
+        {
+          "name": "image_only",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "The model defaults to returning text and images. Turn on to only return images."
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "image_size",
+          "schema": {
+            "enum": [
+              "1K",
+              "2K",
+              "4K"
+            ]
+          }
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000020202",
+        "completion": "0.0000121212",
+        "image": "0.0001212121",
+        "request": null,
+        "input_cache_read": "0.000000202",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Nano-Banana-Pro"
+      }
+    },
+    {
+      "id": "gpt-5",
+      "description": "OpenAI’s most advanced general model with significantly improved coding skills, long context (400k tokens), and improved instruction following. Supports native vision, and generally has more intelligence than GPT-4.1. Provides a 90% chat history cache discount.",
+      "owned_by": "OpenAI",
+      "created": 1754429855700,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "websearch_reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "low"
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "minimal"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000011364",
+        "completion": "0.0000090909",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000001136",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5"
+      }
+    },
+    {
+      "id": "gpt-5-nano",
+      "description": "GPT-5 nano is an extremely fast and cheap model, ideal for text/vision summarization/categorization tasks. Supports native vision and 400k input tokens of context. Provides a 90% chat history cache discount.",
+      "owned_by": "OpenAI",
+      "created": 1754429832540,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "websearch_reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "low"
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "minimal"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000000455",
+        "completion": "0.0000003636",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000045",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5-nano"
+      }
+    },
+    {
+      "id": "gpt-5-mini",
+      "description": "GPT-5 mini is a small, fast & affordable model that matches or beats GPT-4.1 in many intelligence and vision-related tasks. Supports 400k tokens of context. Provides a 90% chat history cache discount.",
+      "owned_by": "OpenAI",
+      "created": 1750886324513,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 400000,
+        "max_output_tokens": 128000
+      },
+      "context_length": 400000,
+      "parameters": [
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Enable web search and real-time information access."
+        },
+        {
+          "name": "websearch_reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "low"
+        },
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "minimal",
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "minimal"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000002273",
+        "completion": "0.0000018182",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000227",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-5-mini"
+      }
+    },
+    {
+      "id": "claude-haiku-4.5",
+      "description": "For the latest Haiku model, try Claude-Haiku-5.5: https://poe.com/Claude-Haiku-5.5\n\nClaude Haiku 4.5 is an earlier-generation Anthropic model for fast coding and everyday tasks, with extended thinking and a 200k-token context window.",
+      "owned_by": "Anthropic",
+      "created": 1760556959473,
+      "supported_features": [
+        "web_search",
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/messages",
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 192000,
+        "max_output_tokens": 64000
+      },
+      "context_length": 192000,
+      "parameters": [
+        {
+          "name": "thinking_budget",
+          "schema": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 63999
+          },
+          "default_value": 0,
+          "description": "The maximum number of tokens to spend on thinking."
+        },
+        {
+          "name": "web_search",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable web search and real-time information access."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000008586",
+        "completion": "0.0000042929",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000859",
+        "input_cache_write": "0.0000010732"
+      },
+      "metadata": {
+        "display_name": "Claude-Haiku-4.5"
+      }
+    },
+    {
+      "id": "gpt-4o",
+      "description": "OpenAI's GPT-4o answers user prompts in a natural, engaging & tailored writing with strong overall world knowledge. Uses GPT-Image-1 to create and edit images conversationally. For fine-grained image generation control (e.g. image quality), use https://poe.com/GPT-Image-1. Supports context window of 128k tokens.",
+      "owned_by": "OpenAI",
+      "created": 1715641234752,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 128000,
+        "max_output_tokens": 8192
+      },
+      "context_length": 128000,
+      "parameters": [],
+      "pricing": null,
+      "metadata": {
+        "display_name": "GPT-4o"
+      }
+    },
+    {
+      "id": "o3-pro",
+      "description": "o3-pro is a well-rounded and powerful model across domains, with more capability than https://poe.com/o3 at the cost of higher price and lower speed. It is especially capable at math, science, coding, visual reasoning tasks, technical writing, and instruction-following. Use it to think through multi-step problems that involve analysis across text, code, and images. \n\nOptional parameters:\nSet reasoning effort: Select from `low`, `medium`, `high`. Medium reasoning effort is set by default.",
+      "owned_by": "OpenAI",
+      "created": 1749588430571,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 200000,
+        "max_output_tokens": 100000
+      },
+      "context_length": 200000,
+      "parameters": [
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000181818",
+        "completion": "0.0000727273",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "o3-pro"
+      }
+    },
+    {
+      "id": "o3",
+      "description": "o3 provides state-of-the-art intelligence on a variety of tasks and domains, including science, math, and coding. This bot uses medium reasoning effort by default but low, medium & high are also selectable; supports 200k tokens of input context and 100k tokens of output context.\n\nOptional parameters:\nSet reasoning effort: Select from `low`, `medium`, `high`. Medium reasoning effort is set by default.",
+      "owned_by": "OpenAI",
+      "created": 1744826529075,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 200000,
+        "max_output_tokens": 100000
+      },
+      "context_length": 200000,
+      "parameters": [
+        {
+          "name": "reasoning_effort",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "medium"
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000018182",
+        "completion": "0.0000072727",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000004545",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "o3"
+      }
+    },
+    {
+      "id": "gpt-4.1",
+      "description": "OpenAI’s GPT-4.1 significantly improves on past models in terms of its coding skills, long context (1M tokens), and improved instruction following. Supports native vision, and generally has more intelligence than GPT-4o. Provides a 75% chat history cache discount.",
+      "owned_by": "OpenAI",
+      "created": 1744675047923,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1047576,
+        "max_output_tokens": 32768
+      },
+      "context_length": 1047576,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000018182",
+        "completion": "0.0000072727",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000004545",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-4.1"
+      }
+    },
+    {
+      "id": "gpt-4.1-mini",
+      "description": "GPT-4.1 mini is a small, fast & affordable model that matches or beats GPT-4o in many intelligence and vision-related tasks. Supports 1M tokens of context.",
+      "owned_by": "OpenAI",
+      "created": 1744675260112,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1047576,
+        "max_output_tokens": 32768
+      },
+      "context_length": 1047576,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000003636",
+        "completion": "0.0000014545",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000909",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-4.1-mini"
+      }
+    },
+    {
+      "id": "gpt-oss-20b",
+      "description": "OpenAI’s compact open-weight reasoning model for writing, coding, and general questions, with a 131K-token context window.",
+      "owned_by": "OpenAI",
+      "created": 1792604061832,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text->text"
+      },
+      "context_window": {
+        "context_length": 131072,
+        "max_output_tokens": null
+      },
+      "context_length": 131072,
+      "parameters": [
+        {
+          "name": "show_reasoning",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Show reasoning when the provider returns it. Reasoning stays enabled when this is off."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000000303",
+        "completion": "0.0000001414",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-OSS-20B"
+      }
+    },
+    {
+      "id": "gpt-4o-mini",
+      "description": "This intelligent small model from OpenAI is significantly smarter, cheaper, and just as fast as GPT-3.5 Turbo.",
+      "owned_by": "OpenAI",
+      "created": 1721338046069,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 124096,
+        "max_output_tokens": 4096
+      },
+      "context_length": 124096,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000001364",
+        "completion": "0.0000005455",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000682",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-4o-mini"
+      }
+    },
+    {
+      "id": "deepseek-v4-pro-0813",
+      "description": "DeepSeek V4 Pro, August 13 snapshot. A reasoning model for coding and complex text tasks with a 1M-token context window.",
+      "owned_by": "DeepSeek",
+      "created": 1792604066115,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text->text"
+      },
+      "context_window": {
+        "context_length": 1000000,
+        "max_output_tokens": null
+      },
+      "context_length": 1000000,
+      "parameters": [
+        {
+          "name": "show_reasoning",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Show reasoning when the provider returns it. Reasoning stays enabled when this is off."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000006667",
+        "completion": "0.000002",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000667",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "DeepSeek-V4-Pro-0813"
+      }
+    },
+    {
+      "id": "gpt-image-1-mini",
+      "description": "OpenAI's model that powers image generation in ChatGPT, offering exceptional prompt adherence, level of detail, and quality. It supports editing, restyling, and combining images attached to the latest user query. \n\nOptional parameters:\n- Aspect ratio of the output image (options: 1:1, 3:2, 2:3). \n- Quality. Image resolution (options: high, medium, low).\n- Mask. Indicates that the last attached image is a mask for in-painting (editing specific regions). The mask must match the dimensions of the base image, with transparent (zero-alpha) areas showing which parts to edit.",
+      "owned_by": "OpenAI",
+      "created": 1756235580926,
+      "supported_features": [],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "image"
+        ],
+        "modality": "text,image->image"
+      },
+      "context_window": null,
+      "context_length": null,
+      "parameters": [
+        {
+          "name": "aspect",
+          "schema": {
+            "enum": [
+              "1:1",
+              "3:2",
+              "2:3"
+            ]
+          }
+        },
+        {
+          "name": "quality",
+          "schema": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ]
+          },
+          "default_value": "high"
+        },
+        {
+          "name": "use_mask",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Indicates that the last attached image is a mask for inpainting (editing specific regions). The mask must match the dimensions of the base image, with transparent (zero-alpha) areas showing which parts to edit."
+        }
+      ],
+      "pricing": null,
+      "metadata": {
+        "display_name": "GPT-Image-1-Mini"
+      }
+    },
+    {
+      "id": "veo-3.1",
+      "description": "Google’s Veo 3.1 is an updated version of the Veo family of models that features richer native audio, from natural conversations to synchronized sound effects, and offers greater narrative control with an improved understanding of cinematic styles. Enhanced image-to-video capabilities ensure better prompt adherence while delivering superior audio and visual quality and maintaining character consistency across multiple scenes.\n\nOptional parameters:\n- Set the aspect ratio (either `16:9` or `9:16`), which defaults to `16:9`\n- Negative prompt can be set on elements to avoid\n- Set the duration (one of `4s`, `6s`, or `8s`), which defaults to `8s`\n- Seed to set the seed (set number value)\n- Resolution (set from 720p or 1080p)\n- Reference mode. Toggle to use input images (3 max) as reference for video generation\n\nFor first & last frame video generation and references support, please use www.poe.com/Veo-v3.1",
+      "owned_by": "Google",
+      "created": 1760537766690,
+      "supported_features": [],
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "video"
+        ],
+        "modality": "text->video"
+      },
+      "context_window": {
+        "context_length": 480,
+        "max_output_tokens": null
+      },
+      "context_length": 480,
+      "parameters": [
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "16:9",
+              "9:16"
+            ]
+          },
+          "default_value": "16:9"
+        },
+        {
+          "name": "no",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "duration",
+          "schema": {
+            "enum": [
+              "4",
+              "6",
+              "8"
+            ]
+          },
+          "default_value": "8"
+        },
+        {
+          "name": "seed",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "silent",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Toggle to generate a video without audio. Decreases cost."
+        },
+        {
+          "name": "reference_mode",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Toggle to use input images(3 max) as reference for video generation."
+        },
+        {
+          "name": "resolution",
+          "schema": {
+            "enum": [
+              "720p",
+              "1080p"
+            ]
+          },
+          "default_value": "720p"
+        }
+      ],
+      "pricing": null,
+      "metadata": {
+        "display_name": "Veo-3.1"
+      }
+    },
+    {
+      "id": "veo-3.1-fast",
+      "description": "Google’s Veo 3.1 Fast is an updated version of the Veo family of models that's optimized for speed and cost, but still features richer native audio, from natural conversations to synchronized sound effects, and offer greater narrative control with an improved understanding of cinematic styles. Enhanced image-to-video capabilities ensure better prompt adherence while delivering superior audio and visual quality and maintaining character consistency across multiple scenes.\n\nOptional parameters:\n- Set the aspect ratio (either `16:9` or `9:16`), which defaults to `16:9`\n- Negative prompt can be set on elements to avoid\n- Set the duration (one of `4s`, `6s`, or `8s`), which defaults to `8s`\n- Seed to set the seed (set number value)\n- Resolution (set from 720p or 1080p)\n\nFor first & last frame video generation support, please use www.poe.com/Veo-v3.1-Fast",
+      "owned_by": "Google",
+      "created": 1760540647924,
+      "supported_features": [],
+      "supported_endpoints": [
+        "/v1/videos"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "video"
+        ],
+        "modality": "text,image->video"
+      },
+      "context_window": {
+        "context_length": 480,
+        "max_output_tokens": null
+      },
+      "context_length": 480,
+      "parameters": [
+        {
+          "name": "aspect_ratio",
+          "schema": {
+            "enum": [
+              "16:9",
+              "9:16"
+            ]
+          },
+          "default_value": "16:9"
+        },
+        {
+          "name": "no",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "duration",
+          "schema": {
+            "enum": [
+              "4",
+              "6",
+              "8"
+            ]
+          },
+          "default_value": "8"
+        },
+        {
+          "name": "seed",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "silent",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Toggle to generate a video without audio. Decreases cost."
+        },
+        {
+          "name": "resolution",
+          "schema": {
+            "enum": [
+              "720p",
+              "1080p"
+            ]
+          },
+          "default_value": "720p"
+        }
+      ],
+      "pricing": null,
+      "metadata": {
+        "display_name": "Veo-3.1-Fast"
+      }
+    },
+    {
+      "id": "lyria-3",
+      "description": "Google DeepMind’s Lyria 3 is an advanced AI music generation model that creates high-fidelity, up to three-minute tracks from text or image prompts, with detailed control over vocals, style, and composition.\n\nOptional parameters:\nFull song: Turn it on to generate a full-length track (up to 3 minutes).\n\nNotes:\nLyria blocks prompts that name specific artists or songs (artist-intent and recitation checks).",
+      "owned_by": "Google",
+      "created": 1774462776129,
+      "supported_features": [],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "audio"
+        ],
+        "modality": "text->audio"
+      },
+      "context_window": null,
+      "context_length": null,
+      "parameters": [
+        {
+          "name": "full_song",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": false,
+          "description": "Generate a full-length song with verses, choruses, and bridges. When off, generates a 30-second clip or loop instead."
+        }
+      ],
+      "pricing": null,
+      "metadata": {
+        "display_name": "Lyria-3"
+      }
+    },
+    {
+      "id": "lyria",
+      "description": "Google DeepMind's Lyria 2 delivers high-quality audio generation, capable of creating diverse soundscapes and musical pieces from text prompts.\n\nOptional parameters:\nNegative prompt. Allows users to specify elements to exclude in the audio. \nSeed for deterministic generation. e.g. \"An energetic electronic dance track `no vocals`, slow tempo 1seed 123`\". \n\nNotes: \nLyria blocks prompts that name specific artists or songs (artist-intent and recitation checks)\nThis bot does not support attachments. \nThis bot accepts input prompts of up to 480 tokens.",
+      "owned_by": "Google",
+      "created": 1749063911995,
+      "supported_features": [],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "audio"
+        ],
+        "modality": "text->audio"
+      },
+      "context_window": null,
+      "context_length": null,
+      "parameters": [
+        {
+          "name": "no",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "seed",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "pricing": null,
+      "metadata": {
+        "display_name": "Lyria"
+      }
+    },
+    {
+      "id": "gpt-4o-aug",
+      "description": "OpenAI's most powerful model, GPT-4o, using the August 2024 model snapshot. Stronger than GPT-3.5 in quantitative questions (math and physics), creative writing, and many other challenging tasks. ",
+      "owned_by": "OpenAI",
+      "created": 1732149774348,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [
+        "/v1/responses",
+        "/v1/chat/completions"
+      ],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 128000,
+        "max_output_tokens": 8192
+      },
+      "context_length": 128000,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000022727",
+        "completion": "0.0000090909",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000011364",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-4o-Aug"
+      }
+    },
+    {
+      "id": "gpt-oss-120b",
+      "description": "GPT-OSS-120B is OpenAI's open-weight general-purpose model with reasoning and tool-use support.",
+      "owned_by": "OpenAI",
+      "created": 1784767073373,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text->text"
+      },
+      "context_window": null,
+      "context_length": null,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000001515",
+        "completion": "0.0000006061",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "GPT-OSS-120B"
+      }
+    },
+    {
+      "id": "deepseek-v3.1",
+      "description": "DeepSeek V3.1 is a long-context model for coding, tool use, and agentic tasks.",
+      "owned_by": "DeepSeek",
+      "created": 1783976464218,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text->text"
+      },
+      "context_window": {
+        "context_length": 164000,
+        "max_output_tokens": null
+      },
+      "context_length": 164000,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000002121",
+        "completion": "0.000000798",
+        "image": null,
+        "request": null,
+        "input_cache_read": null,
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "DeepSeek-v3.1"
+      }
+    },
+    {
+      "id": "deepseek-v3.2",
+      "description": "DeepSeek V3.2 is DeepSeek's efficient model for long-context reasoning and agentic tool-use tasks.",
+      "owned_by": "DeepSeek",
+      "created": 1784595521249,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text->text"
+      },
+      "context_window": {
+        "context_length": 128000,
+        "max_output_tokens": null
+      },
+      "context_length": 128000,
+      "parameters": [
+        {
+          "name": "enable_thinking",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Enable the model's reasoning process before answering."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000002626",
+        "completion": "0.0000003838",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000001313",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "DeepSeek-V3.2"
+      }
+    },
+    {
+      "id": "kimi-k2.6",
+      "description": "Moonshot AI Kimi K2.6 is a model for long-horizon coding, design-oriented development, and vision-enabled tasks.",
+      "owned_by": "Moonshot AI",
+      "created": 1784856218315,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 262000,
+        "max_output_tokens": null
+      },
+      "context_length": 262000,
+      "parameters": [],
+      "pricing": {
+        "prompt": "0.0000009596",
+        "completion": "0.0000040404",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000001616",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "Kimi-K2.6"
+      }
+    },
+    {
+      "id": "deepseek-v4-pro",
+      "description": "DeepSeek V4 Pro is DeepSeek’s text model with long-context efficiency, reasoning, and tool-use capabilities.",
+      "owned_by": "DeepSeek",
+      "created": 1785432092601,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": null
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "enable_thinking",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Show the model’s reasoning for this response."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000013333",
+        "completion": "0.000004",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000001333",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "DeepSeek-V4-Pro"
+      }
+    },
+    {
+      "id": "deepseek-v4-flash",
+      "description": "DeepSeek V4 Flash is a text model in DeepSeek’s V4 family with reasoning and tool-use capabilities.",
+      "owned_by": "DeepSeek",
+      "created": 1785432092693,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text->text"
+      },
+      "context_window": {
+        "context_length": 1000000,
+        "max_output_tokens": null
+      },
+      "context_length": 1000000,
+      "parameters": [
+        {
+          "name": "enable_thinking",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Show the model’s reasoning for this response."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.0000004444",
+        "completion": "0.0000013333",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000283",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "DeepSeek-V4-Flash"
+      }
+    },
+    {
+      "id": "deepseek-v4.1-flash-1017",
+      "description": "DeepSeek V4.1 Flash, October 17 snapshot. Supports reasoning, coding, and image understanding with a 1M-token context window.",
+      "owned_by": "DeepSeek",
+      "created": 1792604063760,
+      "supported_features": [
+        "tools"
+      ],
+      "supported_endpoints": [],
+      "architecture": {
+        "input_modalities": [
+          "text",
+          "image"
+        ],
+        "output_modalities": [
+          "text"
+        ],
+        "modality": "text,image->text"
+      },
+      "context_window": {
+        "context_length": 1048576,
+        "max_output_tokens": null
+      },
+      "context_length": 1048576,
+      "parameters": [
+        {
+          "name": "show_reasoning",
+          "schema": {
+            "type": "boolean"
+          },
+          "default_value": true,
+          "description": "Show reasoning when the provider returns it. Reasoning stays enabled when this is off."
+        }
+      ],
+      "pricing": {
+        "prompt": "0.000000303",
+        "completion": "0.0000012121",
+        "image": null,
+        "request": null,
+        "input_cache_read": "0.0000000061",
+        "input_cache_write": null
+      },
+      "metadata": {
+        "display_name": "DeepSeek-V4.1-Flash-1017"
+      }
+    }
+  ]
+}

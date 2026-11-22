@@ -69,7 +69,7 @@ type VideoOptions struct {
 	// MaxReferenceVideos is how many videos it takes to edit or continue;
 	// a video counts as two pictures against MaxReferenceImages.
 	MaxReferenceVideos int `json:"max_reference_videos,omitempty"`
-	// Prices are Polza's price tiers: a tier applies when every one of its
+	// Prices are Poe's price tiers: a tier applies when every one of its
 	// conditions holds, and the one with the most conditions wins.
 	Prices []VideoPrice `json:"prices"`
 }
@@ -102,7 +102,18 @@ func (o VideoOptions) PriceRUB(choice map[string]string) (float64, bool) {
 }
 
 type Model struct {
-	ID string `json:"id"`
+	// Unstable bots can be selected manually even when absent from Poe metadata.
+	Unstable              bool     `json:"unstable,omitempty"`
+	Unavailable           bool     `json:"unavailable,omitempty"`
+	Poe                   bool     `json:"poe,omitempty"`
+	PoeEndpoints          []string `json:"poe_endpoints,omitempty"`
+	PoeReasoningParameter string   `json:"poe_reasoning_parameter,omitempty"`
+	PoeReasoningValues    []string `json:"poe_reasoning_values,omitempty"`
+	CostCacheReadPerMTok  *float64 `json:"cost_cache_read_per_mtok,omitempty"`
+	CostCacheWritePerMTok *float64 `json:"cost_cache_write_per_mtok,omitempty"`
+	// Internal USD reservation estimates for media, not Poe point charges.
+	CostPerVideoUSD float64 `json:"cost_per_video_usd,omitempty"`
+	ID              string  `json:"id"`
 
 	// APIModelID is the string the vendor's own API expects as the model
 	// identifier, if it differs from ID (the catalog's internal name).
@@ -133,7 +144,7 @@ type Model struct {
 	InputModalities []string `json:"input_modalities,omitempty"`
 
 	// ToolCalling says the vendor accepts tools for this model, which is
-	// what Polza's server-side web search/fetch loop runs on. Models
+	// what Poe's server-side web search/fetch loop runs on. Models
 	// without it can only get a search done before they run.
 	ToolCalling bool `json:"tool_calling,omitempty"`
 
@@ -143,7 +154,7 @@ type Model struct {
 	ManualOnly bool `json:"manual_only,omitempty"`
 
 	// Kind is KindImage for an image-generation model: it answers with a
-	// picture made through Polza's Media API (server/image.go) rather than
+	// picture made through Poe's Media API (server/image.go) rather than
 	// with chat completions. KindVideo answers with a video the same way
 	// (server/video.go). Empty means a chat model. Image models price per
 	// image and video models per clip, not per token; automatic routing

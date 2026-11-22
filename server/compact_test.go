@@ -59,6 +59,8 @@ func TestSettingsSync(t *testing.T) {
 func TestConversationCompact(t *testing.T) {
 	standIn := &polzaStandIn{reply: "The user and the assistant planned a trip."}
 	s := newDirectServer(t, standIn)
+	s.Router.Catalog.Models[0].ID = compactModelID
+	s.Router.Catalog.Models[0].APIModelID = "openai/" + compactModelID
 	token, _ := s.Auth.(*auth.InMemoryStore).IssueKey(context.Background(), "u1", "pro")
 	ctx := context.Background()
 	at := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
@@ -103,7 +105,7 @@ func TestConversationCompact(t *testing.T) {
 		t.Fatalf("summary = %+v", state)
 	}
 	body := standIn.lastBody(t)
-	if body["model"] != "openai/gpt-6-luna" || standIn.auth[len(standIn.auth)-1] != "Bearer pza_user" {
+	if body["model"] != "openai/"+compactModelID || standIn.auth[len(standIn.auth)-1] != "Bearer pza_user" {
 		t.Fatalf("compacted with %v / %q, want luna on the user's key", body["model"], standIn.auth[len(standIn.auth)-1])
 	}
 	if text := fmt.Sprint(body["messages"]); !strings.Contains(text, "answer 2") || strings.Contains(text, "answer 4") {
