@@ -1044,6 +1044,10 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 // finding). Add a new case here, not a bare error string at the call
 // site, for any future error that's genuinely meant to reach the client.
 func clientErrorMessage(err error) string {
+	var service *provider.BotServiceError
+	if errors.As(err, &service) {
+		return service.Error()
+	}
 	var denied *provider.BotAccessDenied
 	if errors.As(err, &denied) {
 		return denied.Error()

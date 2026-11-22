@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"strings"
@@ -217,5 +218,44 @@ func TestBotQueryFormattedThinkingUsesReasoningChannel(t *testing.T) {
 	}
 	if strings.Contains(answer, "Private") || strings.Contains(answer, "Thinking") || !strings.Contains(answer, "Visible answer.") || !strings.Contains(thought, "Private thought.") {
 		t.Fatalf("answer %q thought %q", answer, thought)
+	}
+}
+
+func TestBotQueryMultipleToolRoundsDoNotSendOrphanedToolMessages(t *testing.T) {
+	c := NewPoeClient("key")
+	messages := []Message{{Role: "system", Content: "core"}, {Role: "user", Content: "do three things"}, {Role: "assistant", Content: "First step", ToolCalls: []ToolCall{{ID: "first", Name: "web_fetch", Arguments: "{}"}}}, {Role: "tool", ToolCallID: "first", Content: "page"}, {Role: "assistant", Content: "Second step", ToolCalls: []ToolCall{{ID: "second", Name: "run_script", Arguments: "{}"}}}, {Role: "tool", ToolCallID: "second", Content: "output"}}
+	body, err := c.botRequest(context.Background(), "bot", messages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, raw := range body["query"].([]any) {
+		m := raw.(map[string]any)
+		if m["role"] == "tool" {
+			t.Fatalf("orphaned tool message %+v", m)
+		}
+		if m["content"] == "Second step" {
+			t.Fatal("latest assistant turn duplicated outside top-level calls")
+		}
+	}
+	results := body["tool_results"].([]any)
+	if len(results) != 1 || results[0].(map[string]any)["tool_call_id"] != "second" {
+		t.Fatalf("results %v", results)
+	}
+	serialized := fmt.Sprint(body["query"])
+	if !strings.Contains(serialized, "page") || !strings.Contains(serialized, "web_fetch") {
+		t.Fatal("lost earlier tool context")
+	}
+}
+
+func TestBotQueryServiceFailurePreservesReferenceWithoutReplay(t *testing.T) {
+	calls := 0
+	c := nativeFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		fmt.Fprint(w, "event: error\ndata: {\"text\":\"Internal server error (err_id: abcdef0123456789abcdef0123456789)\",\"allow_retry\":true}\n\n")
+	})
+	_, err := c.Generate(context.Background(), "bot", []Message{{Role: "user", Content: "hi"}})
+	var service *BotServiceError
+	if !errors.As(err, &service) || service.Reference != "abcdef0123456789abcdef0123456789" || calls != 1 {
+		t.Fatalf("err %v calls %d", err, calls)
 	}
 }

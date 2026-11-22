@@ -15,6 +15,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -27,6 +28,18 @@ type BotAccessDenied struct{ Model string }
 func (e *BotAccessDenied) Error() string {
 	return fmt.Sprintf("Poe: bot %q does not support API access. Use a public prompt bot based on this model and add its link in Settings.", e.Model)
 }
+
+type BotServiceError struct{ Reference string }
+
+func (e *BotServiceError) Error() string {
+	message := "Poe returned an internal server error. The request was not automatically repeated."
+	if e.Reference != "" {
+		message += " Reference: " + e.Reference
+	}
+	return message
+}
+
+var poeErrorReference = regexp.MustCompile(`(?i)(?:error_id|err_id):\s*([a-f0-9-]{16,64})`)
 
 type PoeAttachment struct {
 	URL         string `json:"url"`
@@ -183,13 +196,20 @@ func (c *PoeClient) botRequest(ctx context.Context, model string, messages []Mes
 		}
 		if i == latest {
 			calls = wireCalls
-			if text == "" {
-				continue
-			}
+			// Match the SDK: the latest assistant tool turn is represented
+			// by top-level tool_calls, not a second bot turn in query.
+			continue
 		}
 		if role == "tool" && latest >= 0 && i > latest {
 			results = append(results, map[string]any{"role": "tool", "name": callNames[m.ToolCallID], "tool_call_id": m.ToolCallID, "content": text})
 			continue
+		}
+		// Historical calls are rendered as ordinary context above. Their
+		// results must likewise be ordinary context: ProtocolMessage has no
+		// tool_call_id field, so a historical role=tool becomes an orphaned
+		// tool result when the bot forwards it to its underlying model.
+		if role == "tool" {
+			role = "user"
 		}
 		turn := map[string]any{"role": role, "content": text, "content_type": "text/markdown", "attachments": attachments}
 		if len(wireCalls) > 0 && i != latest {
@@ -198,8 +218,6 @@ func (c *PoeClient) botRequest(ctx context.Context, model string, messages []Mes
 		}
 		if m.ToolCallID != "" {
 			turn["content"] = "Tool result " + callNames[m.ToolCallID] + " (" + m.ToolCallID + "): " + text
-			turn["tool_call_id"] = m.ToolCallID
-			turn["name"] = callNames[m.ToolCallID]
 		}
 		query = append(query, turn)
 	}
@@ -343,6 +361,12 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 				}
 				if strings.EqualFold(strings.TrimSpace(message), "This bot does not support API access") && result.Text == "" && result.Reasoning == "" && len(result.Attachments) == 0 && len(toolCalls) == 0 {
 					send(StreamChunk{Err: &BotAccessDenied{Model: model}})
+				} else if strings.HasPrefix(strings.ToLower(strings.TrimSpace(message)), "internal server error") {
+					reference := ""
+					if match := poeErrorReference.FindStringSubmatch(message); match != nil {
+						reference = match[1]
+					}
+					send(StreamChunk{Err: &BotServiceError{Reference: reference}})
 				} else {
 					send(StreamChunk{Err: fmt.Errorf("Poe Bot Query: %s", strings.ReplaceAll(message, key, "[redacted]"))})
 				}
