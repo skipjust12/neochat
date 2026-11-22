@@ -34,6 +34,9 @@ func (c *PoeClient) info(id string) PoeModelInfo {
 func hasPoeWeb(ctx context.Context) bool { _, ok := WebPluginFromContext(ctx); return ok }
 
 type PoeClient struct {
+	BotQuery       bool
+	BotBaseURL     string
+	UploadURL      string
 	BaseURL        string
 	MaxTokens      int
 	RequestTimeout time.Duration
@@ -280,6 +283,9 @@ func (r poeResponse) result() (GenerateResult, error) {
 }
 
 func (c *PoeClient) generatePoe(ctx context.Context, model string, messages []Message) (GenerateResult, error) {
+	if c.BotQuery {
+		return c.generateBot(ctx, model, messages)
+	}
 	model = c.resolveBot(model)
 	if err := validatePoeMessages(messages); err != nil {
 		return GenerateResult{}, err
@@ -312,6 +318,9 @@ func (c *PoeClient) generatePoe(ctx context.Context, model string, messages []Me
 }
 
 func (c *PoeClient) streamPoe(ctx context.Context, model string, messages []Message) (<-chan StreamChunk, error) {
+	if c.BotQuery {
+		return c.streamBot(ctx, model, messages)
+	}
 	model = c.resolveBot(model)
 	if err := validatePoeMessages(messages); err != nil {
 		return nil, err

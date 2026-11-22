@@ -499,6 +499,7 @@
               <div class="set-row"><label for="customModelProvider">Provider</label><select id="customModelProvider" class="name-input"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google</option><option value="spacexai">xAI</option><option value="deepseek">DeepSeek</option><option value="moonshot">Moonshot</option></select></div>
               <div class="set-row"><label for="customModelURL">Poe link or bot name</label><input id="customModelURL" class="name-input" placeholder="https://poe.com/Claude-Fable-5.2" required maxlength="200" /></div>
               <div class="set-row"><label for="customModelName">Display name (optional)</label><input id="customModelName" class="name-input" placeholder="Claude Fable 5.2" maxlength="80" /></div>
+              <div class="set-row"><label for="customModelContext">Maximum context (tokens)</label><input id="customModelContext" class="name-input" type="number" min="1024" max="100000000" step="1" placeholder="Auto" /></div>
               <div class="set-row"><span id="customModelStatus" role="status"></span><button class="link-btn" type="submit">Add model</button></div>
             </form>
             <div id="customModelsList"></div>
@@ -2035,7 +2036,7 @@
       event.preventDefault();if(!sessionUser){promptForSignIn();return}
       const generation=customModelsGeneration,button=customModelForm.querySelector('[type="submit"]');button.disabled=true;customModelStatus.textContent='';
       try{
-        const response=await apiFetch('/account/models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:document.getElementById('customModelProvider').value,url:document.getElementById('customModelURL').value,name:document.getElementById('customModelName').value})});
+        const response=await apiFetch('/account/models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:document.getElementById('customModelProvider').value,url:document.getElementById('customModelURL').value,name:document.getElementById('customModelName').value,context_window:document.getElementById('customModelContext').value===''?0:Number(document.getElementById('customModelContext').value)})});
         if(!response.ok)throw new Error((await response.text()).trim()||'Could not add model.');
         const data=await response.json();if(generation!==customModelsGeneration)return;applyCustomModels(data);customModelForm.reset();customModelStatus.textContent='Model added.';
       }catch(error){if(generation===customModelsGeneration)customModelStatus.textContent=error.message}finally{button.disabled=false}
@@ -5734,6 +5735,7 @@
             return;
           }
           if(event==='delta'){
+ if(data&&data.reset){if(typeof receivedText!=='undefined')receivedText='';stream.replace('')}
             const text=data&&data.text?String(data.text):'';
             if(text){
               if(!receivedFirstText){
@@ -5895,6 +5897,7 @@
             return;
           }
           if(event==='delta'){
+ if(data&&data.reset){if(typeof receivedText!=='undefined')receivedText='';stream.replace('')}
             const text=data&&data.text?String(data.text):'';
             if(text){
               if(!receivedFirstText){
@@ -6041,6 +6044,7 @@
             if(event==='title'){if(data)chatNamed(data.conversation_id,data.title);return}
             if(event==='activity'){thought.activity(Array.isArray(data&&data.activity)?data.activity:[]);return}
             if(event==='delta'){
+ if(data&&data.reset){if(typeof receivedText!=='undefined')receivedText='';stream.replace('')}
               const text=data&&data.text?String(data.text):'';
               if(text){pending.classList.remove('is-pending');thought.text()}
               stream.append(text);

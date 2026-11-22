@@ -1,204 +1,87 @@
-# Poe API
+# Poe Bot Query
 
-All production AI calls use `https://api.poe.com/v1` with a Poe API key:
-chat and streaming, tool calls, classifier, moderation, automatic summaries,
-manual compaction, titles, web-search helpers, images and videos. NeoChat's
-own API, database, desktop/MCP tools, SearXNG and webpage fetcher retain their
-existing interfaces. There is no runtime fallback to Polza.
+Production generations now use the native Bot Query endpoint:
+`POST https://api.poe.com/bot/{Exact-Bot-Handle}`, protocol `1.2`, with
+`Authorization: Bearer <Poe API key>`. This follows the official
+[fastapi_poe client](https://github.com/poe-platform/fastapi_poe/blob/main/src/fastapi_poe/client.py)
+and [protocol types](https://github.com/poe-platform/fastapi_poe/blob/main/src/fastapi_poe/types.py).
+Chat, classifier, moderation, summaries, compaction, titles, search helpers,
+images and videos use this path. Public model metadata and the points-balance
+endpoint remain REST calls; they are not generation requests.
 
-## Credentials and upgrade
+## Transport
 
-Get a key at <https://poe.com/api_key>. After upgrading, save it in Settings →
-Account. Poe chat/media keys and the model-list cache use new browser storage
-names; an old Polza key is never automatically reused. Media uses the chat
-key unless a separate Poe media key is saved. Keys are not synced or saved in
-the server database. NeoChat authentication keys (`nc_...`) remain separate.
+- Full history and NeoChat's core prompt are passed as protocol messages;
+  assistant messages use role `bot`.
+- Tool definitions use the SDK's function schema. The latest tool round is
+  returned as top-level `tool_calls` and `tool_results`; earlier rounds are
+  retained as readable history. NeoChat continues to execute its own tools.
+- Text and JSON tool-call deltas stream into the existing activity/answer UI.
+  `replace_response` replaces the streamed answer. Missing `done`, malformed
+  events and explicit error events fail the request rather than accepting
+  an empty answer. Accepted streams are never automatically replayed.
+- Attachments upload through the SDK's endpoint
+  `https://www.quora.com/poe_api/file_upload_3RD_PARTY_POST`. Its Authorization
+  header is the raw API key, as required by the official uploader. Uploaded
+  references are reused within one request's tool rounds, never across users.
+- Image/video bots return `file` events or attachment links. Existing safe
+  downloads store their bytes with the chat and never forward the key to a CDN.
+  Video reference trimming remains local through ffmpeg.
+- Custom media controls are sent in the last protocol message's `parameters`.
+  Known reasoning parameters come from Poe metadata; unlisted bots without
+  advertised controls do not acquire guaranteed effort support automatically.
+  Native Bot Query controls, including output caps, are bot-dependent.
 
-`POE_API_KEY` replaces `POLZA_API_KEY` as an optional server fallback. Manual
-mode still requires a user key, as before. Remove obsolete vendor-prefixed
-model overrides from `.env`, or replace them with Poe bot names. Defaults:
+The previous Chat/Responses/Messages adapters remain for regression fixtures;
+production selects Bot Query by default, including the media client.
+`POE_TRANSPORT=compatibility` restores the previous adapters for both; restart
+the server after changing the environment. No
+compatibility-endpoint guessing or native SDK installation is needed.
 
-| Call | Poe bot |
-| --- | --- |
-| Classifier / automatic summarizer | `gemini-3.5-flash-lite` |
-| Moderation | `gpt-oss-120b` |
-| Title / manual compaction / search helper | `gpt-5.4-nano` |
+## Usage, cache and keys
 
-The same release deployment script can be used. It preserves `.env`, database
-volumes and conversation history. A new key must be entered in the browser
-after deployment; this upgrade does not turn a Polza key into a Poe key.
+Native Bot Query text/file events do not provide the compatibility APIs'
+measured token/cache usage. `UsageEstimated` explicitly marks local reservation
+estimates. Cache reads/writes are left at zero (unknown), never fabricated.
+USD plan accounting is approximate and is not a receipt for Poe point charges.
+Poe's actual balance is read separately in points. This migration cannot
+promise the old native Claude cache-control/signature behavior through a
+protocol that does not expose equivalent telemetry.
 
-## Bots and catalog
+Poe keys still stay in the browser or request context; optional `POE_API_KEY`
+is a server fallback. Old Polza keys are never reused. NeoChat login keys
+remain separate. Retry policy does not replay accepted Bot Query responses,
+even if an SSE error event says `allow_retry`.
 
-`configs/models.json` supplies the existing curated identities, routing scores
-and reference estimates. `configs/poe-models.json` is a checked-in snapshot of
-Poe's public metadata. Startup merges the two before any calls are served,
-so a catalog outage does not restore the previous provider's model slugs.
+## Catalog and personal models
 
-The live public `GET https://api.poe.com/v1/models` refreshes at most hourly;
-forced refresh has a 30-second cooldown. Concurrent requests share one fetch.
-Older listed versions move to Legacy when a newer model continues their line.
-Only public metadata is shared; user keys, messages and generated responses
-are not part of this cache. A failed refresh keeps the previous catalog.
+Poe public metadata refreshes hourly (manual refresh has a cooldown), with a
+checked-in startup snapshot. Models absent from that list remain callable by
+exact bot handles. Absence from the list does not establish API availability.
+`POE_BOT_ALIASES` can force an owner-selected bot. The existing explicit
+`claude-opus-5.5` → `neobotclaude55` fallback is retained for initial HTTP 404;
+`POE_BOT_FALLBACKS={}` disables it. No other model is substituted silently.
 
-A curated model omitted from Poe's list remains selectable in Manual mode,
-using the same presentation as listed models. It is called directly by its exact bot name (for
-example `GPT-6-Luna`) through Chat Completions. Its original display name is
-preserved. Absence from `/v1/models` does not establish unavailability.
-Unlisted bots are excluded from automatic routing. Their tools, attachments,
-reasoning controls, pricing and availability have not been confirmed by the
-metadata. A refusal is shown to the user; no other bot is silently substituted.
-If Poe later lists the bot, its metadata replaces this provisional entry and
-the published capabilities and prices become available.
+Settings → General → Add a model accepts provider, Poe URL or exact handle,
+optional display name, and maximum context in tokens. Empty context uses
+catalog metadata, or 128,000 for an unlisted bot. Re-adding a bot updates it.
+The value does not increase the upstream model's actual capacity.
+Personal models and Legacy overrides persist per account in `user_settings`
+and do not enter shared catalog caches or automatic routing.
 
-## Transport and capabilities
+Search helpers, titles and manual compaction default to `GPT-6-Luna`.
+`WEB_SEARCH_MODEL` / `TITLE_MODEL` overrides remain supported. Search uses
+SearXNG when configured, otherwise a bot with Poe's web-search parameter.
 
-- Chat Completions: text, SSE, function calls, image data URLs and file parts
-  for documents/videos. Custom bot parameters follow OpenAI SDK `extra_body`
-  serialization (flattened into the HTTP body). Parameter names and allowed
-  effort values come from Poe's model list. No Polza `plugins` or `video_url`
-  extension is sent.
-- Responses: models advertising this endpoint alone, and Poe built-in web
-  search (`web_search_preview`). Reasoning items, encrypted content, function
-  calls/results and source annotations are preserved. Full history is sent
-  with `store:false`; server-side continuation IDs are not shared across users.
-- Native Messages: only models advertising `/v1/messages`. Claude thinking,
-  signatures, tool-use/result blocks and explicit prompt-cache breakpoints
-  are preserved. Requests include `anthropic-version: 2023-06-01`. Attachments
-  unsupported by the native format use the compatibility transport instead.
-- Media: non-streaming compatibility calls download the returned attachments
-  and keep them as chat files. Models advertising `/v1/videos` use create,
-  poll and authenticated content download. The key never accompanies a CDN
-  download; downloads still reject private addresses and oversized content.
-  Video references longer than ten seconds are trimmed locally with ffmpeg.
-  Choices follow the bot's advertised parameters; duration is Auto when the
-  bot exposes no duration setting. Existing inline `show_image`, file sharing,
-  regeneration, intermediate text and activity animations are retained.
+## Validation limits
 
-A broken/truncated SSE stream is an error, not a successful empty answer.
-Cancellation closes the upstream request. Retries remain limited to 429;
-5xx/timeouts are not automatically replayed. Poe 404 does not trigger the
-legacy retry-without-tools path.
-
-## Cache and accounting
-
-Poe's Chat Completions documentation says token-detail objects are empty.
-These calls therefore report **no measured cache hits**, even if the provider
-internally caches the prompt. A zero counter is not evidence of a cache miss.
-Native Claude cache reads/writes and Responses cache reads are recorded only
-when returned by the API. Native Claude's ordinary input, cache-read and
-cache-write token counts are combined once, without double-counting.
-
-Known cache prices come from Poe metadata (USD per token, converted to USD
-per million). Missing cache prices do not imply free tokens or an invented
-write premium. The application retains conservative reference estimates
-when a bot has no published rate. Unlisted bots retain the curated estimates.
-
-NeoChat's existing `*_cost_usd`, plan reservations and cost logs remain
-**internal estimates**, not receipts for Poe point charges. Media reservation
-estimates are $0.50/image and $5/video; `pricing.image` is not assumed to be a
-flat per-image price. Actual charges can differ, especially for media or
-unlisted bots. Set spending limits on the Poe key when needed.
-
-Settings → Usage uses `GET https://api.poe.com/usage/current_balance` and
-shows `current_point_balance` in **points**. It is never converted to rubles.
-Old RUB alert thresholds are not reinterpreted as points.
-
-## Validation
-
-Without a real key, run:
-
-```bash
-go test ./...
-node scripts/frontend-state-timing.test.cjs
-node scripts/frontend-inline-images.test.cjs
-# Install the existing browser-test dependencies first if needed:
-node scripts/frontend-poe.browser.cjs
-```
-
-Poe-specific tests use local HTTP fixtures to check endpoint/body/auth,
-concurrent key isolation, tools, native thinking replay, cache usage/pricing,
-SSE termination, catalog TTL, direct unlisted bot calls, media inputs,
-polling/downloads and points balance. They do not verify live availability,
-provider-side cache creation or real point charges.
-
-For a manual live smoke test, save your Poe key in the UI and try text,
-a terminal script with an inline PNG (`show_image`), a tool continuation,
-a PDF, a Gemini video attachment, web search, title generation, compaction,
-an image edit and video generation. Repeat a sufficiently long Claude
-conversation, then inspect `provider: prompt cache` logs for **reported**
-cache counters. Short prompts may not reach the model's cache minimum.
-Compare charges in your Poe account; only that live check verifies billing.
-
-Official references:
-
-- <https://creator.poe.com/docs/external-applications/openai-compatible-api>
-- <https://creator.poe.com/api-reference/createChatCompletion>
-- <https://creator.poe.com/api-reference/createResponse>
-- <https://creator.poe.com/api-reference/createMessage>
-- <https://creator.poe.com/api-reference/listModels>
-- <https://creator.poe.com/api-reference/getCurrentBalance>
-- <https://creator.poe.com/api-reference/createVideo>
-
-## Exact bot handles and user-owned prompt bots
-
-The picker uses readable labels (Gemini 4 Hydrogen, GPT-6.1 Sol Pro), not raw
-Poe slugs or bot descriptions. API identifiers remain separate. Unlisted bots
-are sent by their canonical handles, for example `Claude-Opus-5.5`. A correct
-handle is necessary but does not establish API availability for an account.
-
-If you create your own public prompt bot, explicitly map the original model
-to its handle in `.env`, for example:
-
-```dotenv
-POE_BOT_ALIASES={"claude-opus-5.5":"YourPublicOpusBot"}
-```
-
-`configs/poe-bot-fallbacks.json` configures `neobotclaude55` as the project
-owner’s explicit fallback for `claude-opus-5.5`. The official bot is attempted
-first. Only an HTTP 404 before generation starts permits the fallback.
-`POE_BOT_FALLBACKS` overrides the file; `{}` disables fallback.
-`POE_BOT_ALIASES` is separate and forces an explicit bot mapping when set.
-
-Only use a bot you selected and verified. This setting does not create bots,
-change their underlying models, or prove that Poe exposes a given base model
-through its API. No community bot is substituted automatically.
-
-To test the documented transports independently of NeoChat, run:
-
-```bash
-docker exec -it neochat-server python3 /app/diagnose-poe-bots.py
-```
-
-Enter the key locally at the hidden prompt. This makes small paid test
-requests via Chat Completions, Responses, Claude Messages where applicable,
-and the native Bot Query endpoint used by the official `fastapi_poe` client.
-The key is not printed. A native Bot Query success is diagnostic evidence;
-NeoChat does not silently switch to this different protocol, which has
-different tool, upload and usage accounting semantics.
+Local fixtures test native endpoint/auth, SSE, tools and continuations,
+uploads, response replacement, media downloads, custom context persistence,
+and private model isolation. These do not establish live access to GPT-6.1
+Sol/Fable or actual charges for an account. Live confirmation requires the
+user's key, which was not provided to this environment.
 
 References:
-- <https://creator.poe.com/docs/external-applications/external-application-guide>
-- <https://creator.poe.com/docs/server-bots/accessing-other-bots-on-poe>
-- <https://github.com/poe-platform/fastapi_poe/blob/main/src/fastapi_poe/client.py>
-
-## Personal model management
-
-Settings → General → Add a model accepts one of the six providers, a Poe URL
-(or exact bot handle), and an optional display name. The handle's case is
-preserved. Known bots reuse catalog capabilities; an unlisted bot uses Chat
-Completions with tool support and conservative internal reservation estimates.
-Poe remains responsible for whether that bot supports the requested inputs/tools.
-Unknown bots use the Max accounting pool and never enter automatic routing.
-
-The same section moves any model into Legacy or restores it. Both the custom
-list and explicit Legacy choices are per-account, persisted in `user_settings`,
-and retained across catalog refreshes. Public `/models` and the shared browser
-catalog cache never contain these private choices. `GET/POST /account/models`,
-`DELETE /account/models/{id}`, and `PATCH /account/models/{id}` (body
-`{"legacy":true}` or `false`) manage them. Ordinary settings saves preserve
-these server-managed fields. Re-adding the same bot updates its display name.
-
-Auxiliary search extraction, chat titles and manual history compaction default
-to `gpt-6-luna` (Poe handle `GPT-6-Luna`). `WEB_SEARCH_MODEL` and `TITLE_MODEL`
-can still override their respective defaults.
+- https://creator.poe.com/docs/server-bots/accessing-other-bots-on-poe
+- https://creator.poe.com/api-reference/client-sdks
+- https://github.com/poe-platform/fastapi_poe

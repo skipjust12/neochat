@@ -49,7 +49,10 @@ const (
 func NewPoeClient() *Client { return &Client{Poe: true} }
 
 type Client struct {
-	Poe bool
+	BotQuery   bool
+	BotBaseURL string
+	UploadURL  string
+	Poe        bool
 	// BaseURL is the API root; empty means Polza's.
 	BaseURL string
 	// PollInterval is how often a running generation is checked.

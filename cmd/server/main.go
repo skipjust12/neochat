@@ -148,6 +148,7 @@ func main() {
 	// under the catalog models' own max_output_tokens. Override with
 	// MAX_OUTPUT_TOKENS in the range 1..16000. The reservation layer also
 	// enforces a per-model cap on every vendor call.
+	poeClient.BotQuery = os.Getenv("POE_TRANSPORT") != "compatibility"
 	poeClient.MaxTokens = getenvIntDefault("MAX_OUTPUT_TOKENS", 16000)
 	if poeClient.MaxTokens <= 0 || poeClient.MaxTokens > 16000 {
 		log.Fatal("MAX_OUTPUT_TOKENS must be between 1 and 16000")
@@ -375,7 +376,7 @@ func main() {
 		Terminal: terminalRunner(),
 		// Image models (kind "image" in configs/models.json) make pictures
 		// through Poe's non-streaming media endpoints on the user's key.
-		Images: imagegen.NewPoeClient(),
+		Images: nativeMediaClient(),
 		// Preferences follow the user between devices
 		// (db/migrations/0012_user_settings.sql).
 		Settings:         settings.NewPostgresStore(pgDB),
@@ -612,4 +613,10 @@ func loadPoeBotFallbacks(path string) (map[string]string, error) {
 		raw = string(data)
 	}
 	return provider.ParsePoeBotAliases(raw)
+}
+
+func nativeMediaClient() *imagegen.Client {
+	client := imagegen.NewPoeClient()
+	client.BotQuery = os.Getenv("POE_TRANSPORT") != "compatibility"
+	return client
 }

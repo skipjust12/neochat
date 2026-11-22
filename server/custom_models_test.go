@@ -38,14 +38,14 @@ func TestCustomModelsPersistRouteAndIsolateUsers(t *testing.T) {
 	s.Generators["anthropic"] = client
 	token, _ := s.Auth.(*auth.InMemoryStore).IssueKey(context.Background(), "u1", "pro")
 	other, _ := s.Auth.(*auth.InMemoryStore).IssueKey(context.Background(), "u2", "pro")
-	body := `{"provider":"anthropic","url":"https://poe.com/Claude-Fable-5.2?share=1"}`
+	body := `{"provider":"anthropic","url":"https://poe.com/Claude-Fable-5.2?share=1","context_window":1048576}`
 	got := sendJSON(t, s, "POST", "/account/models", token, body, nil)
 	if got.Code != 200 {
 		t.Fatalf("add: %d %s", got.Code, got.Body)
 	}
 	var list modelsResponse
 	json.Unmarshal(got.Body.Bytes(), &list)
-	if len(list.Models) != 1 || list.Models[0].Name != "Claude Fable 5.2" {
+	if len(list.Models) != 1 || list.Models[0].Name != "Claude Fable 5.2" || list.Models[0].ContextWindow != 1048576 {
 		t.Fatalf("list: %+v", list)
 	}
 	id := list.Models[0].ID
@@ -69,6 +69,12 @@ func TestCustomModelsPersistRouteAndIsolateUsers(t *testing.T) {
 	fresh := newDirectServer(t, &polzaStandIn{})
 	fresh.Settings = s.Settings
 	fresh.Generators["anthropic"] = client
+	var loaded chatRequest
+	loaded.UserID = "u1"
+	loaded.ManualModelID = id
+	if err := fresh.loadCustomModel(context.Background(), &loaded); err != nil || loaded.customModel == nil || loaded.customModel.ContextWindow != 1048576 {
+		t.Fatalf("persisted context not applied: %+v %v", loaded.customModel, err)
+	}
 	var persisted modelsResponse
 	getJSON(t, s, "GET", "/account/models", token, nil, &persisted)
 	if !persisted.LegacyOverrides["gpt-6-luna"] || !persisted.LegacyOverrides[id] {
@@ -133,5 +139,71 @@ func TestCustomModelValidation(t *testing.T) {
 		if err != nil || m.Handle != "GPT-6-Luna" || m.Name != "GPT-6 Luna" {
 			t.Errorf("normalize %q: %+v %v", input, m, err)
 		}
+	}
+}
+
+func TestCustomModelContextValidationAndCatalogOverride(t *testing.T) {
+	s := newDirectServer(t, &polzaStandIn{})
+	for _, value := range []int{-1, 1, 1023, 100000001} {
+		if _, err := normalizeCustomModel(customModel{Provider: "openai", URL: "GPT-6-Luna", ContextWindow: value}); err == nil {
+			t.Errorf("accepted context %d", value)
+		}
+	}
+	for _, value := range []int{0, 1024, 1048576, 100000000} {
+		if _, err := normalizeCustomModel(customModel{Provider: "openai", URL: "GPT-6-Luna", ContextWindow: value}); err != nil {
+			t.Errorf("rejected context %d: %v", value, err)
+		}
+	}
+	base := s.Router.Catalog.Models[0]
+	m := s.customRouterModel(customModel{ID: "custom-test", Provider: base.Provider, Handle: base.ResolveAPIModelID(), ContextWindow: 2097152})
+	if m.ContextWindow != 2097152 {
+		t.Fatalf("catalog override: %d", m.ContextWindow)
+	}
+	m = s.customRouterModel(customModel{ID: "custom-test", Provider: base.Provider, Handle: base.ResolveAPIModelID()})
+	if m.ContextWindow != base.ContextWindow {
+		t.Fatal("Auto did not use catalog limit")
+	}
+	if s.Router.Catalog.Models[0].ContextWindow != base.ContextWindow {
+		t.Fatal("override changed shared catalog")
+	}
+}
+
+func TestCustomModelNativeBotQueryStreaming(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/Claude-Fable-5.2" {
+			t.Errorf("path %s", r.URL.Path)
+		}
+		fmt.Fprint(w, "event: text\ndata: {\"text\":\"old\"}\n\nevent: replace_response\ndata: {\"text\":\"new\"}\n\nevent: done\ndata: {}\n\n")
+	}))
+	defer api.Close()
+	s := newDirectServer(t, &polzaStandIn{})
+	s.Settings = settings.NewInMemoryStore()
+	token, _ := s.Auth.(*auth.InMemoryStore).IssueKey(context.Background(), "u1", "pro")
+	got := sendJSON(t, s, "POST", "/account/models", token, `{"provider":"anthropic","url":"https://poe.com/Claude-Fable-5.2","context_window":1048576}`, nil)
+	var list modelsResponse
+	json.Unmarshal(got.Body.Bytes(), &list)
+	if len(list.Models) != 1 {
+		t.Fatalf("add: %s", got.Body)
+	}
+	c := provider.NewPoeClient("")
+	c.BotQuery = true
+	c.BotBaseURL = api.URL
+	s.Generators["anthropic"] = c
+	events, err := collectStream(s, context.Background(), chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "manual", ManualModelID: list.Models[0].ID, providerKey: "native-key", WebSearch: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := events["done"][0].(chatResponse)
+	if done.ResponseText != "new" {
+		t.Fatalf("done %+v", done)
+	}
+	reset := false
+	for _, event := range events["delta"] {
+		if value, ok := event.(map[string]any); ok && value["reset"] == true {
+			reset = true
+		}
+	}
+	if !reset {
+		t.Fatal("replacement was not sent to browser")
 	}
 }

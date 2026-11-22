@@ -275,7 +275,7 @@ Known, not all resolved:
 - Settings sync: tone, instructions, language, theme, the default model and web search follow the user between devices (`GET/PUT /account/settings`, table `user_settings`). API keys never leave the browser.
 - "+" → Compact: after a yes/no confirmation, GPT-6 Luna (on the user's key) folds everything but the last exchange into the chat's summary (`POST /conversations/{id}/compact`); later turns send the summary instead, and the thread marks where it happened.
 - Incognito keeps the home greeting, reading "Incognito mode"; the thinking label rotates every 10s through Fabrication, Hallucinating, Thinking, Overthinking, Pondering, Calculating, Predicting, Cooking, Synthesizing, Decoding, Guessing and Brewing.
-- Prompt caching: native Claude calls retain explicit breakpoints and thinking signatures. Only API-reported cache usage is recorded; Chat Completions does not expose cache details. Published cache rates refine internal USD estimates; actual Poe charges are points.
+- Prompt caching: production Bot Query does not expose measured cache usage; counters remain unknown. Internal USD usage is estimated, and actual Poe charges are points.
 - Streamed answers fade in as they arrive (240 ms per piece, off with reduced motion), at the stream's own pace.
 - A long paste (3000+ characters or 50+ lines) becomes a "Pasted text" attachment instead of filling the message box; a click previews it, with "Paste as text" to put it back. In the thread, text files open in the same preview (Copy, Download), and long messages fold to their first lines behind "Show more".
 - Code blocks show their language and a Copy button and are highlighted by a vendored highlight.js.

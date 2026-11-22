@@ -1677,7 +1677,7 @@ func directGenerate(ctx context.Context, gen provider.Client, apiModelID string,
 // every text chunk as it arrives (and onReasoning, if set, for every piece
 // of the model's thinking), and returns the stream's final GenerateResult
 // once the vendor signals it's done.
-func streamingGenerate(onDelta func(delta string), onReasoning func(text string)) generateCaller {
+func streamingGenerate(onDelta func(delta string), onReasoning func(text string), onReset ...func(string)) generateCaller {
 	return func(ctx context.Context, gen provider.Client, apiModelID string, messages []provider.Message) (provider.GenerateResult, error) {
 		streamingClient, ok := gen.(provider.StreamingClient)
 		if !ok {
@@ -1697,6 +1697,14 @@ func streamingGenerate(onDelta func(delta string), onReasoning func(text string)
 			}
 			if chunk.Reasoning != "" && onReasoning != nil {
 				onReasoning(chunk.Reasoning)
+			}
+			if chunk.Reset {
+				partial.Reset()
+				if len(onReset) > 0 {
+					onReset[0](chunk.Delta)
+					partial.WriteString(chunk.Delta)
+					continue
+				}
 			}
 			if chunk.Delta != "" {
 				if firstDelta != nil {
@@ -2061,6 +2069,7 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 	if err := s.loadCustomModel(ctx, &req); err != nil {
 		return chatResponse{}, err
 	}
+	ctx = provider.WithPoeRequest(ctx)
 	s.knowModel(ctx, req.ManualModelID)
 	if err := s.validateRequest(req); err != nil {
 		return chatResponse{}, err
@@ -2125,6 +2134,7 @@ func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.
 	if err := s.loadCustomModel(ctx, &req); err != nil {
 		return err
 	}
+	ctx = provider.WithPoeRequest(ctx)
 	s.knowModel(ctx, req.ManualModelID)
 	if err := s.validateRequest(req); err != nil {
 		return err
@@ -2215,6 +2225,12 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 		reasoning.WriteString(text)
 		mu.Unlock()
 		send("reasoning", map[string]string{"text": text})
+	}, func(text string) {
+		mu.Lock()
+		streamed.Reset()
+		streamed.WriteString(text)
+		mu.Unlock()
+		send("delta", map[string]any{"text": text, "reset": true})
 	})
 	onActivity := func(activity []conversation.ToolActivity) {
 		mu.Lock()

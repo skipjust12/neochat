@@ -15,7 +15,7 @@ const server=http.createServer((req,res)=>{
  const json=data=>{res.setHeader('Content-Type','application/json');res.end(JSON.stringify(data))};
  if(url.pathname==='/models'||url.pathname==='/models/refresh')return json(models);
  if(url.pathname==='/account/models'&&req.method==='POST'){
-  let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{const input=JSON.parse(body);assert.equal(input.url,'https://poe.com/Claude-Fable-5.2');assert.equal(input.provider,'anthropic');customModels=[{id:'custom-fable',name:'Claude Fable 5.2',provider:'anthropic',tier:'max',inputs:['text']}];json({models:customModels,legacy_overrides:legacyOverrides})});return;
+  let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{const input=JSON.parse(body);assert.equal(input.url,'https://poe.com/Claude-Fable-5.2');assert.equal(input.provider,'anthropic');assert.equal(input.context_window,1048576);customModels=[{id:'custom-fable',name:'Claude Fable 5.2',provider:'anthropic',tier:'max',inputs:['text'],context_window:input.context_window}];json({models:customModels,legacy_overrides:legacyOverrides})});return;
  }
  if(url.pathname.startsWith('/account/models/')&&req.method==='PATCH'){
   let body='';req.on('data',chunk=>body+=chunk);req.on('end',()=>{legacyOverrides[url.pathname.split('/').pop()]=JSON.parse(body).legacy;json({models:customModels,legacy_overrides:legacyOverrides})});return;
@@ -51,7 +51,7 @@ const server=http.createServer((req,res)=>{
   assert.equal(result.label,'');assert.equal(result.enabled,true);assert.equal(result.chosen,'gpt-6-luna');assert.equal(result.disabled,true);assert.equal(result.disabledLabel,'N/A');
   assert.equal(result.warn,'10000');assert.equal(result.low,'1000');assert.ok(!result.keyStatus.includes('pza_'));assert.equal(providerHeaders.length,0,'old vendor key was reused');
   await page.waitForFunction(()=>!document.documentElement.classList.contains('is-guest'));
-  await page.evaluate(()=>{document.getElementById('customModelProvider').value='anthropic';document.getElementById('customModelURL').value='https://poe.com/Claude-Fable-5.2';document.getElementById('customModelForm').requestSubmit()});
+  await page.evaluate(()=>{document.getElementById('customModelProvider').value='anthropic';document.getElementById('customModelURL').value='https://poe.com/Claude-Fable-5.2';document.getElementById('customModelContext').value='1048576';document.getElementById('customModelForm').requestSubmit()});
   await page.waitForFunction(()=>document.querySelector('.model-row[data-model-id="custom-fable"]'));
   await page.evaluate(()=>{document.getElementById('manageModelProvider').value='anthropic';document.getElementById('manageModelProvider').dispatchEvent(new Event('change'));document.getElementById('manageModelSelect').value='custom-fable';document.getElementById('manageModelSelect').dispatchEvent(new Event('change'));document.getElementById('modelLegacyToggle').click()});
   await page.waitForFunction(()=>document.querySelector('.model-list[data-legacy] .model-row[data-model-id="custom-fable"]'));
@@ -64,6 +64,7 @@ const server=http.createServer((req,res)=>{
   await page.reload({waitUntil:'domcontentloaded'});
   await page.waitForFunction(()=>document.querySelector('.model-row[data-model-id="custom-fable"]'));
   assert.equal(await page.locator('.model-list[data-legacy] .model-row[data-model-id="custom-fable"]').count(),1,'Legacy choice lost on reload');
+  assert.equal(await page.evaluate(()=>window.NeoChatModels.current().models.find(m=>m.id==='custom-fable').context_window),1048576,'context lost on reload');
   await page.evaluate(()=>{document.getElementById('manageModelProvider').value='anthropic';document.getElementById('manageModelProvider').dispatchEvent(new Event('change'));document.getElementById('manageModelSelect').value='custom-fable';document.getElementById('manageModelSelect').dispatchEvent(new Event('change'));document.getElementById('modelLegacyToggle').click()});
   await page.waitForFunction(()=>document.querySelector('.model-list:not([data-legacy]) .model-row[data-model-id="custom-fable"]'));
   await page.evaluate(()=>document.querySelector('#customModelsList button').click());

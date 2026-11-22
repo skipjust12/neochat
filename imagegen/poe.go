@@ -189,7 +189,7 @@ func (c *Client) generatePoeImage(ctx context.Context, key string, req Request) 
 	if endpoint == "" {
 		endpoint = "/chat/completions"
 	}
-	data, err := c.poeCall(ctx, key, http.MethodPost, endpoint, poeMediaBody(req.Model, req.Prompt, endpoint, req.References, nil, map[string]any{"aspect_ratio": req.AspectRatio}), 140<<20)
+	data, err := c.poeMediaQuery(ctx, key, req.Model, req.Prompt, endpoint, req.References, nil, map[string]any{"aspect_ratio": req.AspectRatio})
 	if err != nil {
 		return Result{}, err
 	}
@@ -237,7 +237,7 @@ func (c *Client) generatePoeVideo(ctx context.Context, key string, req VideoRequ
 	if limit <= 0 {
 		limit = defaultMaxVideoBytes
 	}
-	if req.Endpoint == "/videos" {
+	if req.Endpoint == "/videos" && !c.BotQuery {
 		return c.poeNativeVideo(ctx, key, req, limit)
 	}
 	endpoint := req.Endpoint
@@ -256,7 +256,7 @@ func (c *Client) generatePoeVideo(ctx context.Context, key string, req VideoRequ
 	if len(req.Videos) == 0 && req.Duration != "" && req.Duration != "auto" {
 		params["duration"] = req.Duration
 	}
-	data, err := c.poeCall(ctx, key, http.MethodPost, endpoint, poeMediaBody(req.Model, req.Prompt, endpoint, req.Images, req.Videos, params), 140<<20)
+	data, err := c.poeMediaQuery(ctx, key, req.Model, req.Prompt, endpoint, req.Images, req.Videos, params)
 	if err != nil {
 		return VideoResult{}, err
 	}
@@ -371,4 +371,31 @@ func (c *Client) poeNativeVideo(ctx context.Context, key string, req VideoReques
 			return VideoResult{}, err
 		}
 	}
+}
+
+func (c *Client) poeMediaQuery(ctx context.Context, key, model, prompt, endpoint string, images, videos []Reference, params map[string]any) ([]byte, error) {
+	if !c.BotQuery {
+		return c.poeCall(ctx, key, http.MethodPost, endpoint, poeMediaBody(model, prompt, endpoint, images, videos, params), 140<<20)
+	}
+	client := provider.NewPoeClient(key)
+	client.BotQuery = true
+	client.BotBaseURL = c.BotBaseURL
+	client.UploadURL = c.UploadURL
+	client.HTTP = c.HTTP
+	parts := []provider.Part{{Type: provider.PartText, Text: prompt}}
+	for i, ref := range images {
+		parts = append(parts, provider.Part{Type: provider.PartImage, MIME: ref.MIME, Data: ref.Data, Name: fmt.Sprintf("reference-%d.png", i)})
+	}
+	for i, ref := range videos {
+		parts = append(parts, provider.Part{Type: provider.PartVideo, MIME: ref.MIME, Data: ref.Data, Name: fmt.Sprintf("reference-%d.mp4", i)})
+	}
+	result, err := client.Generate(provider.WithPoeBotParameters(ctx, params), model, []provider.Message{{Role: "user", Content: prompt, Parts: parts}})
+	if err != nil {
+		return nil, err
+	}
+	content := []any{map[string]any{"type": "text", "text": result.Text}}
+	for _, attachment := range result.Attachments {
+		content = append(content, map[string]any{"type": "file", "url": attachment.URL})
+	}
+	return json.Marshal(map[string]any{"choices": []any{map[string]any{"message": map[string]any{"content": content}}}})
 }

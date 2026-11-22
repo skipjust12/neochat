@@ -28,17 +28,18 @@ const (
 )
 
 type modelEntry struct {
-	Unstable    bool     `json:"unstable,omitempty"`
-	Unavailable bool     `json:"unavailable,omitempty"`
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Provider    string   `json:"provider"`
-	Description string   `json:"description,omitempty"`
-	Tier        string   `json:"tier"`
-	Kind        string   `json:"kind,omitempty"`
-	Inputs      []string `json:"inputs"`
-	Legacy      bool     `json:"legacy,omitempty"`
-	New         bool     `json:"new,omitempty"`
+	ContextWindow int      `json:"context_window,omitempty"`
+	Unstable      bool     `json:"unstable,omitempty"`
+	Unavailable   bool     `json:"unavailable,omitempty"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Provider      string   `json:"provider"`
+	Description   string   `json:"description,omitempty"`
+	Tier          string   `json:"tier"`
+	Kind          string   `json:"kind,omitempty"`
+	Inputs        []string `json:"inputs"`
+	Legacy        bool     `json:"legacy,omitempty"`
+	New           bool     `json:"new,omitempty"`
 	// Video is a video model's choices and price tiers, for the composer;
 	// MaxReferences is how many pictures it takes (a video counts as two).
 	Video         *router.VideoOptions `json:"video,omitempty"`
@@ -144,7 +145,7 @@ func modelEntries(catalog router.Catalog, retired map[string]bool, added map[str
 		if len(inputs) == 0 {
 			inputs = []string{"text"}
 		}
-		entry := modelEntry{Unstable: m.Unstable, Unavailable: m.Unavailable || retired[m.ID], ID: m.ID, Name: modelName(m), Provider: m.Provider, Tier: modelTier(m), Kind: m.Kind, Inputs: inputs, Legacy: m.Legacy}
+		entry := modelEntry{ContextWindow: m.ContextWindow, Unstable: m.Unstable, Unavailable: m.Unavailable || retired[m.ID], ID: m.ID, Name: modelName(m), Provider: m.Provider, Tier: modelTier(m), Kind: m.Kind, Inputs: inputs, Legacy: m.Legacy}
 		if m.Kind == router.KindVideo {
 			entry.Video, entry.MaxReferences = m.Video, m.MaxReferenceImages
 		}

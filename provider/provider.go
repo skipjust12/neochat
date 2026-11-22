@@ -67,7 +67,9 @@ type Part struct {
 // limits.RecordThinkingMaxSpend -- estimates are only good enough for
 // pre-flight checks, billing runs on this.
 type GenerateResult struct {
-	Poe bool
+	UsageEstimated bool
+	Attachments    []PoeAttachment
+	Poe            bool
 	// USD per million tokens, only when the Poe catalog supplies the rate.
 	CacheReadPrice  *float64
 	CacheWritePrice *float64
@@ -112,6 +114,7 @@ type Client interface {
 // set (failure) -- the channel is always closed right after that terminal
 // chunk, so a range loop naturally ends there.
 type StreamChunk struct {
+	Reset bool
 	Delta string
 	// Reasoning is a piece of the model's thinking text (reasoning models
 	// that share it), sent before and between Delta chunks. It is never

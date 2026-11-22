@@ -74,7 +74,8 @@ func TestPoeUnlistedBotIsSelectableAndCalledByName(t *testing.T) {
 			} else if err == nil || !strings.Contains(clientErrorMessage(err), "Poe") {
 				t.Fatalf("bot refusal not surfaced: %v", err)
 			}
-			if calls.Load() != 1 {
+			expected := int32(1)
+			if calls.Load() != expected {
 				t.Errorf("unexpected fallback/retry: %d calls", calls.Load())
 			}
 		})

@@ -18,17 +18,21 @@ import (
 // Only the owner can use these definitions. They are never added to the
 // shared catalog or automatic routing, and contain no API credentials.
 type customModel struct {
-	ID       string `json:"id"`
-	Provider string `json:"provider"`
-	URL      string `json:"url"`
-	Name     string `json:"name"`
-	Handle   string `json:"handle"`
+	ContextWindow int    `json:"context_window,omitempty"`
+	ID            string `json:"id"`
+	Provider      string `json:"provider"`
+	URL           string `json:"url"`
+	Name          string `json:"name"`
+	Handle        string `json:"handle"`
 }
 
 var poeHandlePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
 var customProviders = map[string]bool{"anthropic": true, "openai": true, "google": true, "spacexai": true, "deepseek": true, "moonshot": true}
 
 func normalizeCustomModel(m customModel) (customModel, error) {
+	if m.ContextWindow < 0 || m.ContextWindow > 100000000 || (m.ContextWindow > 0 && m.ContextWindow < 1024) {
+		return m, fmt.Errorf("Context window must be between 1,024 and 100,000,000 tokens, or left empty for Auto.")
+	}
 	if !customProviders[m.Provider] {
 		return m, fmt.Errorf("Choose a supported provider.")
 	}
@@ -97,6 +101,9 @@ func (s *Server) customRouterModel(m customModel) router.Model {
 			known.Provider = m.Provider
 			known.ManualOnly = true
 			known.Legacy = false
+			if m.ContextWindow > 0 {
+				known.ContextWindow = m.ContextWindow
+			}
 			return known
 		}
 	}
@@ -108,6 +115,9 @@ func (s *Server) customRouterModel(m customModel) router.Model {
 			model.CostInputPerMTok = max(model.CostInputPerMTok, known.CostInputPerMTok)
 			model.CostOutputPerMTok = max(model.CostOutputPerMTok, known.CostOutputPerMTok)
 		}
+	}
+	if m.ContextWindow > 0 {
+		model.ContextWindow = m.ContextWindow
 	}
 	return model
 }

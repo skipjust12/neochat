@@ -151,6 +151,7 @@ func (a *webAnswer) add(res provider.GenerateResult) {
 		a.CacheReadPrice = res.CacheReadPrice
 		a.CacheWritePrice = res.CacheWritePrice
 	}
+	a.UsageEstimated = a.UsageEstimated || res.UsageEstimated
 	a.InputTokens += res.InputTokens
 	a.OutputTokens += res.OutputTokens
 	a.CachedTokens += res.CachedTokens

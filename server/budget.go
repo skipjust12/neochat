@@ -98,10 +98,17 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 	if stopped {
 		actual = math.Min(amount, router.ComputeCostUSDRates(inputRate, outputRate, inputBound, 2*tokenizer.EstimateText(result.Text)))
 	} else if !refused {
+		if result.UsageEstimated {
+			result.InputTokens = inputBound
+			result.OutputTokens = min(maxOutput, max(1, result.OutputTokens))
+		}
 		if result.InputTokens < 0 || result.OutputTokens < 0 || result.CachedTokens < 0 || result.CacheWriteTokens < 0 || result.CachedTokens+result.CacheWriteTokens > result.InputTokens || (amount > 0 && (result.InputTokens == 0 || (result.Text != "" && result.OutputTokens == 0))) {
 			return result, fmt.Errorf("provider returned missing or invalid usage; reservation retained")
 		}
 		actual = callCostUSD(inputRate, outputRate, result)
+		if result.UsageEstimated {
+			log.Printf("server: Poe Bot Query estimated usage model=%s input=%d output=%d; cache usage unavailable", modelID, result.InputTokens, result.OutputTokens)
+		}
 	}
 	billCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
