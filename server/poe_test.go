@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"neochat/limits"
 	"net/http"
 	"net/http/httptest"
 	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
+	"time"
 
 	"neochat/modelcatalog"
 	"neochat/provider"
@@ -144,5 +146,25 @@ func TestPoeSelectedOpusUsesOwnersPublicBot(t *testing.T) {
 	done := events["done"][0].(chatResponse)
 	if done.ResponseText != "OK" || done.SelectedModelID != "claude-opus-5.5" {
 		t.Fatalf("wrong Opus response %+v", done)
+	}
+}
+
+func TestPoeNativeAccessDeniedReleasesReservation(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, "event: error\ndata: {\"text\":\"This bot does not support API access\"}\n\n")
+	}))
+	defer api.Close()
+	s := newDirectServer(t, &polzaStandIn{})
+	c := provider.NewPoeClient("")
+	c.BotQuery = true
+	c.BotBaseURL = api.URL
+	s.Generators["openai"] = c
+	_, err := collectStream(s, context.Background(), chatRequest{UserID: "u1", PlanID: "pro", RequestedMode: "manual", ManualModelID: "gpt-6-luna", Message: "hi", providerKey: "key", WebSearch: "off"})
+	if err == nil || !strings.Contains(clientErrorMessage(err), "does not support API access") {
+		t.Fatalf("hidden denial: %v %q", err, clientErrorMessage(err))
+	}
+	spend, sumErr := s.Store.Sum(context.Background(), "u1", limits.PoolInstant, 24*time.Hour)
+	if sumErr != nil || spend != 0 {
+		t.Fatalf("refused request retained reserve: %g %v", spend, sumErr)
 	}
 }

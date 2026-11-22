@@ -21,6 +21,13 @@ import (
 	"time"
 )
 
+// BotAccessDenied is a pre-generation policy refusal, not an internal failure.
+type BotAccessDenied struct{ Model string }
+
+func (e *BotAccessDenied) Error() string {
+	return fmt.Sprintf("Poe: bot %q does not support API access. Use a public prompt bot based on this model and add its link in Settings.", e.Model)
+}
+
 type PoeAttachment struct {
 	URL         string `json:"url"`
 	ContentType string `json:"content_type"`
@@ -324,7 +331,11 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 				if message == "" {
 					message = "Poe Bot Query refused the request"
 				}
-				send(StreamChunk{Err: fmt.Errorf("Poe Bot Query: %s", message)})
+				if strings.EqualFold(strings.TrimSpace(message), "This bot does not support API access") && result.Text == "" && result.Reasoning == "" && len(result.Attachments) == 0 && len(toolCalls) == 0 {
+					send(StreamChunk{Err: &BotAccessDenied{Model: model}})
+				} else {
+					send(StreamChunk{Err: fmt.Errorf("Poe Bot Query: %s", strings.ReplaceAll(message, key, "[redacted]"))})
+				}
 				return false
 			case "file":
 				var a PoeAttachment
@@ -468,4 +479,33 @@ func (c *PoeClient) generateBot(ctx context.Context, model string, messages []Me
 		}
 	}
 	return GenerateResult{}, fmt.Errorf("Poe Bot Query returned no final response")
+}
+
+// Surface a proven pre-generation refusal before the public stream starts.
+// Every other accepted stream remains non-replayable.
+func (c *PoeClient) startBotStream(ctx context.Context, model string, messages []Message) (<-chan StreamChunk, error) {
+	source, err := c.streamBot(ctx, model, messages)
+	if err != nil {
+		return nil, err
+	}
+	first, ok := <-source
+	if !ok {
+		return nil, fmt.Errorf("Poe Bot Query closed without a response")
+	}
+	if _, denied := first.Err.(*BotAccessDenied); denied {
+		return nil, first.Err
+	}
+	out := make(chan StreamChunk, 1)
+	out <- first
+	go func() {
+		defer close(out)
+		for chunk := range source {
+			select {
+			case out <- chunk:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out, nil
 }

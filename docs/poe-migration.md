@@ -85,3 +85,14 @@ References:
 - https://creator.poe.com/docs/server-bots/accessing-other-bots-on-poe
 - https://creator.poe.com/api-reference/client-sdks
 - https://github.com/poe-platform/fastapi_poe
+
+## Observed API access refusal
+
+Live deployment logs showed `This bot does not support API access` for both
+Claude-Fable-5.2 and GPT-6-Luna through native Bot Query. Thus exact names and
+switching transports do not establish availability. This policy refusal is
+shown explicitly and refunds NeoChat's internal reservation; it does not claim
+to refund or change charges at Poe. An explicitly configured owner-selected
+fallback may run only if the refusal precedes all generated content/tool calls.
+The existing public Opus prompt bot is the confirmed working deployment path;
+other public prompt bots must be created and tested separately.

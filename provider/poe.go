@@ -319,7 +319,7 @@ func (c *PoeClient) generatePoe(ctx context.Context, model string, messages []Me
 
 func (c *PoeClient) streamPoe(ctx context.Context, model string, messages []Message) (<-chan StreamChunk, error) {
 	if c.BotQuery {
-		return c.streamBot(ctx, model, messages)
+		return c.startBotStream(ctx, model, messages)
 	}
 	model = c.resolveBot(model)
 	if err := validatePoeMessages(messages); err != nil {

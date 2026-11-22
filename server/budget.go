@@ -78,9 +78,10 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 	}
 	result, callErr := call(provider.WithOutputLimit(ctx, maxOutput), gen, modelID, messages)
 	// Only a known refusal is safe to refund without usage.
+	var denied *provider.BotAccessDenied
 	var circuitErr *provider.CircuitOpenError
 	var statusErr *provider.StatusError
-	refused := errors.As(callErr, &circuitErr) || (errors.As(callErr, &statusErr) && (statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode == http.StatusBadRequest || statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusPaymentRequired || statusErr.StatusCode == http.StatusForbidden || statusErr.StatusCode == http.StatusNotFound || statusErr.StatusCode == http.StatusRequestEntityTooLarge || statusErr.StatusCode == http.StatusUnprocessableEntity)) || errors.Is(callErr, provider.ErrMissingAPIKey)
+	refused := errors.As(callErr, &denied) || errors.As(callErr, &circuitErr) || (errors.As(callErr, &statusErr) && (statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode == http.StatusBadRequest || statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusPaymentRequired || statusErr.StatusCode == http.StatusForbidden || statusErr.StatusCode == http.StatusNotFound || statusErr.StatusCode == http.StatusRequestEntityTooLarge || statusErr.StatusCode == http.StatusUnprocessableEntity)) || errors.Is(callErr, provider.ErrMissingAPIKey)
 	// The user pressed Stop (the request context was canceled): the vendor
 	// stops generating when the connection drops, so settle on an estimate
 	// of what was actually produced instead of holding the full upper

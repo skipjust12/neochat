@@ -147,3 +147,51 @@ func TestBotQueryUploadsAreCachedOnlyWithinRequestAndKey(t *testing.T) {
 		t.Fatalf("cross-key/request cache reuse: %d", uploads)
 	}
 }
+
+func TestBotQueryAccessDenialAndExplicitFallback(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprint(stream), func(t *testing.T) {
+			calls := 0
+			c := nativeFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.URL.Path == "/Official" {
+					fmt.Fprint(w, "event: error\ndata: {\"text\":\"This bot does not support API access\"}\n\n")
+					return
+				}
+				if r.URL.Path != "/MyPublicBot" {
+					t.Error(r.URL.Path)
+				}
+				fmt.Fprint(w, "event: text\ndata: {\"text\":\"OK\"}\n\nevent: done\ndata: {}\n\n")
+			})
+			if stream {
+				if _, err := c.GenerateStream(context.Background(), "Official", []Message{{Role: "user", Content: "hi"}}); err == nil {
+					t.Fatal("denial hidden")
+				}
+			} else {
+				if _, err := c.Generate(context.Background(), "Official", []Message{{Role: "user", Content: "hi"}}); err == nil {
+					t.Fatal("denial hidden")
+				}
+			}
+			c.BotFallbacks = map[string]string{"official": "MyPublicBot"}
+			if stream {
+				ch, err := c.GenerateStream(context.Background(), "Official", []Message{{Role: "user", Content: "hi"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for chunk := range ch {
+					if chunk.Err != nil {
+						t.Fatal(chunk.Err)
+					}
+				}
+			} else {
+				result, err := c.Generate(context.Background(), "Official", []Message{{Role: "user", Content: "hi"}})
+				if err != nil || result.Text != "OK" {
+					t.Fatalf("%+v %v", result, err)
+				}
+			}
+			if calls != 3 {
+				t.Fatalf("calls %d", calls)
+			}
+		})
+	}
+}

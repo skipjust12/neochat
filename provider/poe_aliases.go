@@ -43,7 +43,8 @@ func (c *PoeClient) resolveBot(model string) string {
 
 func (c *PoeClient) fallbackBot(model string, err error) string {
 	var status *StatusError
-	if !errors.As(err, &status) || status.StatusCode != 404 {
+	var denied *BotAccessDenied
+	if !errors.As(err, &denied) && (!errors.As(err, &status) || status.StatusCode != 404) {
 		return ""
 	}
 	bot := c.BotFallbacks[strings.ToLower(poeModelName(model))]
@@ -55,7 +56,7 @@ func (c *PoeClient) fallbackBot(model string, err error) string {
 func (c *PoeClient) Generate(ctx context.Context, model string, messages []Message) (GenerateResult, error) {
 	result, err := c.generatePoe(ctx, model, messages)
 	if bot := c.fallbackBot(model, err); bot != "" {
-		log.Printf("provider: Poe bot fallback model=%s bot=%s after HTTP 404", model, bot)
+		log.Printf("provider: Poe bot fallback model=%s bot=%s after pre-generation refusal", model, bot)
 		return c.generatePoe(ctx, bot, messages)
 	}
 	return result, err
@@ -64,7 +65,7 @@ func (c *PoeClient) GenerateStream(ctx context.Context, model string, messages [
 	stream, err := c.streamPoe(ctx, model, messages)
 	// Only initial HTTP refusal is eligible. Never replay an accepted stream.
 	if bot := c.fallbackBot(model, err); bot != "" {
-		log.Printf("provider: Poe bot fallback model=%s bot=%s after HTTP 404", model, bot)
+		log.Printf("provider: Poe bot fallback model=%s bot=%s after pre-generation refusal", model, bot)
 		return c.streamPoe(ctx, bot, messages)
 	}
 	return stream, err
