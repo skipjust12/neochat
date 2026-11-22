@@ -24,6 +24,7 @@ COPY --from=build /out/server ./server
 # (configs/*.json, prompts/*.md) -- see cmd/server/main.go.
 COPY configs ./configs
 COPY prompts ./prompts
+COPY scripts/diagnose-poe-bots.py ./diagnose-poe-bots.py
 
 USER neochat
 EXPOSE 8080

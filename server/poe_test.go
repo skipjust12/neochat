@@ -7,6 +7,7 @@ import (
 	"math"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -24,7 +25,7 @@ func TestPoeUnlistedBotIsSelectableAndCalledByName(t *testing.T) {
 				calls.Add(1)
 				var body map[string]any
 				json.NewDecoder(r.Body).Decode(&body)
-				if r.URL.Path != "/chat/completions" || body["model"] != "gpt-6-luna" || r.Header.Get("Authorization") != "Bearer poe-test" {
+				if r.URL.Path != "/chat/completions" || body["model"] != "GPT-6-Luna" || r.Header.Get("Authorization") != "Bearer poe-test" {
 					t.Errorf("bot request=%s %v", r.URL.Path, body)
 				}
 				if status != 200 {
@@ -97,5 +98,50 @@ func TestPoeCachePricesAreUsedForSettlementAndAggregatedUsage(t *testing.T) {
 	result.CacheWritePrice = nil
 	if got := callCostUSD(1, 2, result); math.Abs(got-0.00102) > 1e-12 {
 		t.Fatalf("unknown cache pricing=%g", got)
+	}
+}
+
+func TestPoeSelectedOpusUsesOwnersPublicBot(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]any
+		json.NewDecoder(r.Body).Decode(&body)
+		if body["model"] == "Claude-Opus-5.5" {
+			w.WriteHeader(404)
+			fmt.Fprint(w, `{"error":{"message":"Model not found"}}`)
+			return
+		}
+		if body["model"] != "neobotclaude55" {
+			t.Errorf("Opus sent to %v", body["model"])
+		}
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"OK\"},\"finish_reason\":\"stop\"}]}\n\ndata: {\"choices\":[],\"usage\":{\"prompt_tokens\":100,\"completion_tokens\":1}}\n\ndata: [DONE]\n\n")
+	}))
+	defer api.Close()
+	client := provider.NewPoeClient("")
+	client.BaseURL = api.URL
+	config, err := os.ReadFile("../configs/poe-bot-fallbacks.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.BotFallbacks, err = provider.ParsePoeBotAliases(string(config))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s := newDirectServer(t, &polzaStandIn{})
+	s.Generators = map[string]provider.Client{"anthropic": client}
+	base, err := router.LoadCatalog("../configs/models.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Router.Catalog, err = modelcatalog.LoadPoe(base, "../configs/poe-models.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	events, err := collectStream(s, context.Background(), chatRequest{UserID: "u1", PlanID: "pro", RequestedMode: "manual", ManualModelID: "claude-opus-5.5", Message: "Hi", providerKey: "test-poe", WebSearch: "off"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	done := events["done"][0].(chatResponse)
+	if done.ResponseText != "OK" || done.SelectedModelID != "claude-opus-5.5" {
+		t.Fatalf("wrong Opus response %+v", done)
 	}
 }

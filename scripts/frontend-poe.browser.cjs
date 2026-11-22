@@ -37,6 +37,7 @@ const server=http.createServer((req,res)=>{
    const disabled=document.querySelector('.model-row[data-model-id="disabled"]');disabled.click();
    return {label:row.querySelector('.model-meta').textContent,enabled:!row.disabled,chosen:document.getElementById('manualState').dataset.modelId,disabledLabel:disabled.querySelector('.model-meta').textContent,disabled:disabled.disabled,warn:document.getElementById('balanceWarnAt').value,low:document.getElementById('balanceLowAt').value,keyStatus:document.getElementById('providerKeyStatus').textContent};
   });
+  assert.equal(await page.locator('.model-row[data-model-id="gpt-5.4-mini"] .model-meta').count(),0);
   assert.equal(result.label,'Unstable');assert.equal(result.enabled,true);assert.equal(result.chosen,'gpt-6-luna');assert.equal(result.disabled,true);assert.equal(result.disabledLabel,'N/A');
   assert.equal(result.warn,'10000');assert.equal(result.low,'1000');assert.ok(!result.keyStatus.includes('pza_'));assert.equal(providerHeaders.length,0,'old vendor key was reused');
   assert.deepEqual(errors,[],'browser errors');

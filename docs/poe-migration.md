@@ -139,3 +139,45 @@ Official references:
 - <https://creator.poe.com/api-reference/listModels>
 - <https://creator.poe.com/api-reference/getCurrentBalance>
 - <https://creator.poe.com/api-reference/createVideo>
+
+## Exact bot handles and user-owned prompt bots
+
+The picker uses readable labels (Gemini 4 Hydrogen, GPT-6.1 Sol Pro), not raw
+Poe slugs or bot descriptions. API identifiers remain separate. Unlisted bots
+are sent by their canonical handles, for example `Claude-Opus-5.5`. A correct
+handle is necessary but does not establish API availability for an account.
+
+If you create your own public prompt bot, explicitly map the original model
+to its handle in `.env`, for example:
+
+```dotenv
+POE_BOT_ALIASES={"claude-opus-5.5":"YourPublicOpusBot"}
+```
+
+`configs/poe-bot-fallbacks.json` configures `neobotclaude55` as the project
+owner’s explicit fallback for `claude-opus-5.5`. The official bot is attempted
+first. Only an HTTP 404 before generation starts permits the fallback.
+`POE_BOT_FALLBACKS` overrides the file; `{}` disables fallback.
+`POE_BOT_ALIASES` is separate and forces an explicit bot mapping when set.
+
+Only use a bot you selected and verified. This setting does not create bots,
+change their underlying models, or prove that Poe exposes a given base model
+through its API. No community bot is substituted automatically.
+
+To test the documented transports independently of NeoChat, run:
+
+```bash
+docker exec -it neochat-server python3 /app/diagnose-poe-bots.py
+```
+
+Enter the key locally at the hidden prompt. This makes small paid test
+requests via Chat Completions, Responses, Claude Messages where applicable,
+and the native Bot Query endpoint used by the official `fastapi_poe` client.
+The key is not printed. A native Bot Query success is diagnostic evidence;
+NeoChat does not silently switch to this different protocol, which has
+different tool, upload and usage accounting semantics.
+
+References:
+- <https://creator.poe.com/docs/external-applications/external-application-guide>
+- <https://creator.poe.com/docs/server-bots/accessing-other-bots-on-poe>
+- <https://github.com/poe-platform/fastapi_poe/blob/main/src/fastapi_poe/client.py>

@@ -1070,7 +1070,7 @@
     // Poe's public metadata: new models join their vendor's list.
     // Unlisted curated bots remain selectable as Unstable. The last list is kept in this browser so
     // the picker is filled before the server answers.
-    const MODELS_CACHE='neochat-models-poe-v1';
+    const MODELS_CACHE='neochat-models-poe-v2';
     const tierNames={max:'Max',thinking:'Thinking',instant:'Instant'};
     const modelIcons={};
     document.getElementById('modelIcons').content.querySelectorAll('[data-provider]').forEach(function(icon){
@@ -1123,16 +1123,16 @@
         name.append(badge);
       }
       copy.append(name);
-      if(model.description||model.unavailable||model.unstable){
+      if(model.unavailable||model.unstable){
         const meta=document.createElement('span');
         meta.className='model-meta';
         const text=document.createElement('span');
-        text.textContent=model.unavailable?'N/A':model.unstable?'Unstable':model.description;
+        text.textContent=model.unavailable?'N/A':'Unstable';
         meta.append(text);
         copy.append(meta);
       }
       const tier=document.createElement('span');
-      tier.className='model-tier'+(model.description?'':' is-solo');
+      tier.className='model-tier'+(model.unstable?'':' is-solo');
       tier.textContent=(tierNames[model.tier]||'Instant')+(model.kind==='image'?'/image':model.kind==='video'?'/video':'')+' tier';
       if(!model.unavailable)copy.append(tier);
       row.append(symbol,copy);

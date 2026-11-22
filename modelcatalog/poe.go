@@ -118,9 +118,11 @@ func applyPoe(m router.Model, p PoeModel) router.Model {
 	// A null price must never make a previously paid model appear free.
 	m.CostCacheReadPerMTok = nil
 	m.CostCacheWritePerMTok = nil
-	if p.Metadata.Name != "" {
-		m.DisplayName = p.Metadata.Name
+	name := p.Metadata.Name
+	if name == "" {
+		name = p.ID
 	}
+	m.DisplayName = poeDisplayName(name)
 	m.Description = p.Description
 	oldFile := contains(m.InputModalities, "file")
 	m.InputModalities = nil
@@ -222,7 +224,7 @@ func MergePoe(base router.Catalog, live []PoeModel, now time.Time) (*State, erro
 			m.Poe = true
 			m.Unavailable = false
 			m.Unstable = true
-			m.APIModelID = m.ID
+			m.APIModelID = poeBotHandle(m.ID, m.DisplayName)
 			m.PoeEndpoints = []string{"/v1/chat/completions"}
 			m.PoeReasoningParameter = ""
 			m.PoeReasoningValues = nil

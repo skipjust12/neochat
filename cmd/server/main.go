@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -108,6 +109,14 @@ func main() {
 	// not required to start.
 	var liveModels *modelcatalog.Live
 	poeClient := provider.NewPoeClient(os.Getenv("POE_API_KEY"))
+	poeClient.BotAliases, err = provider.ParsePoeBotAliases(os.Getenv("POE_BOT_ALIASES"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	poeClient.BotFallbacks, err = loadPoeBotFallbacks("configs/poe-bot-fallbacks.json")
+	if err != nil {
+		log.Fatal(err)
+	}
 	poeClient.ModelInfo = func(id string) provider.PoeModelInfo {
 		current := catalog
 		if liveModels != nil {
@@ -590,4 +599,17 @@ func getenvDurationDefault(key string, def time.Duration) time.Duration {
 		log.Fatalf("%s must be positive", key)
 	}
 	return d
+}
+
+// Explicit environment aliases override the deployment's public-bot mapping.
+func loadPoeBotFallbacks(path string) (map[string]string, error) {
+	raw, configured := os.LookupEnv("POE_BOT_FALLBACKS")
+	if !configured {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read Poe bot aliases: %w", err)
+		}
+		raw = string(data)
+	}
+	return provider.ParsePoeBotAliases(raw)
 }

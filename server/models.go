@@ -146,9 +146,6 @@ func modelEntries(catalog router.Catalog, retired map[string]bool, added map[str
 		if m.Kind == router.KindVideo {
 			entry.Video, entry.MaxReferences = m.Video, m.MaxReferenceImages
 		}
-		if !m.Legacy {
-			entry.Description = m.Description
-		}
 		if at, ok := added[m.ID]; ok && time.Since(at) < newModelDays*24*time.Hour {
 			entry.New = true
 		}

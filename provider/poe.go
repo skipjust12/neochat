@@ -41,6 +41,8 @@ type PoeClient struct {
 	HTTP           *http.Client
 	fallbackKey    string
 	ModelInfo      func(string) PoeModelInfo
+	BotAliases     map[string]string
+	BotFallbacks   map[string]string
 }
 
 func NewPoeClient(key string) *PoeClient {
@@ -277,8 +279,8 @@ func (r poeResponse) result() (GenerateResult, error) {
 	return out, nil
 }
 
-func (c *PoeClient) Generate(ctx context.Context, model string, messages []Message) (GenerateResult, error) {
-	model = poeModelName(model)
+func (c *PoeClient) generatePoe(ctx context.Context, model string, messages []Message) (GenerateResult, error) {
+	model = c.resolveBot(model)
 	if err := validatePoeMessages(messages); err != nil {
 		return GenerateResult{}, err
 	}
@@ -309,8 +311,8 @@ func (c *PoeClient) Generate(ctx context.Context, model string, messages []Messa
 	return out, err
 }
 
-func (c *PoeClient) GenerateStream(ctx context.Context, model string, messages []Message) (<-chan StreamChunk, error) {
-	model = poeModelName(model)
+func (c *PoeClient) streamPoe(ctx context.Context, model string, messages []Message) (<-chan StreamChunk, error) {
+	model = c.resolveBot(model)
 	if err := validatePoeMessages(messages); err != nil {
 		return nil, err
 	}

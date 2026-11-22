@@ -25,7 +25,7 @@ func TestPoeSnapshotKeepsUnlistedBotsSelectableAndRealIDs(t *testing.T) {
 		t.Fatal(err)
 	}
 	unavailable, ok := catalog.FindModel("gpt-6-luna")
-	if !ok || unavailable.Unavailable || !unavailable.Unstable || !unavailable.ManualOnly || unavailable.ResolveAPIModelID() != "gpt-6-luna" {
+	if !ok || unavailable.Unavailable || !unavailable.Unstable || !unavailable.ManualOnly || unavailable.ResolveAPIModelID() != "GPT-6-Luna" {
 		t.Fatalf("unlisted bot lost or blocked: %+v", unavailable)
 	}
 	active := 0
