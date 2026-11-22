@@ -32,6 +32,11 @@ jobs:
           # silently drift from it.
           go-version-file: go.mod
 
+      - name: Install video test dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
+
       - name: go build
         run: go build ./...
 
@@ -71,6 +76,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - name: Install video test dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
 
       # The repo's own docker-compose.yml is used rather than GitHub
       # service containers so CI runs against the same Postgres/Redis
