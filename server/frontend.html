@@ -5577,28 +5577,32 @@
       let timer=0;
       let finishing=false;
       let cancelled=false;
-      let lastTick=performance.now();
+      let lastTick=0;
       let renderedLength=0;
       let fades=[];
       let resolveFinished=function(){};
       const finished=new Promise(function(resolve){resolveFinished=resolve});
 
       function schedule(){
-        if(!timer&&!cancelled)timer=setTimeout(renderNext,24);
+        if(!timer&&!cancelled){
+          // Start the clock when text is ready, never while the model thinks.
+          if(!lastTick)lastTick=performance.now();
+          timer=setTimeout(renderNext,24);
+        }
       }
 
       function renderNext(){
         timer=0;
         if(cancelled)return;
         const now=performance.now();
-        const elapsed=Math.max(16,Math.min(1000,now-lastTick));
+        const elapsed=lastTick?Math.max(16,Math.min(48,now-lastTick)):24;
         lastTick=now;
         const backlog=queuedCharacters.length;
         if(backlog){
           const rate=finishing
-            ?Math.min(5000,Math.max(240,Math.ceil(backlog/1.8)))
+            ?Math.min(2000,Math.max(240,Math.ceil(backlog/1.8)))
             :Math.min(1800,160+backlog*2.5);
-          const count=Math.max(1,Math.min(backlog,Math.ceil(rate*elapsed/1000)));
+          const count=Math.max(1,Math.min(backlog,48,Math.ceil(rate*elapsed/1000)));
           visibleText+=queuedCharacters.splice(0,count).join('');
           const stayAtBottom=chatLog.scrollHeight-chatLog.scrollTop-chatLog.clientHeight<96;
           renderMarkdown(body,visibleText);
@@ -5611,6 +5615,7 @@
           if(stayAtBottom)chatLog.scrollTop=chatLog.scrollHeight;
         }
         if(queuedCharacters.length){schedule();return}
+        lastTick=0;
         if(finishing)resolveFinished();
       }
 
@@ -5630,6 +5635,7 @@
             queuedCharacters=streamTextParts(completeText.slice(visibleText.length));
           }else{
             visibleText='';
+            renderedLength=0;fades=[];lastTick=0;
             queuedCharacters=streamTextParts(completeText);
           }
           schedule();

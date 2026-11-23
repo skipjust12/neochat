@@ -100,3 +100,38 @@ test('a new action cancels the return to thinking, for all tool types',()=>{
     assert.equal(h.frames.length,count);
   }
 });
+
+function smoothStreamHarness(){
+  let now=0,nextID=1;const timers=new Map(),frames=[];
+  const body={textContent:''},message={dataset:{},querySelector:()=>body};
+  const context=vm.createContext({performance:{now:()=>now},Math,Array,String,Promise,
+    chatLog:{scrollHeight:0,scrollTop:0,clientHeight:0},STREAM_FADE_MS:240,
+    streamTextParts:text=>Array.from(text),renderMarkdown:(node,text)=>{node.textContent=text;frames.push(text)},fadeNewText(){},
+    setTimeout:(fn,ms)=>{const id=nextID++;timers.set(id,{fn,at:now+ms});return id},clearTimeout:id=>timers.delete(id)
+  });
+  vm.runInContext(section('    function createSmoothMessageStream(', '    async function regenerateMessage('),context);
+  return {stream:context.createSmoothMessageStream(message),frames,
+    advance(ms){now+=ms;for(const [id,timer]of timers)if(timer.at<=now){timers.delete(id);timer.fn()}},
+    drain(){for(let i=0;timers.size&&i<10000;i++)this.advance(24);assert.equal(timers.size,0)}
+  };
+}
+test('a complete answer after long thinking still renders progressively',async()=>{
+  const h=smoothStreamHarness();h.advance(30000);const text='Ответ '.repeat(40);
+  h.stream.append(text);h.stream.replace(text);const done=h.stream.finish();h.advance(24);
+  assert.ok(h.frames[0].length>0&&h.frames[0].length<text.length,'first tick dumped the complete answer');
+  h.drain();await done;assert.equal(h.stream.visibleText(),text);assert.ok(h.frames.length>3);
+});
+test('text after a pause and a stalled browser frame never catches up in one burst',()=>{
+  const h=smoothStreamHarness();h.stream.append('Начало.');h.drain();h.advance(20000);
+  const before=h.stream.visibleText().length;h.stream.append(' Продолжение.'.repeat(40));h.advance(24);
+  assert.ok(h.stream.visibleText().length-before<=48);
+  const length=h.stream.visibleText().length;h.advance(10000);
+  assert.ok(h.stream.visibleText().length-length<=48,'stalled frame dumped the backlog');
+  h.stream.cancel();
+});
+test('whole-response replacement preserves final text and cancellation stops painting',async()=>{
+  const h=smoothStreamHarness();h.stream.append('Old text');h.drain();const text='New answer '.repeat(40);
+  h.stream.replace(text);const done=h.stream.finish();h.advance(24);
+  assert.ok(h.frames.at(-1).length<text.length);h.drain();await done;assert.equal(h.stream.visibleText(),text);
+  const stop=smoothStreamHarness();stop.stream.append(text);stop.advance(24);stop.stream.cancel();const count=stop.frames.length;stop.advance(10000);assert.equal(stop.frames.length,count);
+});
