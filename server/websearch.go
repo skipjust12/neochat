@@ -58,10 +58,10 @@ func validWebSearchMode(mode string) bool {
 
 // Limits for one answer.
 const (
-	webMaxRounds     = 8  // model calls, tool steps in between
-	webMaxSearches   = 5  // web_search calls
-	webMaxFetches    = 6  // web_fetch calls
-	webSearchResults = 10 // results per search
+	webMaxRounds     = webMaxSearches + 3 // searches plus continuation/final-answer calls
+	webMaxSearches   = 12                 // web_search calls
+	webMaxFetches    = 6                  // web_fetch calls
+	webSearchResults = 10                 // results per search
 	webFetchWindow   = 20_000
 	webToolWorkers   = 4 // tool calls of one step run in parallel
 	webStepTimeout   = 45 * time.Second
