@@ -78,6 +78,13 @@
         <button type="button" class="sketch-tool" id="sketchClear" aria-label="Clear" title="Clear" disabled><svg class="lucide lucide-trash-2" data-lucide-icon="trash-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg></button>
       </div>
     </div>
+    <div class="sketch-properties" aria-label="New drawing settings">
+      <label>Pen <input id="sketchPenWidth" type="range" min="1" max="32" value="4" aria-label="Pencil size"><output id="sketchPenWidthValue">4 px</output></label>
+      <label>Outline <input id="sketchOutlineWidth" type="range" min="1" max="24" value="4" aria-label="Outline width"><output id="sketchOutlineWidthValue">4 px</output></label>
+      <label>Opacity <input id="sketchOpacity" type="range" min="0" max="100" value="100" aria-label="Drawing opacity"><output id="sketchOpacityValue">100%</output></label>
+      <label>Line <select id="sketchLineStyle" aria-label="Line style"><option value="solid">Solid</option><option value="dashed">Dashed</option></select></label>
+      <button id="sketchPaste" type="button" class="sketch-paste">Paste image</button>
+    </div>
     <div class="sketch-stage"><canvas id="sketchCanvas" width="1600" height="1120" aria-label="Drawing area"></canvas><textarea class="sketch-text-editor" id="sketchTextEditor" rows="1" spellcheck="false" aria-label="Text on the sketch" hidden></textarea></div>
     <div class="sketch-actions">
       <button type="button" class="sketch-cancel" id="sketchCancel">Cancel</button>
@@ -7366,6 +7373,10 @@
     const coarse=window.matchMedia('(pointer: coarse)');
     const textFont=getComputedStyle(document.body).fontFamily||'system-ui, sans-serif';
     let tool='pen',color='#111111';
+    let pencilSize=PEN,outlineSize=SHAPE,opacity=1,dashed=false;
+    const imageAssets=new Map();
+    let imageSerial=0,sketchSession=0,pasteOperation=0;
+    const pasteButton=document.getElementById('sketchPaste');
     let strokes=[]; // ink: {kind:'pen'|'erase',color,width,points}
     let shapes=[];  // {kind:'rect'|'ellipse'|'line'|'arrow'|'text',color,width,x1,y1,x2,y2}, text also {text,size}
     let selected=null;
@@ -7409,17 +7420,22 @@
       inkCtx.setTransform(SCALE,0,0,SCALE,0,0);
       inkCtx.lineCap='round';inkCtx.lineJoin='round';
       inkCtx.lineWidth=stroke.width;
+      inkCtx.globalAlpha=stroke.kind==='erase'?1:(stroke.opacity===undefined?1:stroke.opacity);
+      inkCtx.setLineDash(stroke.dashed&&stroke.kind!=='erase'?[stroke.width*3,stroke.width*2]:[]);
       inkCtx.strokeStyle=stroke.color;
       inkCtx.globalCompositeOperation=stroke.kind==='erase'?'destination-out':'source-over';
     }
     function redrawInk(){
       inkCtx.setTransform(1,0,0,1,0,0);
-      inkCtx.globalCompositeOperation='source-over';
+      inkCtx.globalCompositeOperation='source-over';inkCtx.globalAlpha=1;
       inkCtx.clearRect(0,0,ink.width,ink.height);
       strokes.forEach(function(stroke){inkStyle(stroke);strokePath(inkCtx,stroke.points);inkCtx.stroke()});
     }
     // While drawing: only the newest piece, so long strokes stay fast.
     function drawTail(stroke){
+      // Alpha and dashed paths must be painted once as a whole, not as
+      // overlapping tails that darken the ink or restart every dash.
+      if(stroke.opacity<1||stroke.dashed){redrawInk();return}
       const points=stroke.points;
       inkStyle(stroke);
       strokePath(inkCtx,points.slice(Math.max(0,points.length-3)));
@@ -7458,15 +7474,19 @@
       shape.y1=Math.min(anchorY,anchorY+dirY*height);shape.y2=Math.max(anchorY,anchorY+dirY*height);
     }
     function drawShape(c,shape){
+      if(shape.kind==='image'){const asset=imageAssets.get(shape.imageId);if(!asset)return;const b=box(shape);c.save();c.globalAlpha=shape.opacity===undefined?1:shape.opacity;c.drawImage(asset,b.x,b.y,b.w,b.h);c.restore();return}
       if(shape.kind==='text'){
         const b=box(shape);
         c.save();
+        c.globalAlpha=shape.opacity===undefined?1:shape.opacity;
         c.font=fontOf(shape.size);c.fillStyle=shape.color;c.textBaseline='top';
         shape.text.split('\n').forEach(function(line,i){c.fillText(line,b.x,b.y+i*shape.size*TEXT_LINE+shape.size*(TEXT_LINE-1)/2)});
         c.restore();
         return;
       }
       c.save();
+      c.globalAlpha=shape.opacity===undefined?1:shape.opacity;
+      c.setLineDash(shape.dashed?[shape.width*3,shape.width*2]:[]);
       c.strokeStyle=shape.color;c.lineWidth=shape.width;c.lineCap='round';c.lineJoin='round';
       c.beginPath();
       if(shape.kind==='rect'){
@@ -7506,11 +7526,14 @@
     }
     function render(forExport){
       ctx.setTransform(1,0,0,1,0,0);
+      ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
       ctx.fillStyle='#ffffff';
       ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.drawImage(ink,0,0);
       ctx.setTransform(SCALE,0,0,SCALE,0,0);
-      shapes.forEach(function(shape){if(!editing||editing.shape!==shape)drawShape(ctx,shape)});
+      shapes.forEach(function(shape){if(shape.kind==='image')drawShape(ctx,shape)});
+      ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(ink,0,0);
+      ctx.setTransform(SCALE,0,0,SCALE,0,0);
+      shapes.forEach(function(shape){if(shape.kind!=='image'&&(!editing||editing.shape!==shape))drawShape(ctx,shape)});
       if(!forExport&&selected&&!editing)drawSelection(selected);
     }
 
@@ -7545,7 +7568,7 @@
       return p.x>=b.x-slack&&p.x<=b.x+b.w+slack&&p.y>=b.y-slack&&p.y<=b.y+b.h+slack;
     }
     function shapeAt(p){
-      for(let i=shapes.length-1;i>=0;i--)if(grabs(shapes[i],p))return shapes[i];
+      for(const images of [false,true])for(let i=shapes.length-1;i>=0;i--)if((shapes[i].kind==='image')===images&&grabs(shapes[i],p))return shapes[i];
       return null;
     }
     function handleAt(p){
@@ -7555,7 +7578,7 @@
     }
     function eraseShapesAt(p){
       const before=shapes.length;
-      shapes=shapes.filter(function(shape){return outlineDistance(shape,p)>ERASER/2+shape.width/2});
+      shapes=shapes.filter(function(shape){return shape.kind==='image'||outlineDistance(shape,p)>ERASER/2+shape.width/2});
       if(shapes.indexOf(selected)<0)selected=null;
       return shapes.length!==before;
     }
@@ -7569,6 +7592,7 @@
       editor.style.font=fontOf(shape.size*k);
       editor.style.lineHeight=String(TEXT_LINE);
       editor.style.color=shape.color;
+      editor.style.opacity=String(shape.opacity===undefined?1:shape.opacity);
       editor.style.width=Math.min(r.width-shape.x1*k,Math.max(textWidth(editor.value||'M',shape.size)*k+shape.size*k,40))+'px';
       editor.style.height=lines*shape.size*TEXT_LINE*k+'px';
     }
@@ -7629,7 +7653,7 @@
         if(handle&&selected&&selected.kind==='text'){remember();drag={type:'resize',keys:handle.keys};return}
         const hit=shapeAt(p);
         if(hit&&hit.kind==='text'){startText(hit,false);return}
-        startText({kind:'text',color:color,width:0,text:'',size:TEXT_SIZE,x1:p.x,y1:Math.max(0,p.y-TEXT_SIZE*TEXT_LINE/2),x2:p.x,y2:p.y},true);
+        startText({kind:'text',color:color,width:0,opacity:opacity,text:'',size:TEXT_SIZE,x1:p.x,y1:Math.max(0,p.y-TEXT_SIZE*TEXT_LINE/2),x2:p.x,y2:p.y},true);
         return;
       }
       if(tool!=='pen'&&tool!=='eraser'){
@@ -7639,7 +7663,7 @@
         if(hit){remember();selected=hit;drag={type:'move',last:p};render();return}
         if(tool==='select'){selected=null;render();return}
         remember();
-        const shape={kind:tool,color:color,width:SHAPE,x1:p.x,y1:p.y,x2:p.x,y2:p.y};
+        const shape={kind:tool,color:color,width:outlineSize,opacity:opacity,dashed:dashed,x1:p.x,y1:p.y,x2:p.x,y2:p.y};
         shapes.push(shape);selected=shape;
         drag={type:'shape'};
         render();
@@ -7647,7 +7671,7 @@
       }
       remember();
       selected=null;
-      const stroke={kind:tool==='eraser'?'erase':'pen',color:color,width:tool==='eraser'?ERASER:PEN,points:[[p.x,p.y]]};
+      const stroke={kind:tool==='eraser'?'erase':'pen',color:color,width:tool==='eraser'?ERASER:pencilSize,opacity:tool==='eraser'?1:opacity,dashed:tool==='eraser'?false:dashed,points:[[p.x,p.y]]};
       strokes.push(stroke);
       drag={type:'stroke',stroke:stroke};
       drawTail(stroke);
@@ -7687,6 +7711,53 @@
     }
     canvas.addEventListener('pointerup',endGesture);
     canvas.addEventListener('pointercancel',endGesture);
+
+    /* Clipboard images stay as movable/resizable background objects. */
+    async function insertClipboardImage(blob,session){
+      if(!blob||!blob.type.startsWith('image/'))return;
+      if(blob.size>20*1024*1024){if(window.toast)window.toast('Paste an image under 20 MB.');return}
+      const imageOpacity=opacity,url=URL.createObjectURL(blob);
+      try{
+        const image=await new Promise(function(resolve,reject){const image=new Image();image.onload=function(){resolve(image)};image.onerror=function(){reject(new Error('Could not read the clipboard image.'))};image.src=url});
+        if(dialog.hidden||session!==sketchSession)return;
+        if(!image.naturalWidth||!image.naturalHeight)throw new Error('Could not read the clipboard image.');
+        const scale=Math.min(1,(W*SCALE)/image.naturalWidth,(H*SCALE)/image.naturalHeight);
+        const asset=document.createElement('canvas');asset.width=Math.max(1,Math.round(image.naturalWidth*scale));asset.height=Math.max(1,Math.round(image.naturalHeight*scale));asset.getContext('2d').drawImage(image,0,0,asset.width,asset.height);
+        if(editing)finishText(false);endGesture();remember();
+        const k=Math.min(W*.85/asset.width,H*.85/asset.height,1),width=asset.width*k,height=asset.height*k,id=++imageSerial;
+        imageAssets.set(id,asset);selected={kind:'image',imageId:id,width:0,opacity:imageOpacity,x1:(W-width)/2,y1:(H-height)/2,x2:(W+width)/2,y2:(H+height)/2};shapes.push(selected);
+        setTool('select');render();syncButtons();
+      }finally{URL.revokeObjectURL(url)}
+    }
+    document.addEventListener('paste',function(event){
+      if(dialog.hidden||!event.clipboardData)return;
+      const items=Array.from(event.clipboardData.items||[]).filter(function(item){return item.kind==='file'&&item.type.startsWith('image/')});
+      const files=items.length?items.map(function(item){return item.getAsFile()}).filter(Boolean):Array.from(event.clipboardData.files||[]).filter(function(file){return file.type.startsWith('image/')});
+      if(!files.length)return;
+      event.preventDefault();event.stopImmediatePropagation();const session=sketchSession;
+      (async function(){for(const file of files)await insertClipboardImage(file,session)})().catch(function(error){if(window.toast)window.toast(error.message)});
+    },true);
+    pasteButton.addEventListener('click',async function(){
+      if(!navigator.clipboard||!navigator.clipboard.read){if(window.toast)window.toast('Use Ctrl+V, ⌘V or your device’s Paste menu to insert an image.');return}
+      const operation=++pasteOperation,session=sketchSession;pasteButton.disabled=true;
+      try{
+        const items=await navigator.clipboard.read();let found=false;
+        for(const item of items){const type=item.types.find(function(type){return type.startsWith('image/')});if(!type)continue;found=true;await insertClipboardImage(await item.getType(type),session)}
+        if(!found&&window.toast)window.toast('No image in the clipboard. Copy a photo first.');
+      }catch(error){if(session===sketchSession&&window.toast)window.toast('Could not read the clipboard. Allow access or paste with Ctrl+V, ⌘V or the Paste menu.');}
+      finally{if(operation===pasteOperation)pasteButton.disabled=false}
+    });
+    function syncDrawingSettings(){
+      pencilSize=Number(document.getElementById('sketchPenWidth').value);
+      outlineSize=Number(document.getElementById('sketchOutlineWidth').value);
+      opacity=Number(document.getElementById('sketchOpacity').value)/100;
+      dashed=document.getElementById('sketchLineStyle').value==='dashed';
+      document.getElementById('sketchPenWidthValue').textContent=pencilSize+' px';
+      document.getElementById('sketchOutlineWidthValue').textContent=outlineSize+' px';
+      document.getElementById('sketchOpacityValue').textContent=Math.round(opacity*100)+'%';
+    }
+    ['sketchPenWidth','sketchOutlineWidth','sketchOpacity','sketchLineStyle'].forEach(function(id){document.getElementById(id).addEventListener('input',syncDrawingSettings);document.getElementById(id).addEventListener('change',syncDrawingSettings)});
+    syncDrawingSettings();
 
     /* toolbar */
     function setTool(name){
@@ -7729,6 +7800,7 @@
     /* open / close */
     function reset(){
       editing=null;editor.hidden=true;
+      sketchSession++;pasteOperation++;pasteButton.disabled=false;imageAssets.clear();
       strokes=[];shapes=[];selected=null;history=[];drag=null;
       color='#111111';
       dialog.querySelectorAll('.sketch-color').forEach(function(button){
@@ -7750,6 +7822,7 @@
       if(editing){editing=null;editor.hidden=true}
       dialog.classList.remove('is-open');
       dialog.hidden=true;
+      sketchSession++;pasteOperation++;pasteButton.disabled=false;imageAssets.clear();
       drag=null;
       if(lastFocus&&lastFocus.focus)lastFocus.focus({preventScroll:true});
     }
@@ -7773,7 +7846,7 @@
       if(dialog.hidden)return;
       if(event.key==='Escape'){event.preventDefault();closeSketch();return}
       if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&event.key.toLowerCase()==='z'){event.preventDefault();undo();return}
-      if((event.key==='Delete'||event.key==='Backspace')&&selected){
+      if((event.key==='Delete'||event.key==='Backspace')&&selected&&!event.target.closest('input,select,textarea')){
         event.preventDefault();
         remember();
         shapes.splice(shapes.indexOf(selected),1);

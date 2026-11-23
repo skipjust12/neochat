@@ -188,7 +188,7 @@ jobs:
           git diff --exit-code -- ../../server/assets/landing
 
   markdown:
-    name: Markdown and Poe browser regressions
+    name: Markdown, Poe and Sketch browser regressions
     # Playwright 1.57 does not support ubuntu-latest's Ubuntu 26.04 yet.
     runs-on: ubuntu-24.04
     steps:
@@ -202,6 +202,7 @@ jobs:
       - run: web/markdown-tests/node_modules/.bin/playwright install --with-deps chromium
       - run: node scripts/frontend-markdown.browser.cjs
       - run: node scripts/frontend-poe.browser.cjs
+      - run: node scripts/frontend-sketch.browser.cjs
 
   desktop:
     name: desktop app (Windows build)

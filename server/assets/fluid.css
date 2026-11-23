@@ -10220,3 +10220,13 @@ html[data-theme="dark"] .main:not(.project-mode) #homeGreeting::after {
 #customModelsSettings .name-input { max-width: 100%; min-width: 0; }
 #customModelStatus { color: var(--muted); overflow-wrap: anywhere; }
 #customModelsList .set-row > span { overflow-wrap: anywhere; min-width: 0; }
+
+/* Sketch controls describe only the next marks, never restyle selection. */
+.sketch-properties{display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px;padding:9px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sketch-properties label{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);min-width:0}
+.sketch-properties input[type=range]{width:72px;min-width:0;accent-color:var(--muted)}
+.sketch-properties output{font-variant-numeric:tabular-nums;min-width:34px;font-size:10px}
+.sketch-properties select,.sketch-paste{border:1px solid var(--line);background:var(--hover);color:var(--text);border-radius:7px;font:inherit;font-size:11px;padding:6px 8px}
+.sketch-paste{cursor:pointer}.sketch-paste:disabled{opacity:.45;cursor:wait}
+#sketchDialog .sketch-dialog{overflow:auto}#sketchDialog .sketch-stage{flex-shrink:0}
+@media(max-width:600px){.sketch-properties{display:grid;grid-template-columns:1fr 1fr;gap:9px 12px}.sketch-properties label{justify-content:space-between;gap:5px}.sketch-properties input[type=range]{flex:1;width:50px}.sketch-properties select{font-size:16px;max-width:100px}.sketch-paste{min-height:34px;justify-self:start}.sketch-properties output{min-width:31px}}
