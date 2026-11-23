@@ -17,6 +17,8 @@
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
 <link rel="manifest" href="/assets/icons/manifest.json?v=2" />
 <link rel="stylesheet" href="/assets/fluid.css?v=38" />
+<link rel="stylesheet" href="/assets/model-manager.css?v=1">
+<script src="/assets/model-manager.js?v=1"></script>
 <script src="/assets/markdown/markdown-it.min.js?v=15.0.3"></script>
 <script src="/assets/markdown/texmath.js?v=1.0.0"></script>
 <script src="/assets/markdown/chat-markdown.js?v=1"></script>
@@ -493,20 +495,7 @@
             <span class="label label-icon"><svg class="lucide lucide-boxes" data-lucide-icon="boxes" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg><span class="models-label">Models<span class="models-updated" id="modelsUpdated"></span></span></span>
             <span class="val"><button class="link-btn" id="refreshModels" type="button"><svg class="lucide lucide-refresh-cw" data-lucide-icon="refresh-cw" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>Refresh models list</button></span>
           </div>
-          <details id="customModelsSettings">
-            <summary class="set-row">Add a model</summary>
-            <form id="customModelForm">
-              <div class="set-row"><label for="customModelProvider">Provider</label><select id="customModelProvider" class="name-input"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google</option><option value="spacexai">xAI</option><option value="deepseek">DeepSeek</option><option value="moonshot">Moonshot</option></select></div>
-              <div class="set-row"><label for="customModelURL">Poe link or bot name</label><input id="customModelURL" class="name-input" placeholder="https://poe.com/Claude-Fable-5.2" required maxlength="200" /></div>
-              <div class="set-row"><label for="customModelName">Display name (optional)</label><input id="customModelName" class="name-input" placeholder="Claude Fable 5.2" maxlength="80" /></div>
-              <div class="set-row"><label for="customModelContext">Maximum context (tokens)</label><input id="customModelContext" class="name-input" type="number" min="1024" max="100000000" step="1" placeholder="Auto" /></div>
-              <div class="set-row"><span id="customModelStatus" role="status"></span><button class="link-btn" type="submit">Add model</button></div>
-            </form>
-            <div id="customModelsList"></div>
-            <div class="set-row"><label for="manageModelProvider">Manage provider</label><select id="manageModelProvider" class="name-input"><option value="anthropic">Anthropic</option><option value="openai">OpenAI</option><option value="google">Google</option><option value="spacexai">xAI</option><option value="deepseek">DeepSeek</option><option value="moonshot">Moonshot</option></select></div>
-            <div class="set-row"><label for="manageModelSelect">Model</label><select id="manageModelSelect" class="name-input"></select></div>
-            <div class="set-row"><span class="label soft">Choose which models appear in Legacy.</span><button id="modelLegacyToggle" type="button" class="link-btn">Move to Legacy</button></div>
-          </details>
+          <div class="set-row"><span class="label">Model library</span><span class="val"><button class="link-btn" id="openModelManager" type="button">Manage models</button></span></div>
           <div class="tone-wrap" id="toneWrap">
             <button class="set-row tone-trigger-row" id="toneTrigger" type="button" aria-expanded="false">
               <span class="label" style="display:flex;align-items:center;gap:10px">
@@ -1108,7 +1097,7 @@
       trigger.title=name?'Manual · '+name:'';
     }
     new MutationObserver(syncManualTrigger).observe(manualState,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['data-model-id']});
-    let modelsData=null, publicModels=null, customModels=[], modelLegacy={};
+    let modelsData=null, publicModels=null, customModels=[], modelLegacy={}, modelPreferences={}, modelOrder=[];
     function modelRowFor(model){
       const row=document.createElement('button');
       row.type='button';
@@ -1136,6 +1125,7 @@
         name.append(badge);
       }
       copy.append(name);
+      if(model.description&&!model.unavailable){const subtitle=document.createElement('span');subtitle.className='model-meta';subtitle.textContent=model.description;copy.append(subtitle)}
       if(model.unavailable){
         const meta=document.createElement('span');
         meta.className='model-meta';
@@ -1152,13 +1142,21 @@
       return row;
     }
     function renderModels(data){
-      data=Object.assign({},data,{models:((data&&data.models)||[]).map(function(model){return Object.prototype.hasOwnProperty.call(modelLegacy,model.id)?Object.assign({},model,{legacy:modelLegacy[model.id]}):model})});
+      const positions=new Map(modelOrder.map(function(id,index){return [id,index]}));
+      data=Object.assign({},data,{models:((data&&data.models)||[]).map(function(model){
+        const pref=modelPreferences[model.id]||{},entry=Object.assign({},model);
+        ['name','provider','url','tier','context_window'].forEach(function(key){if(pref[key])entry[key]=pref[key]});
+        if(Object.prototype.hasOwnProperty.call(pref,'description'))entry.description=pref.description;
+        if(pref.hidden)entry.hidden=true;
+        if(Object.prototype.hasOwnProperty.call(modelLegacy,model.id))entry.legacy=modelLegacy[model.id];
+        return entry;
+      }).sort(function(a,b){return (positions.has(a.id)?positions.get(a.id):Infinity)-(positions.has(b.id)?positions.get(b.id):Infinity)})});
       const models=data&&Array.isArray(data.models)?data.models:[];
       if(!models.length)return false;
       const lists=panel.querySelectorAll('.model-list[data-provider]');
       lists.forEach(function(list){list.replaceChildren()});
       models.forEach(function(model){
-        if(!model||typeof model.id!=='string'||typeof model.name!=='string')return;
+        if(!model||model.hidden||typeof model.id!=='string'||typeof model.name!=='string')return;
         const list=panel.querySelector('.model-list[data-provider="'+model.provider+'"]'+(model.legacy?'[data-legacy]':':not([data-legacy])'));
         if(list)list.append(modelRowFor(model));
       });
@@ -1180,13 +1178,13 @@
       try{localStorage.setItem(MODELS_CACHE,JSON.stringify(data))}catch(error){}
     }
     panel.querySelectorAll('.model-row').forEach(function(row){row.disabled=true});
-    try{renderModels(JSON.parse(localStorage.getItem(MODELS_CACHE)||'null'))}catch(error){}
+    try{const cached=JSON.parse(localStorage.getItem(MODELS_CACHE)||'null');if(cached){publicModels=cached;renderModels(cached)}}catch(error){}
     // Opening the app brings the list up to date; the server asks Poe at
     // most every few minutes however often this runs.
     fetch('/models',{credentials:'same-origin'}).then(function(response){
       return response.ok?response.json():null;
     }).then(function(data){if(data)applyModels(data)}).catch(function(){});
-    window.NeoChatModels={apply:applyModels,current:function(){return modelsData},custom:function(models,legacy){modelLegacy=legacy||{};customModels=Array.isArray(models)?models:[];renderModels(Object.assign({},publicModels||modelsData||{},{models:((publicModels||modelsData||{}).models||[]).filter(function(m){return !m.id.startsWith("custom-")}).concat(customModels)}))}};
+    window.NeoChatModels={apply:applyModels,current:function(){return modelsData},custom:function(models,legacy,preferences,order){modelLegacy=legacy||{};modelPreferences=preferences||{};modelOrder=order||[];customModels=Array.isArray(models)?models:[];renderModels(Object.assign({},publicModels||modelsData||{},{models:((publicModels||modelsData||{}).models||[]).filter(function(m){return !m.id.startsWith("custom-")}).concat(customModels)}))}};
     syncManualTrigger();
 
     document.addEventListener('pointerdown',function(event){
@@ -1970,77 +1968,51 @@
     // moment after the last edit.
     let settingsTimer=null;
     let settingsReady=false;
+    let pendingPreferences=null,lastModelSelection='';
     async function syncSettings(){
+      const user=sessionUser;
       settingsReady=false;
       try{
         const response=await apiFetch('/account/settings',{});
         if(!response.ok)return;
         const saved=await response.json();
-        if(saved&&typeof saved==='object'&&Object.keys(saved).length){
+        if(user!==sessionUser)return;
+        if(pendingPreferences){
+          const pending=pendingPreferences;pendingPreferences=null;saveSettingsNow(pending);
+        }else if(saved&&typeof saved==='object'&&Object.keys(saved).length){
           if(JSON.stringify(saved)!==JSON.stringify(window.NeoChatPreferences.current()))window.NeoChatPreferences.apply(saved);
         }else{
           saveSettingsNow(window.NeoChatPreferences.current());
         }
+        const current=window.NeoChatPreferences.current();lastModelSelection=JSON.stringify([current.workMode,current.manualModelId]);
         settingsReady=true;
       }catch(error){}
     }
     function saveSettingsNow(preferences){
-      return apiFetch('/account/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(preferences)}).catch(function(){});
+      return apiFetch('/account/settings',{method:'PUT',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(preferences)}).catch(function(){});
     }
     document.addEventListener('preferences:change',function(event){
-      if(!sessionUser||!settingsReady)return;
+      if(!sessionUser)return;
+      if(!settingsReady){pendingPreferences=event.detail;return}
       clearTimeout(settingsTimer);
+      const selection=JSON.stringify([event.detail.workMode,event.detail.manualModelId]);
+      if(selection!==lastModelSelection){lastModelSelection=selection;saveSettingsNow(event.detail);return}
       settingsTimer=setTimeout(function(){saveSettingsNow(event.detail)},800);
     });
 
     let customModelsGeneration=0;
-    const customModelForm=document.getElementById('customModelForm');
-    const customModelStatus=document.getElementById('customModelStatus');
+    function selectManagedModel(id){const row=id?document.querySelector('.model-row[data-model-id="'+CSS.escape(id)+'"]'):null;if(row)row.click();else{const state=document.getElementById('manualState');state.dataset.modelId='';state.textContent='Select a model';state.dispatchEvent(new Event('model:selected'))}}
+    const modelManager=window.NeoChatModelManager.create({apiFetch:apiFetch,session:function(){return sessionUser},signIn:promptForSignIn,models:function(){const data=window.NeoChatModels.current();return data&&data.models||[]},selected:function(){return document.getElementById('manualState').dataset.modelId||''},select:selectManagedModel,onChange:applyCustomModels});
     function applyCustomModels(data){
-      window.NeoChatModels.custom(data.models||[],data.legacy_overrides||{});
-      const list=document.getElementById('customModelsList');list.replaceChildren();
-      (data.models||[]).forEach(function(model){
-        const row=document.createElement('div');row.className='set-row';
-        const label=document.createElement('span');label.textContent=model.name;
-        const remove=document.createElement('button');remove.type='button';remove.className='link-btn';remove.textContent='Remove';
-        remove.addEventListener('click',async function(){
-          const generation=customModelsGeneration;remove.disabled=true;
-          try{const response=await apiFetch('/account/models/'+encodeURIComponent(model.id),{method:'DELETE'});if(!response.ok)throw new Error((await response.text()).trim());const data=await response.json();if(generation===customModelsGeneration){applyCustomModels(data);if(document.getElementById('manualState').dataset.modelId===model.id){const first=document.querySelector('.model-row:not([disabled])');if(first)first.click()}}}catch(error){toast(error.message)}finally{remove.disabled=false}
-        });row.append(label,remove);list.append(row);
-      });
+      window.NeoChatModels.custom(data.models||[],data.legacy_overrides||{},data.preferences||{},data.order||[]);
+      modelManager.update(data);
     }
-    const manageModelProvider=document.getElementById('manageModelProvider'),manageModelSelect=document.getElementById('manageModelSelect'),modelLegacyToggle=document.getElementById('modelLegacyToggle');
-    function updateModelManager(){
-      const chosen=manageModelSelect.value;manageModelSelect.replaceChildren();
-      const data=window.NeoChatModels.current();
-      (data&&data.models||[]).filter(function(model){return model.provider===manageModelProvider.value}).forEach(function(model){
-        const option=document.createElement('option');option.value=model.id;option.textContent=model.name+(model.legacy?' (Legacy)':'');option.dataset.legacy=String(Boolean(model.legacy));manageModelSelect.append(option);
-      });
-      if(Array.from(manageModelSelect.options).some(function(option){return option.value===chosen}))manageModelSelect.value=chosen;
-      updateLegacyButton();
-    }
-    function updateLegacyButton(){const option=manageModelSelect.selectedOptions[0];modelLegacyToggle.disabled=!option;modelLegacyToggle.textContent=option&&option.dataset.legacy==='true'?'Restore from Legacy':'Move to Legacy'}
-    manageModelProvider.addEventListener('change',updateModelManager);manageModelSelect.addEventListener('change',updateLegacyButton);document.addEventListener('models:change',updateModelManager);updateModelManager();
-    modelLegacyToggle.addEventListener('click',async function(){
-      if(!sessionUser){promptForSignIn();return}
-      const option=manageModelSelect.selectedOptions[0];if(!option)return;
-      const generation=customModelsGeneration;modelLegacyToggle.disabled=true;
-      try{const response=await apiFetch('/account/models/'+encodeURIComponent(option.value),{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({legacy:option.dataset.legacy!=='true'})});if(!response.ok)throw new Error((await response.text()).trim());const data=await response.json();if(generation===customModelsGeneration)applyCustomModels(data)}catch(error){toast(error.message)}finally{updateLegacyButton()}
-    });
+    document.getElementById('openModelManager').addEventListener('click',function(){modelManager.open()});
     async function loadCustomModels(){
-      const generation=++customModelsGeneration;applyCustomModels({models:[]});customModelStatus.textContent='';
+      const generation=++customModelsGeneration;modelManager.reset();applyCustomModels({models:[]});
       if(!sessionUser)return;
       try{const response=await apiFetch('/account/models',{});if(response.ok){const data=await response.json();if(generation===customModelsGeneration)applyCustomModels(data)}}catch(error){}
     }
-    customModelForm.addEventListener('submit',async function(event){
-      event.preventDefault();if(!sessionUser){promptForSignIn();return}
-      const generation=customModelsGeneration,button=customModelForm.querySelector('[type="submit"]');button.disabled=true;customModelStatus.textContent='';
-      try{
-        const response=await apiFetch('/account/models',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({provider:document.getElementById('customModelProvider').value,url:document.getElementById('customModelURL').value,name:document.getElementById('customModelName').value,context_window:document.getElementById('customModelContext').value===''?0:Number(document.getElementById('customModelContext').value)})});
-        if(!response.ok)throw new Error((await response.text()).trim()||'Could not add model.');
-        const data=await response.json();if(generation!==customModelsGeneration)return;applyCustomModels(data);customModelForm.reset();customModelStatus.textContent='Model added.';
-      }catch(error){if(generation===customModelsGeneration)customModelStatus.textContent=error.message}finally{button.disabled=false}
-    });
 
     // Settings -> General -> Refresh models list: the server checks Poe
     // right away (and holds back repeats within half a minute).
@@ -2080,7 +2052,7 @@
     function switchSession(userID){
       if(userID===sessionUser)return;
       sessionUser=userID;
-      settingsReady=false;clearTimeout(settingsTimer);
+      settingsReady=false;pendingPreferences=null;lastModelSelection='';clearTimeout(settingsTimer);
       loadCustomModels();
       if(userID&&window.NeoChatPreferences)syncSettings();
       conversationID='';
@@ -7068,9 +7040,10 @@
     if(savedModelRow){
       manualState.textContent=savedModelRow.dataset.model;
       manualState.dataset.modelId=savedModelRow.dataset.modelId;
-    }else if(!modePicker.querySelector('.model-row')&&typeof preferences.manualModelId==='string'&&preferences.manualModelId&&typeof preferences.manualModel==='string'&&preferences.manualModel){
-      // The model list hasn't arrived yet (first visit): trust the save.
-      manualState.textContent=preferences.manualModel;
+    }else if(typeof preferences.manualModelId==='string'&&preferences.manualModelId){
+      // Personal models can arrive after the public catalog. Keep the saved
+      // identity until that list arrives instead of dropping the selection.
+      manualState.textContent=preferences.manualModel||'Loading model…';
       manualState.dataset.modelId=preferences.manualModelId;
     }
     if(Number.isFinite(preferences.reasoningEffort)){

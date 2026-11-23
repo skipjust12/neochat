@@ -68,7 +68,7 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request, ident
 		return
 	}
 	protectedChanged := false
-	for _, name := range []string{"custom_models", "model_legacy"} {
+	for _, name := range []string{"custom_models", "model_legacy", "model_preferences", "model_order"} {
 		if _, ok := object[name]; ok {
 			protectedChanged = true
 		}
@@ -81,7 +81,7 @@ func (s *Server) handleSettingsPut(w http.ResponseWriter, r *http.Request, ident
 	if protectedChanged {
 		body, _ = json.Marshal(object)
 	}
-	if len(body) > maxSettingsBytes {
+	if len(body) > maxPersonalSettingsBytes {
 		http.Error(w, "Settings exceed 32 KB.", 400)
 		return
 	}

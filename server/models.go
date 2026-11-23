@@ -28,6 +28,8 @@ const (
 )
 
 type modelEntry struct {
+	URL           string   `json:"url,omitempty"`
+	Custom        bool     `json:"custom,omitempty"`
 	ContextWindow int      `json:"context_window,omitempty"`
 	Unstable      bool     `json:"unstable,omitempty"`
 	Unavailable   bool     `json:"unavailable,omitempty"`
@@ -47,9 +49,12 @@ type modelEntry struct {
 }
 
 type modelsResponse struct {
-	Models          []modelEntry    `json:"models"`
-	UpdatedAt       *time.Time      `json:"updated_at,omitempty"`
-	LegacyOverrides map[string]bool `json:"legacy_overrides,omitempty"`
+	Preferences     map[string]modelPreference `json:"preferences,omitempty"`
+	Order           []string                   `json:"order,omitempty"`
+	ChangedID       string                     `json:"changed_id,omitempty"`
+	Models          []modelEntry               `json:"models"`
+	UpdatedAt       *time.Time                 `json:"updated_at,omitempty"`
+	LegacyOverrides map[string]bool            `json:"legacy_overrides,omitempty"`
 }
 
 // router is the router over the current catalog: the live one when the
@@ -145,7 +150,7 @@ func modelEntries(catalog router.Catalog, retired map[string]bool, added map[str
 		if len(inputs) == 0 {
 			inputs = []string{"text"}
 		}
-		entry := modelEntry{ContextWindow: m.ContextWindow, Unstable: m.Unstable, Unavailable: m.Unavailable || retired[m.ID], ID: m.ID, Name: modelName(m), Provider: m.Provider, Tier: modelTier(m), Kind: m.Kind, Inputs: inputs, Legacy: m.Legacy}
+		entry := modelEntry{URL: poeModelURL(m), ContextWindow: m.ContextWindow, Unstable: m.Unstable, Unavailable: m.Unavailable || retired[m.ID], ID: m.ID, Name: modelName(m), Provider: m.Provider, Tier: modelTier(m), Kind: m.Kind, Inputs: inputs, Legacy: m.Legacy}
 		if m.Kind == router.KindVideo {
 			entry.Video, entry.MaxReferences = m.Video, m.MaxReferenceImages
 		}

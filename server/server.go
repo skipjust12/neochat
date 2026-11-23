@@ -491,6 +491,8 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("GET /conversations/search", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleConversationSearch)))))
 	mux.HandleFunc("DELETE /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectDelete))))))
 	mux.HandleFunc("GET /account/models", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("PUT /account/models/order", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("POST /account/models/actions", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
 	mux.HandleFunc("POST /account/models", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
 	mux.HandleFunc("PATCH /account/models/{id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
 	mux.HandleFunc("DELETE /account/models/{id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))

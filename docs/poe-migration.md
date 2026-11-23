@@ -103,3 +103,31 @@ refuses API access. The bot must be public. An explicit `POE_BOT_FALLBACKS`
 environment value replaces the checked-in map; remove an obsolete override
 or include the Luna mapping there to use it. Existing explicitly configured
 `TITLE_MODEL` values still take precedence over the default Luna model.
+
+## Model library window
+
+Settings → General → Manage models opens an independent, responsive dialog.
+Account overrides cover display name, subtitle, provider grouping, Poe URL,
+tier and context limit, plus Legacy and hidden states. Changes to catalog
+entries remain private; the shared catalog is never rewritten. Manual requests
+resolve the account's selected entry with these overrides before validation
+and generation. Auto routing keeps the original shared catalog.
+
+The order persists in `model_order`; new catalog models append without losing
+existing choices. Both drag and up/down buttons are available. Duplicate
+review compares exact normalized Poe links and normalized display names,
+shows each link, and asks which entry to keep. Name-only matches can be different
+bots and are never deleted automatically. Cleanup removes personal definitions
+and hides catalog copies; existing chat history is retained.
+
+Authenticated model actions:
+- `PATCH /account/models/{id}` updates fields (or `{ "reset": true }`).
+- `PUT /account/models/order` accepts `{ "ids": [...] }`.
+- `POST /account/models/actions` accepts `{ "action": "remove", "ids": [...] }`.
+
+Model settings have a combined 256 KB bound, with up to 200 personal models.
+Ordinary preferences updates retain their 32 KB input bound and preserve all
+server-managed model settings. The model picker restores a saved personal ID
+even if settings arrive before the personal catalog, fixing the lost selection
+on reload/sign-in. Personal edits and ordering never enter the shared browser
+catalog cache.
