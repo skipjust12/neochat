@@ -7,8 +7,6 @@ import (
 
 func TestFreeModelPricingCanBeZero(t *testing.T) {
 	for _, key := range []string{
-		"CLASSIFIER_COST_INPUT_PER_MTOK", "CLASSIFIER_COST_OUTPUT_PER_MTOK",
-		"MODERATION_COST_INPUT_PER_MTOK", "MODERATION_COST_OUTPUT_PER_MTOK",
 		"SUMMARIZER_COST_INPUT_PER_MTOK", "SUMMARIZER_COST_OUTPUT_PER_MTOK",
 	} {
 		t.Run(key, func(t *testing.T) {

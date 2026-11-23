@@ -11,9 +11,7 @@ A solo-built, production-grade routing engine for LLM chat: config-driven auto-r
 - [Architecture](#architecture)
   - [Routing pipeline](#routing-pipeline)
   - [Config-driven weights](#config-driven-weights)
-  - [Classifier output schema](#classifier-output-schema)
   - [Tokenizer / context estimation](#tokenizer--context-estimation)
-  - [Moderation](#moderation)
   - [Streaming](#streaming)
   - [Chat personas](#chat-personas-system-prompt-picker)
   - [Spend limits](#spend-limits)
@@ -60,26 +58,9 @@ Plus voice, image, and a full chat UI feature set. Cheap models are used for rou
 
 ### Routing pipeline
 
-```
-Request
-  ↓
-Classifier (cheap model)
-  ↓
-JSON with request analysis
-  ↓
-Go router
-  ↓
-Model selection
-  ↓
-Response to user
-```
+Manual mode sends the request to the selected Poe model, with no classification or moderation model calls. It is the default (`ROUTER_ENABLED` unset).
 
-Routing principles:
-- Don't pick the cheapest model.
-- Pick the cheapest model that preserves quality.
-- When in doubt, escalate to a stronger model.
-
-What the classifier analyzes: task type, language, code/text/image, reasoning depth, creativity, whether web search is needed, expected response length, query complexity.
+Optional catalog routing (`ROUTER_ENABLED=true`) uses a fixed local general/answer profile and the configured tier weights. It does not infer the task from the message. Explicit tier choices, context limits, spend limits and circuit failover remain supported; choose image/video models manually.
 
 ### Config-driven weights
 
@@ -114,41 +95,6 @@ Requirements for "just change the config file and it works":
 
 Result: rolling back or switching is a one-line change (`"default": "weights_v1"` → `"weights_v3"`), picked up by the router within seconds, with zero dropped connections, no code deploy, no process restart.
 
-### Classifier output schema
-
-```json
-{
-  "schema_version": "1.1",
-  "task_category": "software_engineering",
-  "task_intent": "generate",
-  "language": "en",
-  "modality_input": ["text", "code"],
-  "modality_output_expected": ["text", "code"],
-  "reasoning_depth": "moderate",
-  "creativity_level": "low",
-  "required_tools": ["code_execution"],
-  "expected_output_length": "medium",
-  "estimated_output_tokens": 800,
-  "output_format": "markdown",
-  "complexity_score": 0.6,
-  "context_dependency": "light",
-  "confidence": 0.82,
-  "content_flags": [],
-  "safety_risk_score": 0.0
-}
-```
-
-Design principle: the classifier returns raw task features, never a final model decision. The feature → model mapping lives entirely in `weights_*.json` on the router side — this keeps model reweighting a config change, not a classifier prompt rewrite.
-
-- `task_category` is the capability/domain axis: general, writing, frontend, software_engineering, data_analysis, math, research, reasoning, knowledge, translation, vision, or image_generation.
-- `task_intent` is the operation axis: answer, generate, edit, debug, review, explain, summarize, compare, plan, extract, classify, or transform.
-- The router combines the two against each model's `task_category_scores` and `task_intent_scores`. Within the selected mode it retains models close enough to the best task fit (`task_profile.minimum_score` and `task_profile.max_quality_gap`), then chooses the cheapest survivor. Unknown classifier values fall back to general/answer and are recorded in `RouteResult.Reason`.
-- `expected_output_length` is a bucketed enum, not a raw token estimate — small models are unreliable at precise token counts.
-- `confidence` measures certainty in the classifier's labels, not task difficulty. Low confidence is recorded in the route reason but does not change the tier by default. Operators can restore one-tier escalation for auto requests with `confidence_escalation_enabled`; explicit instant/thinking/max choices are never overridden by classifier uncertainty.
-- `context_dependency` feeds the prompt-caching-vs-routing tradeoff (see below): `heavy` should penalize mid-session model switches more aggressively.
-- Cost estimation (input token count) is not a classifier field — it must be computed deterministically by a tokenizer before any request goes out, as a hard defense against cost-based abuse.
-- `schema_version` is required from day one, since this schema will evolve the same way the routing weights do.
-
 ### Tokenizer / context estimation
 
 `tokenizer.EstimateMessages` (`tokenizer/`) satisfies the "computed deterministically by a tokenizer before any request goes out" requirement above — it replaces `chatRequest.EstimatedContextTokens` (a client-supplied, unverifiable number, still accepted on the wire for backward compatibility but no longer read by `server.prepare`) with a server-side estimate computed from the real system prompt + full stored conversation history + new user message.
@@ -157,33 +103,13 @@ Design principle: the classifier returns raw task features, never a final model 
 - **Closes two gaps at once:** (1) *Context window mismatch* — the router's context-window hard filter and cost pre-estimate (`router/cost.go`) no longer silently drift from reality as a conversation grows; `estimatedContextTokens` is recomputed from the actual message list on every turn. (2) *Cost-based abuse* — a client can no longer understate `estimated_context_tokens` to slip a request under a spend cap, since the number that reaches `Route` is derived from the request body itself.
 - `server.prepare` folds the older part of a conversation into a rolling summary once its estimated size crosses `Server.SummaryTriggerTokens` (`summarizer/`), so the hard filter trips on real data that stops growing without bound.
 
-### Moderation
-
-Two-layer design, only one layer implemented — never blocking on UX latency.
-
-**Layer 1 — input (before showing the response to the user) — implemented** (`moderation/`, wired into `server.handle`)
-
-- Runs concurrently with classification (`sync.WaitGroup`, two goroutines) — both are cheap-model calls over the same raw request text, so there's no reason to pay their latency twice.
-- A cheap model checks the request text against `prompts/moderation_system_prompt.md` and returns `{flagged, categories, reason}` — same JSON-over-a-cheap-model pattern as the classifier.
-- `flagged` → generation is skipped entirely and the user sees a fixed ToS violation message (`chatResponse.Blocked`); the flagging model/reason is logged server-side, not exposed to the client.
-- Block events are persisted, not just logged: every flag calls `moderation.BlockLog.Record` (user_id, categories, reason, timestamp). Postgres-backed (`moderation.PostgresBlockLog`); `moderation.InMemoryBlockLog` still exists for tests.
-- Fails closed: a moderation call erroring (as opposed to flagging) fails the whole request rather than letting an unmoderated message through.
-
-**Layer 2 — output (during streaming) — deliberately deprioritized, not currently planned**
-
-Originally specced as scanning the output stream mid-generation as a backstop against jailbreaks. Dropped for now, not just left undone:
-- The catalog only routes through models with their own vendor-side safety tuning — the marginal case Layer 2 catches is narrow (a jailbreak that both slipped past Layer 1 *and* got a frontier model to comply anyway).
-- Real added cost: a second moderation-model call per request, this time against streamed output.
-- No usage data yet to size thresholds against. Revisit if Layer 1's block logs or a real incident show jailbreaks getting through — that's the trigger, not a calendar date.
-- Cheapest available mitigation without building Layer 2: retroactively re-running Layer 1's check against persisted conversation messages for audit purposes — not implemented, just cheaper to add later if it matters.
-
 ### Streaming
 
 `POST /chat/stream` delivers a reply incrementally over Server-Sent Events, alongside (not replacing) `POST /chat` — same request shape, same pipeline (`server.prepare` → `route+generate` → `server.finalize`).
 
 - `provider.StreamingClient` is a second, optional interface (`GenerateStream(ctx, apiModelID, messages) (<-chan StreamChunk, error)`) alongside `Client.Generate`. `provider.OpenRouterClient`, `provider.FakeClient`, and `provider.CircuitBreakerClient` all implement it, so streaming works automatically across the whole provider set.
 - `StreamChunk` carries either an incremental `Delta`, or a terminal chunk: `Done` + `Final` on success, or `Err` on failure.
-- `server.handleStream` shares `prepare`/`routeAndCall`/`finalize` with `handle` — the circuit-breaker failover loop is identical code for both paths. Event types over SSE: `meta` (model picked, fires again on failover), `delta`, `done`, `blocked`, `error`.
+- `server.handleStream` shares `prepare`/`routeAndCall`/`finalize` with `handle` — the circuit-breaker failover loop is identical code for both paths. Event types over SSE: `meta` (model picked, fires again on failover), `delta`, `done`, `error`.
 
 ### Chat personas (system prompt picker)
 
@@ -191,8 +117,8 @@ Five named personas instead of one fixed system prompt: Default, Expert, Friendl
 
 - `server.SystemPromptNames` is the single source of truth for the five names.
 - One prompt file per persona under `prompts/`. All five currently exist as empty placeholders — plumbing shipped ahead of the actual prompt text, on purpose.
-- `server.LoadSystemPrompts(dir)` loads all five at startup. Unlike the classifier/moderation prompts (fatal if missing), a missing persona file here is just skipped and logged — selecting it sends no system message at all, which is what lets the plumbing ship before the text exists.
-- `chatRequest.persona` picks one by exact name; empty defaults to `"Default"`; an unrecognized name is rejected with 400 before any classify/moderate/route/generate work happens.
+- `server.LoadSystemPrompts(dir)` loads all five at startup. A missing persona file here is just skipped and logged — selecting it sends no system message at all, which is what lets the plumbing ship before the text exists.
+- `chatRequest.persona` picks one by exact name; empty defaults to `"Default"`; an unrecognized name is rejected with 400 before any model call.
 - No UI exists yet to expose this picker — server-side half only.
 
 ### Spend limits
@@ -207,7 +133,7 @@ Full design and numbers: `docs/unit-economics.md` section 6. Implemented in `lim
 
 ### Authentication
 
-Implemented (`auth/`, wired into `server.Mux()`). Every `user_id`/`plan_id` that spend limits, routing tier, conversation history, and the moderation log depend on now comes from an authenticated caller instead of the request body — closing the gap that let a client get unlimited free access by inventing a new `user_id` per request.
+Implemented (`auth/`, wired into `server.Mux()`). Every `user_id`/`plan_id` that spend limits, routing tier, conversation history depend on now comes from an authenticated caller instead of the request body — closing the gap that let a client get unlimited free access by inventing a new `user_id` per request.
 
 - `Authorization: Bearer <api-key>` on every chat call, checked by middleware between the per-IP rate limiter and the handler (so a garbage token is rejected cheaply before it drives a database lookup). `chatRequest.UserID`/`PlanID` are `json:"-"` — client-supplied values are silently ignored.
 - `auth.Authenticator` is the one method (`Authenticate(ctx, token) (Identity, error)`) `server.Server` actually depends on, so a future real auth system is a new implementation of this interface, not a pipeline rewrite.
@@ -223,11 +149,11 @@ Things worth baking in early because retrofitting them on a live system later is
 
 1. **Model catalog as data, not code** — done. Models, weights, prices, provider params live in the config system; adding a model is a config edit, not a deploy.
 2. **Provider abstraction layer** — done. `ModelProvider`-style interface behind which OpenRouter or direct vendor APIs can sit, so a hybrid-sourcing migration isn't a rewrite.
-3. **Request-level idempotency and cancellation** — done, and verified with tests, not just assumed. `r.Context()` propagates from the HTTP handler through classify/moderate/generate to the real outbound OpenRouter call; three tests pin this down against real cancellation, not an assumption. Idempotency (`idempotency/`, Redis-backed): a client retry with the same `idempotency_key` replays the original response instead of triggering a second charge; a concurrent/retried request arriving mid-flight is rejected outright rather than raced.
+3. **Request-level idempotency and cancellation** — done, and verified with tests, not just assumed. `r.Context()` propagates from the HTTP handler through generation to the outbound Poe call; cancellation and stream-stop tests cover this. Idempotency (`idempotency/`, Redis-backed): a client retry with the same `idempotency_key` replays the original response instead of triggering a second charge; a concurrent/retried request arriving mid-flight is rejected outright rather than raced.
 4. **Circuit breaker / per-model health tracking** — done, including failover. `provider.CircuitBreakerClient` fast-fails a model after consecutive failures for a cooldown period; `router.Route` takes an `excludedModelIDs` set so a failed model gets excluded and the request retried on a healthy alternative (bounded attempts). Manual mode is the one exception — no substitute exists for a model requested by name.
-5. **Conversation storage schema built for migration** — done (`conversation/`, Postgres-backed). Every stored assistant turn records which model answered it. Known, deliberate limitation: classification/moderation still only see the newest message, not full history.
-6. **Stateless app layer** — done. Every store (spend limits, idempotency, conversation, moderation blocks, cost log) is Redis/Postgres-backed; a second server instance against the same database would already share state correctly.
-7. **Per-request cost accounting** — done. Every generation call logs a `router.CostLogEntry` (user_id, model, tokens, cost_usd, timestamp) to Postgres. Classifier and moderation calls are logged too, sharing one `RequestID` per `/chat` call so all three billed calls reconcile as a group.
+5. **Conversation storage schema built for migration** — done (`conversation/`, Postgres-backed). Every stored assistant turn records which model answered it.
+6. **Stateless app layer** — done. Every store (spend limits, idempotency, conversation, cost log) is Redis/Postgres-backed; a second server instance against the same database would already share state correctly.
+7. **Per-request cost accounting** — done. Every generation call logs a `router.CostLogEntry` (user_id, model, tokens, cost_usd, timestamp) to Postgres. Titles, summaries and search helper usage retain their accounting.
 8. **Secrets/API keys via env/vault from commit one** — done (gitignored `.env`, `.env.example` documenting every variable).
 
 ## Additional architectural risks
@@ -241,7 +167,6 @@ Known, not all resolved:
 - **Cost-based abuse** — addressed: output token caps, request body size limits, per-IP/per-user rate limiting, and authenticated `user_id` (no more resetting spend history by fabricating a new one).
 - **Onboarding and cognitive load.** Five modes can overwhelm a new user even though the point of the product is removing the burden of choice — needs a sane default explained through UX, not text.
 - **`/health` doesn't check real dependencies.** Always returns 200 regardless of whether Postgres/Redis/OpenRouter are actually reachable.
-- **Classifier's safety signal is parsed but never used.** `ContentFlags`/`SafetyRiskScore` are decoded from every classify call but nothing reads them yet.
 - **No structured logging.** Every log line is free-form `log.Printf` — no levels, no queryable fields.
 - **No data retention or deletion story.** Full message text stored indefinitely, no TTL, no export/delete path, no privacy policy yet.
 - **`plan_id` has no connection to real payment.** Today it's whatever an operator typed into the CLI issuer — expected at this stage, not a gap in the auth work itself.
@@ -251,7 +176,6 @@ Known, not all resolved:
 
 - Go router: implemented — feature-based scoring, hard filters, manual-mode passthrough, deterministic cost-tie breaking, spend-lock override, circuit-breaker-aware failover.
 - Spend limits: implemented, Redis-backed, 30-day rolling cap per plan.
-- Classifier: prompt written and validated against live model calls, wired into every request.
 - Chat personas: implemented end to end (tone picker in Settings → server persona prompts in `prompts/<Name>.md`); prompt text still to be written.
 - Model provider: Poe (`provider.PoeClient`). Chat, helper calls, media and balance use Poe. See [migration and API details](docs/poe-migration.md). Users save their own Poe key in Settings → Account.
 - File attachments: images (PNG/JPEG/GIF/WebP), videos (MP4/MOV/WebM, up to 50 MB, for Gemini), PDF/DOCX and text/code files. Uploaded via `POST /files` into Postgres, sent to the model as native image/file parts (text files inlined, so any model reads them), re-sent on later turns, deleted with the chat. Models that can't read a file type say so before anything is sent.
@@ -280,10 +204,10 @@ Known, not all resolved:
 - A long paste (3000+ characters or 50+ lines) becomes a "Pasted text" attachment instead of filling the message box; a click previews it, with "Paste as text" to put it back. In the thread, text files open in the same preview (Copy, Download), and long messages fold to their first lines behind "Show more".
 - Code blocks show their language and a Copy button and are highlighted by a vendored highlight.js.
 - Quoting: select words in an answer and press Ask, and the selection lands in the composer as a quote card. The next message goes out with it (`"quote"`), the model reads it as a `>` blockquote in front of the question, and the thread shows it above the user's message, history and regenerations included.
+- Chat prompts retain Linux/bash/Python terminal guidance, error handling, files, inline images and artifacts. Windows-specific and MCP guidance has been removed; MCP tools are not exposed to models.
 - Questionnaires: on open-ended requests a model can ask a few questions first (`ask_user`). They open as a panel above the composer (in its place on phones), with single and multiple choice and a field for the user's own answer on every question, and go back to the model as a `Q: … / A: …` message.
 - Web search and page reading: SearXNG when configured, otherwise Poe Responses built-in search; server-side SSRF-safe page reading, per-chat cache and live activity/history remain unchanged.
-- Router: switched off for now (`ROUTER_ENABLED` unset). Only Manual mode works — the chosen model is called directly with the selected reasoning effort, tone and custom instructions; other modes answer "Router disabled". The routing code stays intact for when it comes back.
-- Moderation: Layer 1 implemented and wired in; Layer 2 deliberately deprioritized.
+- Router: switched off for now (`ROUTER_ENABLED` unset). Only Manual mode works — the chosen model is called directly with the selected reasoning effort, tone and custom instructions; other modes answer "Router disabled". Optional catalog routing uses fixed local defaults without auxiliary analysis calls.
 - Streaming: implemented (`POST /chat/stream`), sharing the full pipeline with the non-streaming path.
 - Circuit breaker: implemented and wired into failover.
 - Conversation storage, tokenizer/context estimation, long-conversation summarization, idempotency, per-request cost logging: all implemented and Postgres/Redis-backed.

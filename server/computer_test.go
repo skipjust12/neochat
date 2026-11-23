@@ -47,6 +47,28 @@ func connectComputer(t *testing.T, s *Server) (string, *httptest.Server) {
 	return work, web
 }
 
+func TestComputerDoesNotExposeMCPTools(t *testing.T) {
+	r := webRun{s: &Server{}, target: executeOnComputer, dev: &deviceConn{hello: device.Hello{
+		OS: "linux/amd64", Shells: []string{"bash"}, Languages: []string{"python", "bash"},
+		MCP: []device.Server{{Name: "unused-app", Tools: []device.Tool{{Name: "do_something", Description: "Unused action"}}}},
+	}}}
+	tools := map[string]bool{}
+	for _, tool := range r.terminalTools() {
+		tools[tool.Name] = true
+		if strings.HasPrefix(tool.Name, "mcp__") {
+			t.Fatalf("MCP tool exposed: %s", tool.Name)
+		}
+	}
+	for _, name := range []string{"run_command", "run_script", "read_file", "write_file", "list_dir"} {
+		if !tools[name] {
+			t.Errorf("lost file/terminal tool %s", name)
+		}
+	}
+	if note := r.terminalNote(); strings.Contains(strings.ToLower(note), "mcp") || !strings.Contains(note, "bash") {
+		t.Fatalf("unexpected terminal note: %s", note)
+	}
+}
+
 func TestComputerRunsCommandsAfterApproval(t *testing.T) {
 	vendor := &scriptedPolza{reply: func(body map[string]any) (int, []string) {
 		switch len(toolMessages(body)) {
@@ -234,20 +256,5 @@ func TestDeviceEndpointsNeedAKey(t *testing.T) {
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusNotFound {
 		t.Fatalf("approve someone else's = %d", resp.StatusCode)
-	}
-}
-
-func TestMCPToolNames(t *testing.T) {
-	names := mcpToolNames([]device.Server{{Name: "blender", Tools: []device.Tool{{Name: "get_scene_info"}, {Name: "execute blender code"}}}, {Name: strings.Repeat("x", 70), Tools: []device.Tool{{Name: "a"}, {Name: "b"}}}})
-	if names["mcp__blender__get_scene_info"] != [2]string{"blender", "get_scene_info"} || names["mcp__blender__execute_blender_code"][1] != "execute blender code" {
-		t.Fatalf("names = %v", names)
-	}
-	if len(names) != 4 {
-		t.Fatalf("long names collided: %v", names)
-	}
-	for name := range names {
-		if len(name) > 64 {
-			t.Fatalf("%s is too long", name)
-		}
 	}
 }

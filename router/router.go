@@ -63,7 +63,7 @@ func NewRouter(catalog Catalog, weights Weights) Router {
 // circuit breakers or providers. A nil or empty map excludes nothing. In
 // manual mode, an excluded manualModelID is still an error (there is no
 // other candidate to fall back to: the user asked for this exact model).
-func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelID string, estimatedContextTokens int, thinkingMaxLocked bool, excludedModelIDs map[string]bool) (RouteResult, error) {
+func (r Router) Route(input RequestProfile, requestedMode string, manualModelID string, estimatedContextTokens int, thinkingMaxLocked bool, excludedModelIDs map[string]bool) (RouteResult, error) {
 	if estimatedContextTokens < 0 {
 		return RouteResult{}, fmt.Errorf("router: estimated context tokens %d must be non-negative", estimatedContextTokens)
 	}
@@ -221,7 +221,7 @@ func (r Router) Route(input ClassifierOutput, requestedMode string, manualModelI
 // documented [0,1] range. This runs only on the scored path (requestedMode
 // != "manual"): manual routing never reads these fields, so a malformed
 // classifier payload should not be able to block an explicit manual choice.
-func validateInput(input ClassifierOutput) error {
+func validateInput(input RequestProfile) error {
 	if input.ComplexityScore < 0 || input.ComplexityScore > 1 {
 		return fmt.Errorf("router: complexity_score %.4f out of range [0,1]", input.ComplexityScore)
 	}
@@ -238,7 +238,7 @@ func validateInput(input ClassifierOutput) error {
 // format, or membership in excludedModelIDs (e.g. a model whose circuit is
 // currently open). It returns the surviving models plus a short
 // human-readable log of what was checked, for inclusion in RouteResult.Reason.
-func (r Router) applyHardFilters(input ClassifierOutput, estimatedContextTokens int, excludedModelIDs map[string]bool) ([]Model, string) {
+func (r Router) applyHardFilters(input RequestProfile, estimatedContextTokens int, excludedModelIDs map[string]bool) ([]Model, string) {
 	requiredModalities := map[string]bool{}
 	for _, m := range input.ModalityInput {
 		requiredModalities[m] = true
@@ -409,7 +409,7 @@ func nearestAvailableMode(mode string, available map[string]bool) (string, bool)
 // lists "instant" -- would compute a "natural" tier like "thinking" and then
 // fail with "no candidate models support mode" even though a capable model
 // exists, just not at that tier.
-func (r Router) determineAutoMode(input ClassifierOutput, availableModes map[string]bool) (string, string) {
+func (r Router) determineAutoMode(input RequestProfile, availableModes map[string]bool) (string, string) {
 	w := r.Weights.AutoMode
 	score := w.ReasoningWeight*enumScore(input.ReasoningDepth) +
 		w.ComplexityWeight*input.ComplexityScore +

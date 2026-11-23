@@ -62,7 +62,7 @@ jobs:
           fi
 
       # -race because most of what has been added recently is concurrent
-      # (the classify/moderate goroutines, the streaming relays, the
+      # (the streaming relays, the
       # circuit breaker's shared state, the in-memory stores' mutexes).
       - name: go test -race
         run: go test -race ./...

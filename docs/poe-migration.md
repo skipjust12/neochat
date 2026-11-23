@@ -5,7 +5,7 @@ Production generations now use the native Bot Query endpoint:
 `Authorization: Bearer <Poe API key>`. This follows the official
 [fastapi_poe client](https://github.com/poe-platform/fastapi_poe/blob/main/src/fastapi_poe/client.py)
 and [protocol types](https://github.com/poe-platform/fastapi_poe/blob/main/src/fastapi_poe/types.py).
-Chat, classifier, moderation, summaries, compaction, titles, search helpers,
+Chat, summaries, compaction, titles, search helpers,
 images and videos use this path. Public model metadata and the points-balance
 endpoint remain REST calls; they are not generation requests.
 

@@ -44,8 +44,8 @@ func testWeights() Weights {
 	}
 }
 
-func baseInput() ClassifierOutput {
-	return ClassifierOutput{
+func baseInput() RequestProfile {
+	return RequestProfile{
 		SchemaVersion:          "1.1",
 		TaskCategory:           TaskCategorySoftwareEngineering,
 		TaskIntent:             TaskIntentGenerate,
@@ -229,7 +229,7 @@ func TestRoute_AutoModeSnapsToAvailableTierWhenNaturalTierHasNoCandidates(t *tes
 	// the only hard-filter survivor is instant-only. Before the fix this
 	// returned "no candidate models support mode \"max\"" even though a
 	// perfectly capable model existed, just not at that tier.
-	input := ClassifierOutput{
+	input := RequestProfile{
 		ReasoningDepth: "high", CreativityLevel: "high",
 		ModalityInput: []string{"text"}, ModalityOutputExpected: []string{"image"},
 		OutputFormat: "image", ComplexityScore: 0.9, Confidence: 0.9,

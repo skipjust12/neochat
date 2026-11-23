@@ -4,7 +4,7 @@
 [the Poe migration guide](poe-migration.md) for transports, model/bot names,
 Unlisted bot entries, prompt-cache telemetry, media and point accounting.
 
-The existing chat features remain: personas, streaming, terminal/desktop/MCP
+The existing chat features remain: personas, streaming, terminal/desktop file
 tools, inline script images, files, web search, chat history, summaries,
 regeneration, projects and settings sync. The root `main.go` is a separate
 router demo. Live Poe calls and billing require your own Poe key and are not
@@ -45,10 +45,8 @@ All of these go in `.env` (gitignored) — `cmd/server` loads it automatically o
 | `ROUTER_ENABLED` | Optional. Unset/anything but `true` = router disabled, Manual-only direct mode (see above). |
 | `MODEL_CATALOG_LIVE` | Optional. `false` keeps the checked-in Poe snapshot; otherwise the public list refreshes hourly. |
 | `MAX_OUTPUT_TOKENS` | Optional, defaults to `16000` (range 1..16000). Hard ceiling on output tokens per generation call. |
-| `CLASSIFIER_API_MODEL_ID` | Optional, defaults to `gemini-3.5-flash-lite` (the model `prompts/classifier_system_prompt.md` was validated against). Only used with the router enabled, and as the summarizer default. |
-| `MODERATION_API_MODEL_ID` | Optional, defaults to `gpt-oss-120b`. Only used with the router enabled. |
-| `CLASSIFIER_COST_INPUT_PER_MTOK` / `CLASSIFIER_COST_OUTPUT_PER_MTOK` | Optional, default `0.303` / `2.5253` (matches the `CLASSIFIER_API_MODEL_ID` default). Prices the classifier's `cost_log` entries -- override alongside `CLASSIFIER_API_MODEL_ID` if you change it, or logged cost keeps pricing the old model. |
-| `MODERATION_COST_INPUT_PER_MTOK` / `MODERATION_COST_OUTPUT_PER_MTOK` | Optional, default `0.1515` / `0.6061` (matches the `MODERATION_API_MODEL_ID` default). Same caveat as the classifier rates above. |
+| `SUMMARIZER_API_MODEL_ID` | Optional, defaults to `gemini-3.5-flash-lite`. Independent of model routing. |
+| `SUMMARIZER_COST_INPUT_PER_MTOK` / `SUMMARIZER_COST_OUTPUT_PER_MTOK` | Optional internal summary estimates, defaults `0.303` / `2.5253`. |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Required. Must match what `docker-compose.yml` started Postgres with. |
 | `POSTGRES_HOST` / `POSTGRES_PORT` | Optional, default to `127.0.0.1` / `5432` (docker-compose's published address). |
 | `REDIS_PASSWORD` | Required. Must match what `docker-compose.yml` started Redis with. |
@@ -134,20 +132,7 @@ Expected response shape:
 }
 ```
 
-With `ROUTER_ENABLED=true`, every request also runs through Layer 1 moderation (`moderation/`, see README "Moderation") concurrently with classification. If it flags the message, the response instead looks like this — no model is ever selected or called:
-
-```json
-{
-  "conversation_id": "...",
-  "selected_model_id": "",
-  "selected_mode": "",
-  "reason": "",
-  "estimated_cost_usd": 0.0,
-  "actual_cost_usd": 0.0,
-  "response_text": "This message was blocked because it violates our usage policies.",
-  "blocked": true
-}
-```
+Requests go straight to generation without classification or moderation calls. Optional catalog routing uses a fixed local profile, not an analysis model.
 
 To continue the same thread instead of starting a new one each time, pass the `conversation_id` the previous response returned:
 
@@ -175,21 +160,16 @@ A request with no `Authorization` header, or a token `issuekey` never printed, g
 - **"Poe: ... (HTTP 404)"** — the bot name is unknown or unavailable to this key. Check the Poe bot URL and `https://api.poe.com/v1/models`; unlisted bots may still be callable.
 - **"Poe rejected your API key"** (401/403) or **"balance is too low"** (402) — the user's own key/balance; shown to them verbatim since it's their account.
 - **429** — rate limit on the user's Poe key, not a bug here.
-- **401 straight back from `curl localhost:8080/chat`, instant, no server-side classify/moderate log line** — this is neochat's own auth check (step 4 above), not OpenRouter: missing `Authorization` header, or a token `cmd/issuekey` never printed for this database. Re-run `issuekey` and re-export `NEOCHAT_API_KEY` if in doubt -- a stale value from an earlier `.env`/database reset looks identical to a typo.
+- **401 straight back from `curl localhost:8080/chat`, instant, no outbound model call** — this is neochat's own auth check (step 4 above), not Poe: missing `Authorization` header, or a token `cmd/issuekey` never printed for this database. Re-run `issuekey` and re-export `NEOCHAT_API_KEY` if in doubt -- a stale value from an earlier `.env`/database reset looks identical to a typo.
 - **"Add your Poe API key"** — the request had no `X-Provider-Key` header (key not saved in Settings → Account) (Manual mode requires a user key).
-- **The classifier reply fails to parse as JSON** — `classifier.Classify` already strips a wrapping ` ```json ` fence, but a genuinely different failure (the model refusing, adding prose, etc.) will surface as a clear parse error with the raw reply included — that's real signal about how the model behaves with this prompt through Poe specifically, not necessarily a bug.
-- **`moderate: ...` error, every request fails** — the moderation model call itself failed (bad `MODERATION_API_MODEL_ID`, rate limit, JSON parse failure — same failure modes as the classifier, just in `moderation.Moderate`). Moderation fails closed on purpose (see README "Moderation"), so this takes down `/chat` entirely rather than letting requests through unmoderated — check the error for which of those it actually is.
-- **Every request comes back `"blocked": true`** — either genuinely correct (you're testing with a phrase that should trip a policy category) or the moderation model is being overly aggressive; check `docs/unit-economics.md`'s cost assumption still matches whichever model `MODERATION_API_MODEL_ID` resolves to, and see the flagged reason in the server log (`server: /chat blocked by moderation ...`) — it's logged server-side even though the client only sees the generic ToS message.
 
 ## Confirming the Postgres/Redis wiring specifically
 
 After a request or two through step 4 above:
 
 ```bash
-# moderation.BlockLog -- send a request that should trip a policy category first
-docker exec -it neochat-postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" -c 'select * from moderation_block_log;'
 
-# limits.SpendStore -- after any non-blocked request
+# limits.SpendStore -- after a completed request
 docker exec -it neochat-redis redis-cli -a "$REDIS_PASSWORD" keys 'spend:*'
 
 # conversation.Store -- two requests sharing the same conversation_id should show two rows, in order

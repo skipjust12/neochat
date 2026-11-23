@@ -187,11 +187,10 @@ type webRun struct {
 	writing map[int]int
 
 	// Where the terminal tools run (resolveTarget): "server", "computer"
-	// (dev, with its MCP tools by function name) or "" (none);
+	// (dev) or "" (none);
 	// wantComputer: the user chose Computer.
 	target       string
 	dev          *deviceConn
-	mcpByName    map[string][2]string
 	wantComputer bool
 }
 
@@ -488,7 +487,7 @@ func (r *webRun) planTool(call provider.ToolCall, position int) (string, func(co
 	if call.Name == "send_file" {
 		return r.planSendFile(call)
 	}
-	if isComputerFileTool(call.Name) || isMCPTool(call.Name) {
+	if isComputerFileTool(call.Name) {
 		return r.planComputerTool(call)
 	}
 	var args struct {

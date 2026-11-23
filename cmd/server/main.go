@@ -1,5 +1,5 @@
 // Command server runs the real HTTP entry point: POST /chat runs
-// classify + moderate -> check spend lock -> route -> generate -> record
+// check spend lock -> load context -> select model -> generate -> record
 // spend end to end against a real vendor API. main.go at the repo root
 // stays a router-only demo; this is the first thing in the repo that
 // actually serves requests.
@@ -22,7 +22,6 @@ import (
 
 	"neochat/attachment"
 	"neochat/auth"
-	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
 	"neochat/db"
@@ -31,7 +30,6 @@ import (
 	"neochat/internal/envfile"
 	"neochat/limits"
 	"neochat/modelcatalog"
-	"neochat/moderation"
 	"neochat/pagestore"
 	"neochat/provider"
 	"neochat/ratelimit"
@@ -86,20 +84,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	systemPrompt, err := classifier.LoadSystemPrompt("prompts/classifier_system_prompt.md")
-	if err != nil {
-		log.Fatal(err)
-	}
-	moderationSystemPrompt, err := moderation.LoadSystemPrompt("prompts/moderation_system_prompt.md")
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Chat system prompts are per-persona (server.SystemPromptNames --
-	// "Default", "Expert", "Friendly", "Cynical", "Direct"), loaded from
-	// prompts/<Name>.md. Unlike the classifier/moderation prompts above, a
-	// persona whose file is missing/empty isn't fatal: LoadSystemPrompts
-	// just skips it, and selecting that persona sends no system message
-	// until its real prompt text is written.
+	// Load the five chat styles; summaries have their own prompt.
 	chatSystemPrompts := server.LoadSystemPrompts("prompts")
 
 	// Every vendor call goes through Poe. Each user brings their own
@@ -154,7 +139,7 @@ func main() {
 		log.Fatal("MAX_OUTPUT_TOKENS must be between 1 and 16000")
 	}
 
-	// Every vendor call -- generation, classify, moderate, summarize --
+	// Every vendor call -- generation, summarize, titles and search --
 	// goes through the retry wrapper, which only resends refusals that are
 	// safe to resend (429s), since a chat completion is not idempotent --
 	// see provider.StatusError.Retryable.
@@ -175,49 +160,16 @@ func main() {
 	// converting a recoverable blip into an outage.
 	generationClient := provider.NewCircuitBreakerClient(retryingClient, 5, 30*time.Second)
 
-	// gemini-3.5-flash-lite is the default: it's the model
-	// prompts/classifier_system_prompt.md was validated against (see
-	// docs/unit-economics.md's assumptions table). Override with
-	// CLASSIFIER_API_MODEL_ID for a different Poe model slug.
-	classifierModelID := os.Getenv("CLASSIFIER_API_MODEL_ID")
-	if classifierModelID == "" {
-		classifierModelID = "gemini-3.5-flash-lite"
-	}
-
-	// gpt-oss-120b is the default: it's the model
-	// docs/unit-economics.md assumed for both moderation layers. Override
-	// with MODERATION_API_MODEL_ID for a different Poe model slug.
-	moderationModelID := os.Getenv("MODERATION_API_MODEL_ID")
-	if moderationModelID == "" {
-		moderationModelID = "gpt-oss-120b"
-	}
-
-	// Per-Mtok rates for pricing classifier/moderation calls into cost_log
-	// (README pre-launch checklist item 7's "still not logged" gap,
-	// closed 2026-08-12) -- classifier.Classifier/moderation.Moderator
-	// have no catalog entry to price against the way a generation model
-	// does (moderation's default, gpt-oss-120b, was deliberately removed
-	// from configs/models.json entirely), so these are their own
-	// standalone rates. Defaults are docs/unit-economics.md's assumed
-	// figures for the *_API_MODEL_ID defaults just above
-	// (Poe snapshot rates; see docs/poe-migration.md); if you
-	// override either *_API_MODEL_ID, override its cost rates too, or
-	// logged cost will silently keep pricing the old model.
-	classifierCostInputPerMTok := getenvFloatDefault("CLASSIFIER_COST_INPUT_PER_MTOK", 0.303)
-	classifierCostOutputPerMTok := getenvFloatDefault("CLASSIFIER_COST_OUTPUT_PER_MTOK", 2.5253)
-	moderationCostInputPerMTok := getenvFloatDefault("MODERATION_COST_INPUT_PER_MTOK", 0.1515)
-	moderationCostOutputPerMTok := getenvFloatDefault("MODERATION_COST_OUTPUT_PER_MTOK", 0.6061)
-
 	summarizerSystemPrompt, err := summarizer.LoadSystemPrompt("prompts/summarizer_system_prompt.md")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Same cheap model as the classifier (SUMMARIZER_API_MODEL_ID
+	// Summary model (SUMMARIZER_API_MODEL_ID
 	// overrides independently) -- see summarizer package doc comment.
 	summarizerModelID := os.Getenv("SUMMARIZER_API_MODEL_ID")
 	if summarizerModelID == "" {
-		summarizerModelID = classifierModelID
+		summarizerModelID = "gemini-3.5-flash-lite"
 	}
 
 	// SummaryTailMessages: how many of the most recent messages are
@@ -260,14 +212,6 @@ func main() {
 		idempotencyTTL = d
 	}
 
-	classifierWithCost := classifier.New(retryingClient, classifierModelID, systemPrompt)
-	classifierWithCost.CostInputPerMTok = classifierCostInputPerMTok
-	classifierWithCost.CostOutputPerMTok = classifierCostOutputPerMTok
-
-	moderatorWithCost := moderation.New(retryingClient, moderationModelID, moderationSystemPrompt)
-	moderatorWithCost.CostInputPerMTok = moderationCostInputPerMTok
-	moderatorWithCost.CostOutputPerMTok = moderationCostOutputPerMTok
-
 	// Two request throttles on POST /chat and /chat/stream, over different
 	// keys -- see server.Server.IPRateLimiter/UserRateLimiter and audit.md
 	// finding #2. The per-IP one catches a caller with no valid credential
@@ -301,8 +245,8 @@ func main() {
 		trustedProxies = append(trustedProxies, prefix)
 	}
 	summaryClient := summarizer.New(retryingClient, summarizerModelID, summarizerSystemPrompt)
-	summaryClient.CostInputPerMTok = getenvFloatDefault("SUMMARIZER_COST_INPUT_PER_MTOK", classifierCostInputPerMTok)
-	summaryClient.CostOutputPerMTok = getenvFloatDefault("SUMMARIZER_COST_OUTPUT_PER_MTOK", classifierCostOutputPerMTok)
+	summaryClient.CostInputPerMTok = getenvFloatDefault("SUMMARIZER_COST_INPUT_PER_MTOK", 0.303)
+	summaryClient.CostOutputPerMTok = getenvFloatDefault("SUMMARIZER_COST_OUTPUT_PER_MTOK", 2.5253)
 	authStore := auth.NewPostgresStore(pgDB)
 	// The Manual picker follows Poe's releases (package modelcatalog):
 	// fetched now, then again when someone opens the app and the list is
@@ -320,12 +264,6 @@ func main() {
 		TrustedProxies: trustedProxies,
 		RequireHTTPS:   os.Getenv("REQUIRE_HTTPS") == "true",
 		Router:         router.NewRouter(catalog, weights),
-		Classifier:     classifierWithCost,
-		Moderator:      moderatorWithCost,
-		// Postgres-backed, replacing InMemoryBlockLog -- see
-		// moderation.BlockLog's doc comment for the swap-in procedure this
-		// follows and README's "Current task" section.
-		ModerationLog: moderation.NewPostgresBlockLog(pgDB),
 		// Postgres-backed, replacing InMemoryStore -- see
 		// conversation.Store's doc comment.
 		Conversations: conversation.NewPostgresStore(pgDB),
@@ -355,10 +293,10 @@ func main() {
 			"deepseek":  generationClient,
 			"spacexai":  generationClient,
 		},
-		// The auto-router (classify -> moderate -> route) is switched off
+		// Catalog tier routing is switched off
 		// by default: only Manual requests are served, straight to the
 		// chosen model on the user's own key. ROUTER_ENABLED=true restores
-		// the full pipeline once the router is ready to come back.
+		// catalog routing with a fixed local profile (no model classification).
 		RouterDisabled: os.Getenv("ROUTER_ENABLED") != "true",
 		// Postgres-backed file uploads (POST /files) -- see package
 		// attachment and db/migrations/0008_attachments.sql.

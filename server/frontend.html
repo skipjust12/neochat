@@ -5375,7 +5375,7 @@
     // runChatStream posts options.request to options.url -- or, given
     // options.streamID, rejoins that stream -- and hands each event to
     // options.onEvent until the reply ends. It resolves with how it ended
-    // ('done' or 'blocked'). It rejects with what onEvent threw (a server
+    // ('done'). It rejects with what onEvent threw (a server
     // 'error'), with error.stopped for a Stop, error.gone for a stream the
     // server no longer has (the stored chat has the answer) and error.lost
     // once five tries to reconnect have failed.
@@ -5394,7 +5394,7 @@
           const index=steps.findLastIndex(function(step){return step.pending});
           const step=steps[index];
           nextAction=step?JSON.stringify([index,step.tool,step.phase||'',step.approval||'']):'';
-        }else if(event==='delta'||event==='done'||event==='blocked')nextAction='';
+        }else if(event==='delta'||event==='done')nextAction='';
         // One clock for the entire state: its label, animation and following
         // text. Network timings and server-side execution remain untouched.
         if(shownAction&&nextAction!==shownAction&&event!=='error'){
@@ -5455,7 +5455,7 @@
             }
             if(id){lastSeq=id;recovered()}
             if(event==='stopped'){ending='stopped';return}
-            if(event==='done'||event==='blocked')ending=event;
+            if(event==='done')ending=event;
             await present(event,data);
           },function(){
             lastByte=Date.now();
@@ -5711,7 +5711,6 @@
           },
           onEvent:function(event,data){
           if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
-          if(event==='blocked')throw new Error(data.response_text||'Regeneration was blocked.');
           if(event==='versions'){versionsData=data;return}
           if(event==='reasoning'){thought.reasoning(data&&data.text?String(data.text):'');return}
           if(event==='activity'){
@@ -5895,7 +5894,7 @@
             stream.append(text);
             return;
           }
-          if(event==='done'||event==='blocked'){
+          if(event==='done'){
             receivedTerminalEvent=true;
             terminalData=data;
             if(!activeChatIncognito){
@@ -5921,7 +5920,7 @@
         updateAskState(true);
         scheduleBalanceCheck();
         seenCurrentChat();
-        if(activeChatIncognito&&!terminalData.blocked){
+        if(activeChatIncognito){
           incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images,terminalData.videos),questionnaire:terminalData.questionnaire||undefined,activity:terminalData.activity&&terminalData.activity.length?terminalData.activity:undefined});
         }else if(!activeChatIncognito){
           if(activeProject)refreshActiveProject();else loadConversations(false);
@@ -6035,7 +6034,7 @@
               stream.append(text);
               return;
             }
-            if(event==='done'||event==='blocked'){
+            if(event==='done'){
               pending.classList.remove('is-pending');
               thought.done(data);
               stream.replace(data.response_text||'');

@@ -14,12 +14,10 @@ import (
 
 	"neochat/attachment"
 	"neochat/auth"
-	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
 	"neochat/idempotency"
 	"neochat/limits"
-	"neochat/moderation"
 	"neochat/provider"
 	"neochat/router"
 )
@@ -126,23 +124,20 @@ func newDirectServer(t *testing.T, standIn *polzaStandIn) *Server {
 		{ID: "claude-opus-5.5", APIModelID: "anthropic/claude-opus-5.5", Provider: "anthropic", Modes: []string{"max"}, Reasoning: "adaptive", CostInputPerMTok: 4, CostOutputPerMTok: 20, ContextWindow: 1_000_000, MaxOutputTokens: 16000},
 		{ID: "claude-haiku-4-5", APIModelID: "anthropic/claude-haiku-4.5", Provider: "anthropic", Modes: []string{"instant"}, CostInputPerMTok: 0.4, CostOutputPerMTok: 0.4, ContextWindow: 200_000, MaxOutputTokens: 16000},
 	}}
-	// Classifier/moderator fakes have nothing scripted: any call panics,
 	// which is how these tests prove direct mode never reaches them.
 	return &Server{
 		RouterDisabled: true,
 		Router:         router.NewRouter(catalog, testWeights()),
-		Classifier:     classifier.New(&provider.FakeClient{}, "classifier", "system"),
-		Moderator:      moderation.New(&provider.FakeClient{}, "moderator", "system"),
-		ModerationLog:  moderation.NewInMemoryBlockLog(),
-		Conversations:  conversation.NewInMemoryStore(),
-		Store:          limits.NewInMemorySpendStore(),
-		Idempotency:    idempotency.NewInMemoryStore(),
-		CostLog:        costlog.NewInMemoryStore(),
-		Plans:          map[string]limits.PlanLimits{"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10, InstantExtraCapUSD: 3}},
-		SystemPrompts:  map[string]string{"Expert": "expert persona prompt"},
-		Generators:     map[string]provider.Client{"openai": client, "anthropic": client, "deepseek": client},
-		Auth:           auth.NewInMemoryStore(),
-		Attachments:    attachment.NewInMemoryStore(),
+
+		Conversations: conversation.NewInMemoryStore(),
+		Store:         limits.NewInMemorySpendStore(),
+		Idempotency:   idempotency.NewInMemoryStore(),
+		CostLog:       costlog.NewInMemoryStore(),
+		Plans:         map[string]limits.PlanLimits{"pro": {PlanID: "pro", ThinkingMaxCapUSD: 10, InstantExtraCapUSD: 3}},
+		SystemPrompts: map[string]string{"Expert": "expert persona prompt"},
+		Generators:    map[string]provider.Client{"openai": client, "anthropic": client, "deepseek": client},
+		Auth:          auth.NewInMemoryStore(),
+		Attachments:   attachment.NewInMemoryStore(),
 	}
 }
 

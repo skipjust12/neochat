@@ -52,12 +52,10 @@ func main() {
 		"output_format": "text",
 		"complexity_score": 0.6,
 		"context_dependency": "light",
-		"confidence": 0.82,
-		"content_flags": [],
-		"safety_risk_score": 0.0
+		"confidence": 0.82
 	}`
 
-	var input router.ClassifierOutput
+	var input router.RequestProfile
 	if err := json.Unmarshal([]byte(rawInput), &input); err != nil {
 		log.Fatal(err)
 	}
@@ -79,7 +77,7 @@ func main() {
 // router.Route, and the post-generation spend record -- the same sequence
 // a real server would follow (see docs/unit-economics.md section 6 and the
 // limits package doc comment).
-func routeAndRecord(ctx context.Context, r router.Router, store limits.SpendStore, plan limits.PlanLimits, userID string, input router.ClassifierOutput) {
+func routeAndRecord(ctx context.Context, r router.Router, store limits.SpendStore, plan limits.PlanLimits, userID string, input router.RequestProfile) {
 	locked, err := limits.CheckThinkingMaxLock(ctx, store, plan, userID)
 	if err != nil {
 		log.Fatal(err)

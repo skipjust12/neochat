@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"regexp"
-	"sort"
 	"strings"
 	"time"
 
@@ -25,7 +23,7 @@ const (
 	approvalAllow     = "allow"
 )
 
-// longToolTimeout bounds one terminal, file or MCP step, approval wait
+// longToolTimeout bounds one terminal or file step, approval wait
 // included; the runner's own time limit is shorter.
 const longToolTimeout = 15 * time.Minute
 
@@ -36,7 +34,6 @@ func (r *webRun) resolveTarget() {
 		r.wantComputer = true
 		if d := r.s.devices().device(r.req.UserID); d != nil {
 			r.target, r.dev = executeOnComputer, d
-			r.mcpByName = mcpToolNames(d.info().MCP)
 		}
 		return
 	}
@@ -51,7 +48,7 @@ func (r *webRun) onComputer() bool { return r.target == executeOnComputer }
 const computerMissingNote = "The user set commands to run on their own computer, but the NeoChat desktop app isn't connected right now, so you have no terminal for this answer and can't run anything. If the task needs it, tell them in one sentence to open the NeoChat app on their computer (or to switch \"Execute commands on\" to Server in the + menu), then help with what you can without it; never claim you ran anything."
 
 const (
-	approvalAskNote   = "The user approves each command, script, file write and MCP action before it runs (reading files and listing folders need no approval). A denied action comes back as denied: don't try the same thing another way; say what you wanted to do and ask. Approvals take the user's time, so batch work into fewer, well-thought-out steps."
+	approvalAskNote   = "The user approves each command, script and file write before it runs (reading files and listing folders need no approval). A denied action comes back as denied: don't try the same thing another way; say what you wanted to do and ask. Approvals take the user's time, so batch work into fewer, well-thought-out steps."
 	approvalAllowNote = "Actions run without asking the user first, so be careful: nothing destructive or irreversible they didn't ask for."
 )
 
@@ -77,9 +74,7 @@ func (r *webRun) terminalNote() string {
 			fmt.Fprintf(&b, " run_script takes %s.", strings.Join(h.Languages, ", "))
 		}
 		b.WriteString(" read_file, write_file and list_dir work with files directly; send_file gives the user a downloadable file; show_image displays a picture inline at this point in the answer, after which you can continue writing.")
-		if names := mcpServerNames(h.MCP); names != "" {
-			fmt.Fprintf(&b, " MCP tools (mcp__<server>__<tool>) control apps through the app's MCP servers: %s.", names)
-		}
+
 		b.WriteString(" It is the user's real machine with their files, programs and accounts: change, move or delete only what the task is about, and never touch system settings, other people's data or credentials unless asked. ")
 		b.WriteString(approval)
 		return b.String()
@@ -94,7 +89,7 @@ func (r *webRun) terminalNote() string {
 
 // terminalTools are the tools for this answer's terminal: on the server
 // run_command, run_script and send_file; on a computer also the file
-// tools and its MCP tools, with the shells and languages it has.
+// tools, with the shells and languages it has.
 func (r *webRun) terminalTools() []provider.FunctionTool {
 	if !r.onComputer() {
 		tools := append([]provider.FunctionTool(nil), terminalFunctionTools...)
@@ -135,7 +130,7 @@ func (r *webRun) terminalTools() []provider.FunctionTool {
 	if r.s.Attachments != nil {
 		tools = append(tools, sendFileTool, showImageTool)
 	}
-	return append(tools, mcpFunctionTools(h.MCP, r.mcpByName)...)
+	return tools
 }
 
 var computerFileTools = []provider.FunctionTool{
@@ -169,84 +164,10 @@ func isComputerFileTool(name string) bool {
 	return name == "read_file" || name == "write_file" || name == "list_dir"
 }
 
-func isMCPTool(name string) bool { return strings.HasPrefix(name, "mcp__") }
-
 // isLongTool: a step that may run for minutes (and wait for approval),
 // not under webStepTimeout.
 func isLongTool(name string) bool {
-	return isTerminalTool(name) || isComputerFileTool(name) || isMCPTool(name) || name == "send_file" || name == "show_image"
-}
-
-// --- MCP ---
-
-var toolNameUnsafe = regexp.MustCompile(`[^a-zA-Z0-9_-]+`)
-
-// mcpToolNames gives each MCP tool a function name the vendors accept
-// (mcp__<server>__<tool>, at most 64 characters, unique) and maps it back.
-func mcpToolNames(servers []device.Server) map[string][2]string {
-	out := map[string][2]string{}
-	for _, server := range servers {
-		for _, tool := range server.Tools {
-			name := "mcp__" + toolNameUnsafe.ReplaceAllString(server.Name, "_") + "__" + toolNameUnsafe.ReplaceAllString(tool.Name, "_")
-			if len(name) > 64 {
-				name = name[:64]
-			}
-			base := name
-			for n := 2; ; n++ {
-				if _, taken := out[name]; !taken {
-					break
-				}
-				suffix := fmt.Sprintf("_%d", n)
-				name = base[:min(len(base), 64-len(suffix))] + suffix
-			}
-			out[name] = [2]string{server.Name, tool.Name}
-		}
-	}
-	return out
-}
-
-func mcpFunctionTools(servers []device.Server, names map[string][2]string) []provider.FunctionTool {
-	byPair := map[[2]string]device.Tool{}
-	for _, server := range servers {
-		for _, tool := range server.Tools {
-			byPair[[2]string{server.Name, tool.Name}] = tool
-		}
-	}
-	keys := make([]string, 0, len(names))
-	for name := range names {
-		keys = append(keys, name)
-	}
-	sort.Strings(keys)
-	var out []provider.FunctionTool
-	for _, name := range keys {
-		pair := names[name]
-		tool := byPair[pair]
-		params := map[string]any{}
-		if len(tool.InputSchema) > 0 && json.Unmarshal(tool.InputSchema, &params) != nil {
-			params = map[string]any{}
-		}
-		if params["type"] != "object" {
-			params = map[string]any{"type": "object", "properties": map[string]any{}}
-		}
-		if _, ok := params["properties"]; !ok {
-			params["properties"] = map[string]any{}
-		}
-		description := "[MCP server " + pair[0] + "] " + tool.Description
-		out = append(out, provider.FunctionTool{Name: name, Description: clipRunes(strings.TrimSpace(description), 1000), Parameters: params})
-	}
-	return out
-}
-
-func mcpServerNames(servers []device.Server) string {
-	var names []string
-	for _, s := range servers {
-		if s.Error != "" {
-			names = append(names, s.Name+" (not running: "+clipRunes(s.Error, 80)+")")
-		} else {
-			names = append(names, fmt.Sprintf("%s (%d tools)", s.Name, len(s.Tools)))
-		}
-	}
-	return strings.Join(names, ", ")
+	return isTerminalTool(name) || isComputerFileTool(name) || name == "send_file" || name == "show_image"
 }
 
 // --- running on the computer ---
@@ -350,10 +271,10 @@ func (r *webRun) approve(ctx context.Context, index int) bool {
 // deniedResult is the tool result of an action the user didn't allow.
 const deniedResult = "The user denied this action, so it did not run. Don't try to do the same thing another way; tell the user what you wanted to do and why, and ask how they want to proceed."
 
-// --- file and MCP tools ---
+// --- file tools ---
 
 // planComputerTool is planTool for read_file, write_file, list_dir and
-// the MCP tools.
+// computer file tools.
 func (r *webRun) planComputerTool(call provider.ToolCall) (string, func(context.Context) string) {
 	if !r.onComputer() {
 		return "Error: this tool works on the user's computer only, and it isn't connected.", nil
@@ -364,7 +285,7 @@ func (r *webRun) planComputerTool(call provider.ToolCall) (string, func(context.
 		Content string `json:"content"`
 		Append  bool   `json:"append"`
 	}
-	if !isMCPTool(call.Name) && strings.TrimSpace(call.Arguments) != "" {
+	if strings.TrimSpace(call.Arguments) != "" {
 		if err := json.Unmarshal([]byte(call.Arguments), &args); err != nil {
 			return "Error: the arguments are not valid JSON.", nil
 		}
@@ -394,20 +315,7 @@ func (r *webRun) planComputerTool(call provider.ToolCall) (string, func(context.
 		step.Title = clipRunes(orDefault(strings.TrimSpace(args.Path), "the working directory"), 500)
 		req = device.Request{Op: device.OpListDir, Path: args.Path}
 	default:
-		pair, ok := r.mcpByName[call.Name]
-		if !ok {
-			return fmt.Sprintf("Error: there is no tool named %q.", call.Name), nil
-		}
-		raw := json.RawMessage(strings.TrimSpace(call.Arguments))
-		if len(raw) == 0 {
-			raw = json.RawMessage("{}")
-		}
-		if !json.Valid(raw) {
-			return "Error: the arguments are not valid JSON.", nil
-		}
-		step.Tool, step.Title, step.Command = "mcp", pair[0]+" · "+pair[1], clipRunes(prettyJSON(raw), terminalShownCommand)
-		req = device.Request{Op: device.OpMCPCall, Server: pair[0], Tool: pair[1], Arguments: raw}
-		needsApproval = true
+		return fmt.Sprintf("Error: there is no tool named %q.", call.Name), nil
 	}
 	index := r.start(step)
 	return "", func(ctx context.Context) string {

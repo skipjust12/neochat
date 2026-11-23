@@ -189,12 +189,9 @@ func TestPrepare_DoesNotReadAlreadySummarizedMessages(t *testing.T) {
 	}))
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: conversationID, Message: "next question", RequestedMode: "instant"}
-	prepared, blocked, err := s.prepare(ctx, req, s.Plans["pro"])
+	prepared, err := s.prepare(ctx, req, s.Plans["pro"])
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if blocked != nil {
-		t.Fatalf("unexpected block: %+v", blocked)
 	}
 
 	if len(spy.offsets) != 1 {
@@ -258,12 +255,9 @@ func TestPrepare_FoldsHistoryIntoSummaryWhenOverTrigger(t *testing.T) {
 	t.Logf("full history estimate = %d tokens, SummaryTriggerTokens = %d", fullEstimate, s.SummaryTriggerTokens)
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: conversationID, Message: "one more question", RequestedMode: "instant"}
-	prepared, blocked, err := s.prepare(ctx, req, s.Plans["pro"])
+	prepared, err := s.prepare(ctx, req, s.Plans["pro"])
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if blocked != nil {
-		t.Fatalf("unexpected block: %+v", blocked)
 	}
 
 	if len(fakeSummarizer.Requests) != 1 {
