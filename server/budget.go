@@ -156,6 +156,12 @@ func (c auxiliaryClient) Generate(ctx context.Context, modelID string, messages 
 }
 
 func (s *Server) validateRequest(req chatRequest) error {
+	if req.SearchMode && req.RequestedMode == "manual" {
+		if model, ok := s.requestRouter(req).Catalog.FindModel(req.ManualModelID); ok && (model.Kind != "" || !model.ToolCalling) {
+			return userErrorf("Search mode needs a chat model with web tools. Choose a model that supports tools.")
+		}
+	}
+
 	if m, ok := s.requestRouter(req).Catalog.FindModel(req.ManualModelID); req.RequestedMode == "manual" && ok && m.Unavailable {
 		return userErrorf("%s is not available through Poe (N/A). Choose another model.", modelName(m))
 	}

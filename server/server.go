@@ -74,6 +74,8 @@ var ErrInstantCapExceeded = errors.New("server: instant-tier spend cap exceeded 
 // required; use New to build one with validation.
 type Server struct {
 	settingsMu     sync.Mutex
+	webGateOnce    sync.Once
+	webGate        *webGate
 	TrustedProxies []netip.Prefix
 	RequireHTTPS   bool
 	Router         router.Router
@@ -348,7 +350,8 @@ type chatRequest struct {
 
 	// WebSearch is the composer's Web search toggle: "auto", "on" or
 	// "off" (see webToolsFor). Empty means off.
-	WebSearch string `json:"web_search,omitempty"`
+	WebSearch  string `json:"web_search,omitempty"`
+	SearchMode bool   `json:"search_mode,omitempty"`
 	// ExecuteOn is where the terminal tools run: "server" (the default)
 	// or "computer", the user's own through the desktop app (device.go).
 	ExecuteOn string `json:"execute_on,omitempty"`
@@ -1149,6 +1152,7 @@ type regenerateRequest struct {
 	ExtendedThinking *bool  `json:"extended_thinking,omitempty"`
 	Instructions     string `json:"instructions,omitempty"`
 	WebSearch        string `json:"web_search,omitempty"`
+	SearchMode       bool   `json:"search_mode,omitempty"`
 	ExecuteOn        string `json:"execute_on,omitempty"`
 	Approval         string `json:"approval,omitempty"`
 	// Video: the length, resolution and shape asked of a video model.
@@ -1207,6 +1211,7 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		ExtendedThinking:    input.ExtendedThinking,
 		Instructions:        input.Instructions,
 		WebSearch:           input.WebSearch,
+		SearchMode:          input.SearchMode || history[len(history)-2].SearchMode,
 		ExecuteOn:           input.ExecuteOn,
 		Approval:            input.Approval,
 		Video:               input.Video,
@@ -1289,13 +1294,16 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 	// Share an accounting ID across this turn's model calls.
 	requestID := conversation.NewID()
 
-	// Routing uses a fixed local profile. No auxiliary model inspects or
-	// moderates the user's message before generation.
-	return s.prepareHistory(ctx, req, plan, project, conversationID, requestID, router.RequestProfile{
+	// Routing uses a fixed local profile without an auxiliary model call.
+	profile := router.RequestProfile{
 		TaskCategory: "general", TaskIntent: "answer",
 		ModalityInput: []string{"text"}, ModalityOutputExpected: []string{"text"},
 		ReasoningDepth: "moderate", CreativityLevel: "low", ComplexityScore: 0.5, Confidence: 1,
-	})
+	}
+	if req.SearchMode {
+		profile.RequiredTools = []string{router.ToolWebSearch}
+	}
+	return s.prepareHistory(ctx, req, plan, project, conversationID, requestID, profile)
 }
 
 // prepareHistory is the second half of prepare, shared by the routed and
@@ -1760,7 +1768,7 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 			return regenerated, fmt.Errorf("persist regenerated response: %w", err)
 		}
 	} else {
-		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, Attachments: prepared.attachments, Quote: req.Quote, CreatedAt: now}); err != nil {
+		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, Attachments: prepared.attachments, Quote: req.Quote, SearchMode: req.SearchMode, CreatedAt: now}); err != nil {
 			log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
 		}
 		if len(prepared.attachments) > 0 && s.Attachments != nil {

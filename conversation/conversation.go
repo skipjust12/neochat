@@ -48,7 +48,8 @@ type Message struct {
 
 	// Quote is the part of an earlier answer a user message asks about
 	// (selected in the UI and sent with "Ask"); empty for most messages.
-	Quote string `json:"quote,omitempty"`
+	Quote      string `json:"quote,omitempty"`
+	SearchMode bool   `json:"search_mode,omitempty"`
 }
 
 // Attachment is the stored reference to one file sent with a message.

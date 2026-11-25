@@ -1,0 +1,1 @@
+ALTER TABLE conversation_messages ADD COLUMN IF NOT EXISTS search_mode BOOLEAN NOT NULL DEFAULT FALSE;

@@ -348,8 +348,8 @@ func TestWebLoopLimits(t *testing.T) {
 		t.Errorf("searches run = %d, want the limit %d", searches.Load(), webMaxSearches)
 	}
 	main := vendor.mainCalls()
-	if len(main) != webMaxRounds {
-		t.Fatalf("model calls = %d, want %d", len(main), webMaxRounds)
+	if len(main) != webMaxSearches+3 {
+		t.Fatalf("model calls = %d, want %d", len(main), webMaxSearches+3)
 	}
 	if main[len(main)-1]["tools"] != nil {
 		t.Error("the last call still offered tools")

@@ -10230,3 +10230,12 @@ html[data-theme="dark"] .main:not(.project-mode) #homeGreeting::after {
 .sketch-paste{cursor:pointer}.sketch-paste:disabled{opacity:.45;cursor:wait}
 #sketchDialog .sketch-dialog{overflow:auto}#sketchDialog .sketch-stage{flex-shrink:0}
 @media(max-width:600px){.sketch-properties{display:grid;grid-template-columns:1fr 1fr;gap:9px 12px}.sketch-properties label{justify-content:space-between;gap:5px}.sketch-properties input[type=range]{flex:1;width:50px}.sketch-properties select{font-size:16px;max-width:100px}.sketch-paste{min-height:34px;justify-self:start}.sketch-properties output{min-width:31px}}
+
+/* Search is a per-message mode alongside quotes and attachments. */
+.search-mode-card{flex-direction:row;align-items:center;gap:9px;width:auto;min-width:168px;padding:12px;color:var(--text);}
+.search-mode-card>.preview-icon{flex:none;width:24px;height:24px;}
+.search-mode-card>span{font-size:13px;font-weight:600;white-space:nowrap;}
+.search-mode-card>button{display:grid;place-items:center;width:22px;height:22px;margin-left:4px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;}
+.search-mode-card>button:hover{background:var(--surface-2);color:var(--text);}
+
+.message-search-mode{align-self:flex-end;font-size:11px;color:var(--muted);padding:2px 8px;}

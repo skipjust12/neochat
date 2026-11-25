@@ -1563,6 +1563,7 @@
 
     /* ---------- chat API ---------- */
     const textarea=document.getElementById('message');
+    let composerSearchMode=false, searchModeCard=null;
     const sendButton=document.querySelector('.send');
     const chatContent=document.querySelector('.content');
     const chatLog=document.getElementById('chatLog');
@@ -1908,6 +1909,7 @@
       request.reasoning_effort=selectedReasoningEffort();
       const webSearchMode=(document.getElementById('webSearchState').textContent||'Auto').trim().toLowerCase();
       request.web_search=['auto','on','off'].indexOf(webSearchMode)>-1?webSearchMode:'auto';
+      if(composerSearchMode){request.search_mode=true;request.web_search='on'}
       // Extended Thinking (+ menu) turns thinking on or off; the effort is
       // sent either way and never changes with it.
       request.extended_thinking=(document.getElementById('thinkingState').textContent||'On').trim()!=='Off';
@@ -4683,6 +4685,36 @@
     selectionAsk.addEventListener('pointerup',function(event){if(event.pointerType!=='mouse')askAboutSelection()});
     selectionAsk.addEventListener('click',askAboutSelection);
 
+    function setComposerSearchMode(enabled){
+      composerSearchMode=Boolean(enabled);
+      if(!enabled){
+        if(searchModeCard){searchModeCard.remove();searchModeCard=null}
+        if(!quoteTray.children.length)quoteTrayWrap.classList.remove('is-open');
+        return;
+      }
+      if(!searchModeCard){
+        searchModeCard=document.createElement('div');
+        searchModeCard.className='quote-card search-mode-card';
+        searchModeCard.setAttribute('role','status');
+        searchModeCard.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search preview-icon" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span>Search mode</span><button type="button" aria-label="Remove Search mode"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>';
+        searchModeCard.querySelector('button').addEventListener('click',function(){setComposerSearchMode(false);textarea.focus()});
+      }
+      quoteTray.prepend(searchModeCard);
+      quoteTrayWrap.classList.add('is-open');
+    }
+    function consumeSearchCommand(){
+      const value=textarea.value;
+      const pattern=/(^|\s)@search(?=\s|$)/ig;
+      if(!pattern.test(value))return;
+      const cursor=textarea.selectionStart;
+      const before=value.slice(0,cursor).replace(/(^|\s)@search(?=\s|$)/ig,'$1');
+      textarea.value=value.replace(/(^|\s)@search(?=\s|$)/ig,'$1').trimStart();
+      const position=Math.min(textarea.value.length,before.trimStart().length);
+      textarea.setSelectionRange(position,position);
+      setComposerSearchMode(true);
+    }
+    textarea.addEventListener('input',consumeSearchCommand);
+
     function setComposerQuote(text){
       const chars=Array.from(text);
       composerQuote=chars.length>maxQuoteLength?chars.slice(0,maxQuoteLength).join('')+'…':text;
@@ -4779,6 +4811,7 @@
         else collapseLongMessage(message,String(text||''));
         renderMessageAttachments(message,messageDetails&&messageDetails.attachments);
         renderMessageQuote(message,messageDetails&&messageDetails.quote);
+        if(messageDetails&&messageDetails.search_mode){message.dataset.searchMode='true';const mode=document.createElement('span');mode.className='message-search-mode';mode.textContent='Search mode';message.prepend(mode)}
         if(!String(text||'').trim()&&message.querySelector('.message-attachments'))message.classList.add('is-attachment-only');
         appendUserMessageMeta(message,String(text||''),messageDetails);
       }
@@ -4790,6 +4823,7 @@
 
     function resetConversation(){
       closeAsk();
+      setComposerSearchMode(false);
       clearComposerQuote();
       conversationID='';
       setConversationTitle('New chat');
@@ -5136,6 +5170,7 @@
         syncIncognitoGreeting();
         storeValue(localStorage,currentConversationStorageKey,conversationID);
         clearComposerQuote();
+        setComposerSearchMode(false);
         chatLog.replaceChildren();
         (Array.isArray(data.messages)?data.messages:[]).forEach(function(message){
           if(message.is_summary)return;
@@ -5660,6 +5695,7 @@
       const request=isIncognito?{
         message:incognitoMessages.length>=2?incognitoMessages[incognitoMessages.length-2].content:'',
         quote:incognitoMessages.length>=2?incognitoMessages[incognitoMessages.length-2].quote:undefined,
+        search_mode:incognitoMessages.length>=2?incognitoMessages[incognitoMessages.length-2].search_mode:undefined,
         incognito:true,
         incognito_history:incognitoMessages.slice(0,-2),
         requested_mode:mode,
@@ -5798,6 +5834,7 @@
     // composer's; the composer's draft and files then stay where they are.
     async function sendMessage(options){
       const answers=options&&typeof options.text==='string'?options.text:null;
+      if(answers===null)consumeSearchCommand();
       const request=selectedRequest();
       if(answers!==null)request.message=answers;
       const session=signedInUser();
@@ -5825,7 +5862,7 @@
       sentFiles.forEach(function(file){if(file.preview)attachmentURLs.set(file.id,Promise.resolve(file.preview))});
 
       chatLog.querySelectorAll('.is-latest-response').forEach(function(message){message.classList.remove('is-latest-response')});
-      const userMessage=appendMessage('user',request.message,{attachments:sentFiles,quote:request.quote});
+      const userMessage=appendMessage('user',request.message,{attachments:sentFiles,quote:request.quote,search_mode:request.search_mode});
       // Anything sent after a questionnaire answers or passes over it.
       updateAskState(false);
       const pending=appendMessage('assistant','');
@@ -5837,6 +5874,7 @@
       const thinkingStartedAt=performance.now();
       if(answers===null){
         clearComposerQuote();
+        setComposerSearchMode(false);
         textarea.value='';
         document.dispatchEvent(new CustomEvent('plugin:clear'));
         textarea.style.height='auto';
@@ -5925,7 +5963,7 @@
         scheduleBalanceCheck();
         seenCurrentChat();
         if(activeChatIncognito){
-          incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images,terminalData.videos),questionnaire:terminalData.questionnaire||undefined,activity:terminalData.activity&&terminalData.activity.length?terminalData.activity:undefined});
+          incognitoMessages.push({role:'user',content:request.message,quote:request.quote,search_mode:request.search_mode},{role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images,terminalData.videos),questionnaire:terminalData.questionnaire||undefined,activity:terminalData.activity&&terminalData.activity.length?terminalData.activity:undefined});
         }else if(!activeChatIncognito){
           if(activeProject)refreshActiveProject();else loadConversations(false);
         }
@@ -5951,7 +5989,7 @@
           note.textContent='Stopped';
           body.append(note);
           if(activeChatIncognito&&receivedText){
-            incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:receivedText});
+            incognitoMessages.push({role:'user',content:request.message,quote:request.quote,search_mode:request.search_mode},{role:'assistant',content:receivedText});
           }else if(!activeChatIncognito&&receivedText){
             refreshAfterStop();
           }

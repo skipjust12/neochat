@@ -188,7 +188,7 @@ jobs:
           git diff --exit-code -- ../../server/assets/landing
 
   markdown:
-    name: Markdown, Poe and Sketch browser regressions
+    name: Markdown, Poe, Sketch and Search browser regressions
     # Playwright 1.57 does not support ubuntu-latest's Ubuntu 26.04 yet.
     runs-on: ubuntu-24.04
     steps:
@@ -203,6 +203,7 @@ jobs:
       - run: node scripts/frontend-markdown.browser.cjs
       - run: node scripts/frontend-poe.browser.cjs
       - run: node scripts/frontend-sketch.browser.cjs
+      - run: node scripts/frontend-search.browser.cjs
 
   desktop:
     name: desktop app (Windows build)
