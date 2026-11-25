@@ -20,6 +20,7 @@ func claudeCache(blocks []map[string]any) {
 }
 
 func (c *PoeClient) claudeRequest(ctx context.Context, model string, messages []Message, stream bool) map[string]any {
+	messages = toolImageMessages(messages)
 	system := []map[string]any{}
 	turns := []map[string]any{}
 	cacheUsers := map[int]bool{}

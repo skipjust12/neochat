@@ -81,7 +81,7 @@ func TestTerminalScriptRunsAndShowsItsSteps(t *testing.T) {
 	}
 
 	main := vendor.mainCalls()
-	if names := strings.Join(toolNames(main[0]), ","); names != "run_command,run_script,send_file,show_image,ask_user" {
+	if names := strings.Join(toolNames(main[0]), ","); names != "run_command,run_script,view_image,send_file,show_image,ask_user" {
 		t.Fatalf("tools = %s", names)
 	}
 	if !hasSystemPrefix(main[0], "You have a terminal on the server") {

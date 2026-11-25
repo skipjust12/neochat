@@ -396,6 +396,8 @@ func terminalStepLine(step conversation.ToolActivity) string {
 		line = "- showed the user an inline image " + oneLine(orDefault(step.Title, step.Command), 120)
 	case "send_file":
 		line = "- sent the user the file " + oneLine(orDefault(step.Title, step.Command), 120)
+	case "view_image":
+		line = "- visually inspected " + oneLine(step.Title, 200)
 	case "read_file":
 		line = "- read the file " + oneLine(step.Title, 200)
 	case "write_file":

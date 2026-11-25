@@ -12,6 +12,7 @@ import (
 // Bot parameters are flattened into the HTTP body, as OpenAI SDK extra_body
 // does. Never use Polza's reasoning or plugins extensions on this endpoint.
 func (c *PoeClient) chatRequest(ctx context.Context, model string, messages []Message, stream bool) map[string]any {
+	messages = toolImageMessages(messages)
 	turns := []any{}
 	for _, m := range messages {
 		turn := map[string]any{"role": m.Role, "content": m.Content}

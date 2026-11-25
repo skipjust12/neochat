@@ -120,6 +120,7 @@ func (c *PoeClient) request(ctx context.Context, path string, payload any, strea
 }
 
 func (c *PoeClient) responseRequest(ctx context.Context, model string, messages []Message, stream bool) map[string]any {
+	messages = toolImageMessages(messages)
 	input := []any{}
 	for _, m := range messages {
 		if m.Role == "tool" {

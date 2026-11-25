@@ -178,10 +178,12 @@ type webRun struct {
 	activity     []conversation.ToolActivity
 	searches     int
 	fetches      int
+	views        int
 	runs         int
 	files        []conversation.Attachment
 	sentFrom     map[string]conversation.Attachment // by real path, so a file goes once
-	inlineImages map[int]inlineImage                // this round, in tool-call order
+	viewImages   map[int]provider.Part
+	inlineImages map[int]inlineImage // this round, in tool-call order
 	// writing maps a run_script call the model is still writing (its
 	// position in the step) to the step shown for it.
 	writing map[int]int
@@ -343,8 +345,13 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 				emit(marker)
 			}
 		}
+		viewed := r.takeViewedImages()
 		for i, result := range results {
-			messages = append(messages, provider.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result})
+			message := provider.Message{Role: "tool", ToolCallID: calls[i].ID, Content: result}
+			if part, ok := viewed[i]; ok {
+				message.Parts = []provider.Part{{Type: provider.PartText, Text: result}, part}
+			}
+			messages = append(messages, message)
 		}
 		if err := ctx.Err(); err != nil {
 			out.Activity = r.snapshot()
@@ -480,6 +487,9 @@ func recoverToolPanic(result *string) {
 func (r *webRun) planTool(call provider.ToolCall, position int) (string, func(context.Context) string) {
 	if isTerminalTool(call.Name) {
 		return r.planTerminalTool(call, position)
+	}
+	if call.Name == "view_image" {
+		return r.planViewImage(call, position)
 	}
 	if call.Name == "show_image" {
 		return r.planShowImage(call, position)
@@ -947,6 +957,9 @@ func flattenToolTurns(messages []provider.Message) []provider.Message {
 				out = append(out, provider.Message{Role: "assistant", Content: m.Content})
 			}
 		case m.Role == "tool":
+			if len(m.Parts) > 0 {
+				out = append(out, provider.Message{Role: "user", Content: m.Content, Parts: m.Parts})
+			}
 			results.WriteString(m.Content)
 			results.WriteString("\n\n---\n\n")
 		default:
@@ -1063,7 +1076,7 @@ func historyToolSteps(steps []conversation.ToolActivity) string {
 				line += " (failed: " + oneLine(step.Error, 120) + ")"
 			}
 			lines = append(lines, line)
-		case "run_command", "run_script", "send_file", "show_image", "read_file", "write_file", "list_dir", "mcp":
+		case "run_command", "run_script", "send_file", "show_image", "view_image", "read_file", "write_file", "list_dir", "mcp":
 			lines = append(lines, terminalStepLine(step))
 		}
 	}
@@ -1079,7 +1092,7 @@ func boundActivity(steps []conversation.ToolActivity) []conversation.ToolActivit
 	out := make([]conversation.ToolActivity, 0, len(steps))
 	for _, step := range steps {
 		switch step.Tool {
-		case "run_command", "run_script", "send_file", "show_image", "read_file", "write_file", "list_dir", "mcp":
+		case "run_command", "run_script", "send_file", "show_image", "view_image", "read_file", "write_file", "list_dir", "mcp":
 			out = append(out, boundTerminalStep(step))
 			continue
 		}

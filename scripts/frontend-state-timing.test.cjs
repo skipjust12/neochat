@@ -85,7 +85,7 @@ test('a long-running operation adds no delay and a reply without deltas still wa
   assert.equal(short.delivered.at(-1).at,1200);
 });
 test('a new action cancels the return to thinking, for all tool types',()=>{
-  for(const tool of ['run_command','run_script','send_file','read_file','write_file','list_dir','mcp','web_search','web_fetch']){
+  for(const tool of ['run_command','run_script','send_file','show_image','view_image','read_file','write_file','list_dir','mcp','web_search','web_fetch']){
     const h=harness(),tracker=h.context.thoughtTracker({querySelector:()=>null},0);
     tracker.activity([{tool:'run_command',pending:true}]);
     tracker.activity([{tool:'run_command',pending:false}]);

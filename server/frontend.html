@@ -2564,7 +2564,7 @@
       if(step.tool==='run_script'&&step.phase==='writing')return 'brackets';
       if(step.tool==='run_command'||step.tool==='run_script')return 'swap';
       if(step.tool==='send_file'||step.tool==='show_image')return 'bubbles';
-      if(step.tool==='web_search')return 'reveal';
+      if(step.tool==='web_search'||step.tool==='view_image')return 'reveal';
       return 'orbit';
     }
 
@@ -2605,7 +2605,7 @@
     }
     // Terminal steps: a command (run_command) or a script the model wrote
     // and ran (run_script) on the server.
-    const terminalTools=['run_command','run_script','send_file','show_image','read_file','write_file','list_dir','mcp'];
+    const terminalTools=['run_command','run_script','send_file','show_image','view_image','read_file','write_file','list_dir','mcp'];
     function isTerminalStep(step){
       return Boolean(step&&terminalTools.indexOf(step.tool)>-1);
     }
@@ -2620,6 +2620,7 @@
     // What a running terminal step is doing, for the block's label.
     function terminalLiveLabel(step){
       if(step.approval==='pending')return 'Waiting for your approval';
+      if(step.tool==='view_image')return 'Inspecting an image';
       if(step.tool==='show_image')return 'Showing an image';
       if(step.tool==='send_file')return 'Sending a file';
       if(step.tool==='read_file')return 'Reading '+(shortPath(step.title)||'a file');
@@ -2644,6 +2645,7 @@
       if(step.tool==='write_file')return (step.error?'Couldn’t write ':'Wrote ')+(shortPath(step.title)||'a file');
       if(step.tool==='list_dir')return (step.error?'Couldn’t open ':'Looked in ')+(shortPath(step.title)||'a folder');
       if(step.tool==='mcp')return (step.error&&step.error!=='the tool reported an error'?'Couldn’t use ':'Used ')+(step.title||'an MCP tool');
+      if(step.tool==='view_image')return step.error?'Couldn’t inspect an image':'Inspected '+(step.title||'an image');
       if(step.tool==='show_image')return step.error?'Couldn’t show an image':'Showed '+(step.title||'an image');
       if(step.tool==='send_file'){
         if(step.error)return 'Couldn’t send a file';
@@ -2868,7 +2870,7 @@
         text.classList.add('thinking-label');
         text.dataset.text=text.textContent;
       }else text.textContent=terminalDoneLabel(step);
-      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'||step.tool==='show_image'||step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'?'fetch':step.tool==='mcp'?'mcp':'terminal'),text);
+      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'||step.tool==='show_image'||step.tool==='view_image'||step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'?'fetch':step.tool==='mcp'?'mcp':'terminal'),text);
       if(step.where==='computer'&&!step.pending){
         const where=document.createElement('span');
         where.className='term-where';
@@ -2919,7 +2921,7 @@
         }
         return row;
       }
-      if(step.tool==='send_file'||step.tool==='show_image'){
+      if(step.tool==='send_file'||step.tool==='show_image'||step.tool==='view_image'){
         if(!step.pending&&step.size){
           const note=document.createElement('span');
           note.className='web-step-note';
@@ -3093,6 +3095,7 @@
       const scripts=done.filter(function(step){return step.tool==='run_script'}).length;
       const sent=done.filter(function(step){return step.tool==='send_file'}).length;
       const shown=done.filter(function(step){return step.tool==='show_image'}).length;
+      const inspected=done.filter(function(step){return step.tool==='view_image'}).length;
       const parts=[];
       if(searches)parts.push(plural(searches,'search','searches'));
       if(pages)parts.push(plural(pages,'page','pages'));
@@ -3100,6 +3103,7 @@
       if(commands)parts.push(plural(commands,'command','commands'));
       if(sent)parts.push(plural(sent,'file','files'));
       if(shown)parts.push(plural(shown,'image','images'));
+      if(inspected)parts.push(plural(inspected,'image inspection','image inspections'));
       const fileOps=done.filter(function(step){return step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'}).length;
       const mcpCalls=done.filter(function(step){return step.tool==='mcp'}).length;
       if(fileOps)parts.push(plural(fileOps,'file action','file actions'));

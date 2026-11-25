@@ -93,6 +93,9 @@ func (r *webRun) terminalNote() string {
 func (r *webRun) terminalTools() []provider.FunctionTool {
 	if !r.onComputer() {
 		tools := append([]provider.FunctionTool(nil), terminalFunctionTools...)
+		if modelAccepts(r.model, "image") {
+			tools = append(tools, viewImageTool)
+		}
 		if r.s.Attachments != nil {
 			tools = append(tools, sendFileTool, showImageTool)
 		}
@@ -127,6 +130,9 @@ func (r *webRun) terminalTools() []provider.FunctionTool {
 		"required": []string{"about", "language", "code"},
 	}
 	tools := []provider.FunctionTool{command, script, computerFileTools[0], computerFileTools[1], computerFileTools[2]}
+	if modelAccepts(r.model, "image") {
+		tools = append(tools, viewImageTool)
+	}
 	if r.s.Attachments != nil {
 		tools = append(tools, sendFileTool, showImageTool)
 	}
@@ -167,7 +173,7 @@ func isComputerFileTool(name string) bool {
 // isLongTool: a step that may run for minutes (and wait for approval),
 // not under webStepTimeout.
 func isLongTool(name string) bool {
-	return isTerminalTool(name) || isComputerFileTool(name) || name == "send_file" || name == "show_image"
+	return isTerminalTool(name) || isComputerFileTool(name) || name == "send_file" || name == "show_image" || name == "view_image"
 }
 
 // --- running on the computer ---

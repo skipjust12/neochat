@@ -291,6 +291,7 @@ type polzaStreamChunk struct {
 }
 
 func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messages []Message, stream bool) polzaChatRequest {
+	messages = toolImageMessages(messages)
 	req := polzaChatRequest{Model: apiModelID, MaxTokens: outputLimit(ctx, c.MaxTokens), Stream: stream}
 	if stream {
 		req.StreamOptions = &polzaStreamOptions{IncludeUsage: true}

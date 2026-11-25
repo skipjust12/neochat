@@ -202,6 +202,12 @@ func (c *PoeClient) botRequest(ctx context.Context, model string, messages []Mes
 		}
 		if role == "tool" && latest >= 0 && i > latest {
 			results = append(results, map[string]any{"role": "tool", "name": callNames[m.ToolCallID], "tool_call_id": m.ToolCallID, "content": text})
+			// Bot Query tool results are text. Keep the actual picture as a
+			// supported ProtocolMessage attachment in query, alongside the
+			// current tool_calls/tool_results rather than dropping its bytes.
+			if len(attachments) > 0 {
+				query = append(query, map[string]any{"role": "user", "content": "Image opened by " + callNames[m.ToolCallID] + " (" + m.ToolCallID + ") for your inspection: " + text, "content_type": "text/markdown", "attachments": attachments})
+			}
 			continue
 		}
 		// Historical calls are rendered as ordinary context above. Their
