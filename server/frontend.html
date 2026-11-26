@@ -156,7 +156,7 @@
             <button class="chat-menu-item add-project-chat" type="button" role="menuitem"><svg class="lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6" /><path d="M9 13h6" /><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg><span>Add to project</span></button>
             <button class="chat-menu-item danger delete-chat" type="button" role="menuitem"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span>Delete</span></button>
           </div>
-          <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="button" class="hold-confirm-btn confirm-delete-chat" data-hold-ms="1000" aria-label="Hold to permanently delete this chat"><span class="hold-confirm-label"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span class="hold-confirm-text">Hold to delete</span></span><span class="hold-confirm-fill" aria-hidden="true"><span class="hold-confirm-label"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span class="hold-confirm-text">Hold to delete</span></span></span></button></div></div>
+          <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><div class="slide-confirm confirm-delete-chat" role="group" aria-label="Slide to permanently delete this chat"><span class="slide-confirm-text" aria-hidden="true">Slide to delete</span><span class="slide-confirm-thumb" aria-hidden="true"></span><input class="effort-range slide-confirm-range" type="range" min="0" max="100" step="any" value="0" aria-label="Slide to delete" aria-valuetext="Slide to delete" /></div></div></div>
           <div class="project-picker"><div class="project-picker-title">Choose a project</div><div class="project-picker-list"></div></div>
         </div>
       </div>
@@ -6403,6 +6403,48 @@
       document.execCommand('insertText',false,text);
     });
 
+    function bindSlideConfirm(control,options){
+      const input=control.querySelector('input');
+      const label=control.querySelector('.slide-confirm-text');
+      let phase='idle',pointer=null,startX=0,travel=0,sequence=0,key=null;
+      function measure(){travel=Math.max(1,input.getBoundingClientRect().width-32);control.style.setProperty('--slide-travel',travel+'px')}
+      function progress(value){input.value=String(Math.max(0,Math.min(100,value)));control.style.setProperty('--slide-p',Number(input.value)/100);control.classList.toggle('is-armed',Number(input.value)>=100);input.setAttribute('aria-valuetext',Number(input.value)>=100?'Release to delete':'Slide to delete');label.textContent=Number(input.value)>=100?'Release to delete':'Slide to delete'}
+      function reset(){sequence++;phase='idle';pointer=null;key=null;input.disabled=false;control.classList.remove('is-dragging','is-busy','is-done');control.removeAttribute('aria-busy');progress(0)}
+      control.holdReset=reset;
+      control.slideReset=reset;
+      function commit(){
+        if(phase!=='dragging'||Number(input.value)<100)return;
+        phase='busy';const token=++sequence;input.disabled=true;control.classList.remove('is-dragging');control.classList.add('is-busy');control.setAttribute('aria-busy','true');label.textContent='Deleting…';
+        Promise.resolve().then(options.onConfirm).then(function(){if(token!==sequence)return;phase='done';control.classList.remove('is-busy');control.classList.add('is-done');control.removeAttribute('aria-busy');label.textContent=options.doneLabel||'Deleted'},function(){if(token===sequence)reset()});
+      }
+      input.addEventListener('pointerdown',function(event){
+        if(phase!=='idle'||event.button!==0||event.isPrimary===false)return;
+        event.preventDefault();input.focus({preventScroll:true});measure();
+        if(event.clientX-input.getBoundingClientRect().left>35)return;
+        startX=event.clientX;pointer=event.pointerId;phase='dragging';control.classList.add('is-dragging');input.setPointerCapture(pointer);
+      });
+      input.addEventListener('pointermove',function(event){if(event.pointerId===pointer&&phase==='dragging')progress((event.clientX-startX)/travel*100)});
+      input.addEventListener('pointerup',function(event){
+        if(event.pointerId!==pointer||phase!=='dragging')return;
+        progress((event.clientX-startX)/travel*100);pointer=null;
+        const rect=input.getBoundingClientRect();
+        if(Number(input.value)>=100&&event.clientY>=rect.top-16&&event.clientY<=rect.bottom+16)commit();else reset();
+      });
+      input.addEventListener('pointercancel',function(){if(phase==='dragging')reset()});
+      input.addEventListener('lostpointercapture',function(){if(pointer!==null&&phase==='dragging')reset()});
+      input.addEventListener('blur',function(){if(phase==='dragging')reset()});
+      input.addEventListener('keydown',function(event){
+        if(event.key==='Escape'){event.preventDefault();if(phase!=='busy')reset();return}
+        if(!['ArrowRight','ArrowLeft','Home','End'].includes(event.key))return;
+        event.preventDefault();if(phase==='busy'||phase==='done')return;
+        phase='dragging';key=event.key;control.classList.add('is-dragging');measure();
+        progress(event.key==='End'?100:event.key==='Home'?0:Number(input.value)+(event.key==='ArrowRight'?10:-10));
+      });
+      input.addEventListener('keyup',function(event){if(event.key!==key)return;key=null;if(Number(input.value)>=100)commit();else reset()});
+      input.addEventListener('click',function(event){event.preventDefault()});
+      new ResizeObserver(measure).observe(control);measure();reset();
+    }
+
     function bindHoldConfirm(button,options){
       if(!button)return;
       const holdMs=Number(button.dataset.holdMs)||1000;
@@ -6481,7 +6523,7 @@
 
     document.querySelector('.delete-chat').addEventListener('click',function(){chatActionsPanel.classList.add('is-deleting')});
     document.querySelectorAll('.cancel-chat-action').forEach(function(button){button.addEventListener('click',function(){chatActionsPanel.classList.remove('is-deleting');const confirmBtn=document.querySelector('.confirm-delete-chat');if(confirmBtn&&confirmBtn.holdReset)confirmBtn.holdReset()})});
-    bindHoldConfirm(document.querySelector('.confirm-delete-chat'),{
+    bindSlideConfirm(document.querySelector('.confirm-delete-chat'),{
       doneLabel:'Deleted',
       onConfirm:async function(){
         const button=document.querySelector('.confirm-delete-chat');

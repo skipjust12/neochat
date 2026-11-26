@@ -204,6 +204,7 @@ jobs:
       - run: node scripts/frontend-poe.browser.cjs
       - run: node scripts/frontend-sketch.browser.cjs
       - run: node scripts/frontend-search.browser.cjs
+      - run: node scripts/frontend-slide-delete.browser.cjs
 
   desktop:
     name: desktop app (Windows build)
