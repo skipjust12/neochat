@@ -2785,6 +2785,7 @@
         row.append(error);
       }
       if(step.results&&step.results.length)row.append(webResultList(step.results));
+      if(step.output){const details=document.createElement('details');details.className='search-raw-output';const title=document.createElement('summary');title.textContent=step.purpose?step.purpose+' · Search output':'Search output';const output=document.createElement('pre');output.className='term-output';output.textContent=step.output;details.append(title,output);row.append(details)}
       return row;
     }
     function pageStep(step){

@@ -84,15 +84,15 @@ type WebSearcher interface {
 var webFunctionTools = []provider.FunctionTool{
 	{
 		Name:        "web_search",
-		Description: "Search the web. Prefer batching 2-4 independent queries in queries so they run in parallel; query is for one search. Returns up to 10 results per query. Update notes with verified findings and source URLs needed for the final answer before older web outputs are compacted.",
+		Description: "Search the web. Plan independent searches first and send them together in queries (1-5). Do not split known independent queries into sequential singleton calls; each native provider request accepts five queries. Further batches are allowed when new findings require follow-up searches. Returns up to 10 results per query. Update notes with verified findings and source URLs needed for the final answer before older web outputs are compacted.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
-				"query":   map[string]any{"type": "string", "description": "One search query; use query OR queries."},
-				"queries": map[string]any{"type": "array", "minItems": 1, "maxItems": 4, "items": map[string]any{"type": "string"}},
+
+				"queries": map[string]any{"type": "array", "minItems": 1, "maxItems": 5, "items": map[string]any{"type": "string"}},
 				"notes":   map[string]any{"type": "string", "description": "Optional updated cumulative verified findings with source URLs; keep concise (up to 4000 characters)."},
 			},
-			"oneOf": []any{map[string]any{"required": []string{"query"}}, map[string]any{"required": []string{"queries"}}},
+			"required": []string{"queries"},
 		},
 	},
 	{
@@ -178,21 +178,23 @@ type webRun struct {
 	generate   func(ctx context.Context, messages []provider.Message) (provider.GenerateResult, error)
 	onActivity func([]conversation.ToolActivity)
 
-	mu           sync.Mutex
-	activity     []conversation.ToolActivity
-	searches     int
-	fetches      int
-	views        int
-	round        int
-	webCache     map[string]*webPromise
-	pageLoads    map[string]*webPageLoad
-	webRecords   map[string]webRecord
-	searchNotes  string
-	runs         int
-	files        []conversation.Attachment
-	sentFrom     map[string]conversation.Attachment // by real path, so a file goes once
-	viewImages   map[int]provider.Part
-	inlineImages map[int]inlineImage // this round, in tool-call order
+	mu              sync.Mutex
+	activity        []conversation.ToolActivity
+	searches        int
+	fetches         int
+	views           int
+	round           int
+	webCache        map[string]*webPromise
+	pageLoads       map[string]*webPageLoad
+	webRecords      map[string]webRecord
+	searchNotes     string
+	runs            int
+	files           []conversation.Attachment
+	sentFrom        map[string]conversation.Attachment // by real path, so a file goes once
+	poeSearchGroups map[string]*poeSearchGroup
+	poeSearchOrder  []string
+	viewImages      map[int]provider.Part
+	inlineImages    map[int]inlineImage // this round, in tool-call order
 	// writing maps a run_script call the model is still writing (its
 	// position in the step) to the step shown for it.
 	writing map[int]int
@@ -407,7 +409,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 // message before the model answers.
 func (r *webRun) searchFirst(ctx context.Context, messages []provider.Message) (webAnswer, error) {
 	step := r.start(conversation.ToolActivity{Tool: "web_search", Query: clipRunes(strings.TrimSpace(r.req.Message), 200)})
-	if r.s.Searcher != nil {
+	if r.s.PoeSearch != nil || r.s.Searcher != nil {
 		return r.searchFirstOwn(ctx, messages, step)
 	}
 	searchPrompt := clipRunes(r.req.Message, 400)
@@ -434,7 +436,18 @@ func (r *webRun) searchFirst(ctx context.Context, messages []provider.Message) (
 // web access, told so.
 func (r *webRun) searchFirstOwn(ctx context.Context, messages []provider.Message, step int) (webAnswer, error) {
 	stepCtx, cancel := context.WithTimeout(ctx, webStepTimeout)
-	results, err := r.s.searchWeb(stepCtx, r.req, r.prepared, clipRunes(strings.TrimSpace(r.req.Message), 400))
+	var results []provider.WebResult
+	var raw string
+	var err error
+	query := clipRunes(strings.TrimSpace(r.req.Message), 400)
+	if r.s.PoeSearch != nil {
+		err = r.s.withWebSlot(stepCtx, func() error {
+			raw, results, err = r.s.callPoeSearch(stepCtx, r.req, r.prepared, []string{query})
+			return err
+		})
+	} else {
+		results, err = r.s.searchWeb(stepCtx, r.req, r.prepared, query)
+	}
 	cancel()
 	results = mergeSearchResults(results, nil)
 	r.finish(step, func(a *conversation.ToolActivity) {
@@ -442,12 +455,16 @@ func (r *webRun) searchFirstOwn(ctx context.Context, messages []provider.Message
 			a.Error = toolErrorMessage(err)
 		} else {
 			a.Results = webLinks(results)
+			a.Output = raw
 		}
 	})
 	if err := ctx.Err(); err != nil {
 		return webAnswer{Activity: r.snapshot()}, err
 	}
 	note := webPluginNote + "\n\n" + formatSearchResults(results)
+	if raw != "" {
+		note = webPluginNote + "\n\n" + raw
+	}
 	if err != nil {
 		note = webUnavailableNote
 	}
@@ -489,6 +506,7 @@ func (r *webRun) runTools(ctx context.Context, calls []provider.ToolCall, preset
 		}
 		results[i], jobs[i] = r.planTool(call, i)
 	}
+	r.preparePoeSearchGroups(ctx)
 	slots := make(chan struct{}, webToolWorkers)
 	var wg sync.WaitGroup
 	for i, job := range jobs {
@@ -626,6 +644,10 @@ Copy every URL exactly. The snippet is the result's own text, at most 300 charac
 // url_citation annotations; the model also copies them out as JSON, used
 // when a route returns no annotations.
 func (s *Server) searchWebNow(ctx context.Context, req chatRequest, prepared preparedRequest, query string) ([]provider.WebResult, error) {
+	if s.PoeSearch != nil {
+		_, links, err := s.callPoeSearch(ctx, req, prepared, []string{query})
+		return links, err
+	}
 	if s.Searcher != nil {
 		results, err := s.Searcher.Search(ctx, query, webSearchResults)
 		if err != nil {

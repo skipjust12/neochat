@@ -218,6 +218,8 @@ type Server struct {
 	// empty: defaultWebSearchModelID).
 	Fetcher          *webfetch.Fetcher
 	Pages            pagestore.Store
+	PoeSearch        provider.Client
+	PoeSearchCostUSD float64
 	Searcher         WebSearcher
 	WebSearchModelID string
 

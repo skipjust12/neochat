@@ -303,11 +303,10 @@ func main() {
 		Attachments: attachment.NewPostgresStore(pgDB),
 		// Web access: pages the model reads are fetched by this server and
 		// kept per chat (db/migrations/0009_web_pages.sql); searches run on
-		// the SearXNG at SEARXNG_URL, or without one on Poe's web plugin
-		// (Yandex) through WEB_SEARCH_MODEL (a catalog model id; default:
-		// the cheapest current one).
-		Fetcher:  &webfetch.Fetcher{},
-		Searcher: webSearcher(os.Getenv("SEARXNG_URL")),
+		// Poe's Perplexity-Search bot, using the request's existing Poe key.
+		Fetcher:          &webfetch.Fetcher{},
+		PoeSearch:        nativeSearchClient(),
+		PoeSearchCostUSD: getenvFloatDefault("POE_SEARCH_COST_USD", 0.0061),
 		// A terminal on this machine for the models (server/terminal.go):
 		// on by default, TERMINAL_ENABLED=false turns it off. See
 		// terminalRunner.
@@ -556,5 +555,12 @@ func loadPoeBotFallbacks(path string) (map[string]string, error) {
 func nativeMediaClient() *imagegen.Client {
 	client := imagegen.NewPoeClient()
 	client.BotQuery = os.Getenv("POE_TRANSPORT") != "compatibility"
+	return client
+}
+
+func nativeSearchClient() *provider.PoeClient {
+	client := provider.NewPoeClient(os.Getenv("POE_API_KEY"))
+	client.BotQuery = true
+	client.MaxTokens = 16000
 	return client
 }

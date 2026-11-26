@@ -404,6 +404,9 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 				}
 				return emitText(text, false)
 			case "json":
+				if strings.EqualFold(model, "Perplexity-Search") && wire["choices"] == nil {
+					return emitText(string(raw), false)
+				}
 				var chunk struct {
 					Choices []struct {
 						Delta struct {

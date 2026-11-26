@@ -15,7 +15,7 @@ import (
 	"neochat/provider"
 )
 
-const searchModeNote = "Search mode is active. Research the request using up to 30 searches and 20 page reads; these are ceilings, not targets. Batch independent queries/pages in groups of 2-4. Read useful sources, compare evidence, and cite exact URLs. Full web outputs remain for two following model steps, then become short excerpts. Keep cumulative verified findings and citations in the optional notes argument before that happens. Re-read cached pages with offset when exact details are needed; do not invent missing details."
+const searchModeNote = "Search mode is active. Research the request using up to 30 searches and 20 page reads; these are ceilings, not targets. Batch independent queries/pages in groups of up to 5 searches or up to 4 pages. Read useful sources, compare evidence, and cite exact URLs. Full web outputs remain for two following model steps, then become short excerpts. Keep cumulative verified findings and citations in the optional notes argument before that happens. Re-read cached pages with offset when exact details are needed; do not invent missing details."
 
 type webGate struct {
 	slots, slow chan struct{}
@@ -135,8 +135,8 @@ func (r *webRun) planWebTool(call provider.ToolCall) (string, func(context.Conte
 	if search {
 		batch = a.Queries != nil
 		if batch {
-			if a.Query != "" || len(a.Queries) < 1 || len(a.Queries) > 4 {
-				return "Error: supply query OR queries (1-4 queries).", nil
+			if a.Query != "" || len(a.Queries) < 1 || len(a.Queries) > 5 {
+				return "Error: supply query OR queries (1-5 queries).", nil
 			}
 			for _, q := range a.Queries {
 				items = append(items, webPageRequest{URL: strings.Join(strings.Fields(q), " ")})
@@ -226,6 +226,9 @@ func (r *webRun) planWebTool(call provider.ToolCall) (string, func(context.Conte
 			promise = &webPromise{run: func(ctx context.Context) webOutcome { return r.executeWeb(ctx, search, item, index) }}
 			r.mu.Lock()
 			r.webCache[key] = promise
+			if search && r.s.PoeSearch != nil {
+				r.poeSearchOrder = append(r.poeSearchOrder, item.URL)
+			}
 		}
 		r.mu.Unlock()
 		jobs = append(jobs, promise.get)
@@ -275,6 +278,9 @@ func encodeWebOutcomes(results []webOutcome, batch, compact bool) string {
 }
 
 func (r *webRun) executeWeb(ctx context.Context, search bool, item webPageRequest, index int) (out webOutcome) {
+	if search && r.s.PoeSearch != nil {
+		return r.executePoeSearch(ctx, item.URL, index)
+	}
 	if search {
 		out.Query = item.URL
 		results, err := r.s.searchWeb(ctx, r.req, r.prepared, item.URL)

@@ -150,7 +150,7 @@ func TestWebBudgetsAndBatchValidation(t *testing.T) {
 		if !strings.HasPrefix(result, "Page limit") {
 			t.Fatal(result)
 		}
-		for _, args := range []any{map[string]any{"queries": []string{}}, map[string]any{"queries": []string{"a", "b", "c", "d", "e"}}, map[string]any{"query": "a", "queries": []string{"b"}}} {
+		for _, args := range []any{map[string]any{"queries": []string{}}, map[string]any{"queries": []string{"a", "b", "c", "d", "e", "f"}}, map[string]any{"query": "a", "queries": []string{"b"}}} {
 			if result, job := r.planWebTool(batchTool("invalid", "web_search", args)); job != nil || !strings.HasPrefix(result, "Error:") {
 				t.Fatal("invalid batch accepted")
 			}
