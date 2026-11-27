@@ -84,7 +84,7 @@ type WebSearcher interface {
 var webFunctionTools = []provider.FunctionTool{
 	{
 		Name:        "web_search",
-		Description: "Search the web. Plan independent searches first and send them together in queries (1-5). Do not split known independent queries into sequential singleton calls; each native provider request accepts five queries. Further batches are allowed when new findings require follow-up searches. Returns up to 10 results per query. Update notes with verified findings and source URLs needed for the final answer before older web outputs are compacted.",
+		Description: "Search the web. Plan independent searches first and send them together in queries (1-5). Do not split known independent queries into sequential singleton calls; each native provider request accepts five queries. Further batches are allowed when new findings require follow-up searches. Returns up to 10 results per query. Older accumulated evidence may be summarized with its source links; recent results stay verbatim.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -97,7 +97,7 @@ var webFunctionTools = []provider.FunctionTool{
 	},
 	{
 		Name:        "web_fetch",
-		Description: "Read web pages without JavaScript. Prefer batching 2-4 independent pages in pages so they run in parallel; url and offset are for one page. Long pages support offset pagination. Full pages stay cached and can be read again after their context output is compacted. Update notes with verified findings and citations needed later.",
+		Description: "Read web pages without JavaScript. Prefer batching 2-4 independent pages in pages so they run in parallel; url and offset are for one page. Long pages support offset pagination. Full pages stay cached and can be read again after their context output is compacted. Older accumulated evidence may be summarized with its source links; recent pages stay verbatim.",
 		Parameters: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -178,23 +178,24 @@ type webRun struct {
 	generate   func(ctx context.Context, messages []provider.Message) (provider.GenerateResult, error)
 	onActivity func([]conversation.ToolActivity)
 
-	mu              sync.Mutex
-	activity        []conversation.ToolActivity
-	searches        int
-	fetches         int
-	views           int
-	round           int
-	webCache        map[string]*webPromise
-	pageLoads       map[string]*webPageLoad
-	webRecords      map[string]webRecord
-	searchNotes     string
-	runs            int
-	files           []conversation.Attachment
-	sentFrom        map[string]conversation.Attachment // by real path, so a file goes once
-	poeSearchGroups map[string]*poeSearchGroup
-	poeSearchOrder  []string
-	viewImages      map[int]provider.Part
-	inlineImages    map[int]inlineImage // this round, in tool-call order
+	mu               sync.Mutex
+	activity         []conversation.ToolActivity
+	searches         int
+	fetches          int
+	views            int
+	round            int
+	webCache         map[string]*webPromise
+	pageLoads        map[string]*webPageLoad
+	webRecords       map[string]webRecord
+	searchNotes      string
+	webSummaryFailed bool
+	runs             int
+	files            []conversation.Attachment
+	sentFrom         map[string]conversation.Attachment // by real path, so a file goes once
+	poeSearchGroups  map[string]*poeSearchGroup
+	poeSearchOrder   []string
+	viewImages       map[int]provider.Part
+	inlineImages     map[int]inlineImage // this round, in tool-call order
 	// writing maps a run_script call the model is still writing (its
 	// position in the step) to the step shown for it.
 	writing map[int]int
@@ -275,7 +276,7 @@ func (r *webRun) loop(ctx context.Context, base []provider.Message, web bool) (w
 	limitedRounds := 0
 	for round := 0; round < maxRounds; round++ {
 		r.round++
-		messages = r.compactWebMessages(messages, r.round)
+		messages = r.compactWebMessages(ctx, messages, r.round)
 		last := round == maxRounds-1
 		callCtx := ctx
 		if !last {

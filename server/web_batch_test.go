@@ -15,6 +15,7 @@ import (
 	"neochat/pagestore"
 	"neochat/provider"
 	"neochat/router"
+	"neochat/summarizer"
 	"neochat/webfetch"
 )
 
@@ -158,36 +159,6 @@ func TestWebBudgetsAndBatchValidation(t *testing.T) {
 	}
 }
 
-func TestSearchModeCompactsAfterTwoFollowingSteps(t *testing.T) {
-	r := newBatchRun(t)
-	r.req.SearchMode = true
-	r.webRecords = map[string]webRecord{"web": {round: 1, compact: "short source https://example.com"}}
-	messages := []provider.Message{{Role: "assistant", ToolCalls: []provider.ToolCall{batchTool("web", "web_fetch", map[string]any{"url": "https://example.com", "notes": "old cumulative notes"})}}, {Role: "tool", ToolCallID: "web", Content: strings.Repeat("full evidence ", 10000)}, {Role: "tool", ToolCallID: "script", Content: "script output must stay"}}
-	for _, round := range []int{2, 3} {
-		if r.compactWebMessages(messages, round)[1].Content != messages[1].Content {
-			t.Fatal("compacted before the model could read twice")
-		}
-	}
-	compact := r.compactWebMessages(messages, 4)
-	if compact[1].Content != "short source https://example.com" || strings.Contains(compact[0].ToolCalls[0].Arguments, "old cumulative") || compact[2].Content != messages[2].Content {
-		t.Fatal("compaction lost sources or touched other tools")
-	}
-	if len(messages[1].Content) < 1000 {
-		t.Fatal("mutated source messages")
-	}
-	r.req.SearchMode = false
-	if len(r.compactWebMessages(messages, 4)[1].Content) < 1000 {
-		t.Fatal("normal mode compacted as early as Search mode")
-	}
-	if len(r.compactWebMessages(messages, 7)[1].Content) > 1000 {
-		t.Fatal("normal mode never compacted")
-	}
-	text := strings.Repeat("unrelated background\n", 100) + "important evidence: total 12345; source https://example.com\n" + strings.Repeat("filler\n", 100)
-	if excerpt := relevantExcerpt(text, r.req.Message, 1800); !strings.Contains(excerpt, "12345") {
-		t.Fatal("relevant evidence was omitted")
-	}
-}
-
 func TestSearchModeCanUseThirtySearchesAndTwentyPages(t *testing.T) {
 	r := newBatchRun(t)
 	r.req.SearchMode = true
@@ -202,13 +173,29 @@ func TestSearchModeCanUseThirtySearchesAndTwentyPages(t *testing.T) {
 	}))
 	defer page.Close()
 	r.s.Fetcher = &webfetch.Fetcher{AllowPrivate: true}
+	summaryCalls := 0
+	r.s.Summarizer = summarizer.New(webSummaryFunc(func(_ context.Context, _ string, messages []provider.Message) (provider.GenerateResult, error) {
+		summaryCalls++
+		var body struct {
+			Outputs []evidenceSummaryInput `json:"outputs"`
+		}
+		if err := json.Unmarshal([]byte(messages[1].Content), &body); err != nil {
+			return provider.GenerateResult{}, err
+		}
+		var summaries []map[string]string
+		for _, input := range body.Outputs {
+			summaries = append(summaries, map[string]string{"id": input.ID, "summary": "The page contains important evidence, as quoted in the source excerpts."})
+		}
+		data, _ := json.Marshal(map[string]any{"summaries": summaries})
+		return provider.GenerateResult{Text: string(data), InputTokens: 10000, OutputTokens: 200}, nil
+	}), "gemini-3.5-flash-lite", webEvidenceSummaryPrompt)
 	calls := 0
 	seenMode, seenCompact, seenNotes := false, false, false
 	generate := func(ctx context.Context, messages []provider.Message) (provider.GenerateResult, error) {
 		calls++
 		for _, m := range messages {
 			seenMode = seenMode || m.Content == searchModeNote
-			seenCompact = seenCompact || strings.Contains(m.Content, "Older search output compacted")
+			seenCompact = seenCompact || strings.HasPrefix(m.Content, "[Summary of earlier web evidence;")
 			seenNotes = seenNotes || strings.Contains(m.Content, "Working research notes")
 		}
 		if calls <= 30 {
@@ -220,7 +207,7 @@ func TestSearchModeCanUseThirtySearchesAndTwentyPages(t *testing.T) {
 		return provider.GenerateResult{Text: "final evidence"}, nil
 	}
 	answer, err := r.s.answer(context.Background(), r.req, r.prepared, r.model, nil, generate, nil)
-	if err != nil || calls != 51 || !seenMode || !seenCompact || !seenNotes || len(answer.Activity) != 50 {
+	if err != nil || calls != 51 || !seenMode || !seenCompact || !seenNotes || summaryCalls == 0 || len(answer.Activity) != 50 {
 		t.Fatalf("calls=%d mode=%t compact=%t notes=%t steps=%d err=%v", calls, seenMode, seenCompact, seenNotes, len(answer.Activity), err)
 	}
 }

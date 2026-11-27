@@ -15,7 +15,7 @@ import (
 	"neochat/provider"
 )
 
-const searchModeNote = "Search mode is active. Research the request using up to 30 searches and 20 page reads; these are ceilings, not targets. Batch independent queries/pages in groups of up to 5 searches or up to 4 pages. Read useful sources, compare evidence, and cite exact URLs. Full web outputs remain for two following model steps, then become short excerpts. Keep cumulative verified findings and citations in the optional notes argument before that happens. Re-read cached pages with offset when exact details are needed; do not invent missing details."
+const searchModeNote = "Search mode is active. Research the request using up to 30 searches and 20 page reads; these are ceilings, not targets. Batch independent queries/pages in groups of up to 5 searches or up to 4 pages. Read useful sources, compare evidence, and cite exact URLs. Recent web outputs stay verbatim. Only when older evidence accumulates beyond the context budget is it replaced by a source-grounded summary; failed summarization keeps the originals. Use notes for optional working hypotheses, not as the sole record of evidence. Re-read cached pages with offset when exact details are needed; do not invent missing details."
 
 type webGate struct {
 	slots, slow chan struct{}
@@ -103,7 +103,8 @@ func (p *webPromise) get(ctx context.Context) webOutcome {
 
 type webRecord struct {
 	round   int
-	compact string
+	compact string // source index retained alongside a successful summary
+	summary string
 }
 type webPageRequest struct {
 	URL    string `json:"url"`
@@ -366,38 +367,6 @@ func relevantExcerpt(text, query string, limit int) string {
 		parts = append(parts, p.text)
 	}
 	return strings.Join(parts, "\n\n")
-}
-
-func (r *webRun) compactWebMessages(messages []provider.Message, round int) []provider.Message {
-	age := 6
-	if r.req.SearchMode {
-		age = 3
-	}
-	out := append([]provider.Message(nil), messages...)
-	for i, m := range out {
-		if m.Role == "tool" {
-			if record, ok := r.webRecords[m.ToolCallID]; ok && round-record.round >= age && record.compact != "" {
-				m.Content = record.compact
-				out[i] = m
-			}
-		}
-		if len(m.ToolCalls) > 0 {
-			calls := append([]provider.ToolCall(nil), m.ToolCalls...)
-			for j, call := range calls {
-				if record, ok := r.webRecords[call.ID]; ok && round-record.round >= age {
-					var args map[string]json.RawMessage
-					if json.Unmarshal([]byte(call.Arguments), &args) == nil {
-						delete(args, "notes")
-						data, _ := json.Marshal(args)
-						calls[j].Arguments = string(data)
-					}
-				}
-			}
-			m.ToolCalls = calls
-			out[i] = m
-		}
-	}
-	return out
 }
 
 func conversationWebStep(search bool, value string) conversation.ToolActivity {
