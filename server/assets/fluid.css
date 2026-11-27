@@ -321,26 +321,6 @@ svg {
   min-width: 0;
 }
 
-.main::before {
-  transform-origin: 50% 100%;
-  will-change: opacity,transform;
-}
-
-.main::after {
-  transform-origin: 50% 100%;
-  will-change: opacity,transform;
-}
-
-html:not([data-theme="dark"]) #incognitoState:checked ~ .main::before {
-  opacity: 1;
-  transform: translate3d(0,0,0) scale(1);
-}
-
-html[data-theme="dark"] #incognitoState:checked ~ .main::after {
-  opacity: 1;
-  transform: translate3d(0,0,0) scale(1);
-}
-
 .topbar {
   display: flex;
   align-items: center;
@@ -702,9 +682,13 @@ h1 {
   position: relative;
 }
 
+/* Incognito is indicated at the input, with a theme-aware dashed outline. */
 #incognitoState:checked ~ .main .composer {
-  box-shadow: 0 22px 58px rgba(0,0,0,.2);
-  transform: translateY(-2px);
+  outline: 1px dashed var(--muted);
+  outline-offset: 0;
+  border-radius: 20px;
+  box-shadow: none;
+  transform: none;
 }
 
 .composer textarea {
@@ -1630,16 +1614,6 @@ html[data-theme="dark"] .row-chevron {
   font-size: 11px;
   margin-top: 8px;
   transition: color .65s var(--ease-gentle),text-shadow .65s var(--ease-gentle);
-}
-
-html:not([data-theme="dark"]) #incognitoState:checked ~ .main .hint {
-  color: rgba(255,255,255,.9);
-  text-shadow: 0 1px 10px rgba(0,0,0,.35);
-}
-
-html[data-theme="dark"] #incognitoState:checked ~ .main .hint {
-  color: rgba(15,17,16,.82);
-  text-shadow: 0 1px 10px rgba(255,255,255,.25);
 }
 
 /* ——— settings ——— */
@@ -3231,56 +3205,6 @@ html[data-theme="light"] .composer {
   margin-top: 13px;
 }
 
-.main::before {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  left: -7%;
-  right: -7%;
-  bottom: -30px;
-  height: min(58vh,540px);
-  opacity: 0;
-  transform: translate3d(0,20px,0) scaleX(.97);
-  filter: blur(11px);
-  transition: opacity .8s ease,transform 1.05s cubic-bezier(.22,1,.36,1);
-}
-
-.main::after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  left: -7%;
-  right: -7%;
-  bottom: -30px;
-  height: min(58vh,540px);
-  opacity: 0;
-  transform: translate3d(0,20px,0) scaleX(.97);
-  filter: blur(11px);
-  transition: opacity .8s ease,transform 1.05s cubic-bezier(.22,1,.36,1);
-}
-
-.main::before {
-  box-shadow: inset 42px 0 72px -54px rgba(20,21,19,.34),inset -42px 0 72px -54px rgba(20,21,19,.34);
-  background: radial-gradient(ellipse 23% 94% at 0 100%,rgba(20,21,19,.34),rgba(20,21,19,.12) 43%,transparent 73%),radial-gradient(ellipse 23% 94% at 100% 100%,rgba(20,21,19,.34),rgba(20,21,19,.12) 43%,transparent 73%),linear-gradient(to top,rgba(20,21,19,.22),rgba(20,21,19,.09) 22%,transparent 60%);
-}
-
-.main::after {
-  box-shadow: inset 42px 0 72px -54px rgba(246,246,238,.26),inset -42px 0 72px -54px rgba(246,246,238,.26);
-  background: radial-gradient(ellipse 23% 94% at 0 100%,rgba(246,246,238,.27),rgba(246,246,238,.085) 43%,transparent 73%),radial-gradient(ellipse 23% 94% at 100% 100%,rgba(246,246,238,.27),rgba(246,246,238,.085) 43%,transparent 73%),linear-gradient(to top,rgba(246,246,238,.16),rgba(246,246,238,.055) 22%,transparent 60%);
-}
-
-html:not([data-theme="dark"]) #incognitoState:checked~.main::before {
-  opacity: 1;
-  transform: translate3d(0,0,0) scaleX(1);
-}
-
-html[data-theme="dark"] #incognitoState:checked~.main::after {
-  opacity: 1;
-  transform: translate3d(0,0,0) scaleX(1);
-}
-
 .mode-choice:hover {
   background: var(--picker-hover);
 }
@@ -4420,14 +4344,6 @@ html[data-theme="dark"] .avatar {
   backdrop-filter: none;
   overflow: hidden;
   transition: margin-left .24s var(--ease-fluid),width .24s var(--ease-fluid);
-}
-
-.main::before {
-  display: none;
-}
-
-.main::after {
-  display: none;
 }
 
 .topbar {
