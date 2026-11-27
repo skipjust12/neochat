@@ -188,7 +188,7 @@ func TestSearchModeCanUseThirtySearchesAndTwentyPages(t *testing.T) {
 		}
 		data, _ := json.Marshal(map[string]any{"summaries": summaries})
 		return provider.GenerateResult{Text: string(data), InputTokens: 10000, OutputTokens: 200}, nil
-	}), "gemini-3.5-flash-lite", webEvidenceSummaryPrompt)
+	}), "gpt-6-luna", webEvidenceSummaryPrompt)
 	calls := 0
 	seenMode, seenCompact, seenNotes := false, false, false
 	generate := func(ctx context.Context, messages []provider.Message) (provider.GenerateResult, error) {

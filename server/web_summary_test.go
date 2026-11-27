@@ -19,7 +19,7 @@ func summaryRun(t *testing.T) (*webRun, []provider.Message, *provider.FakeClient
 	r.req.providerKey = "user-poe-key"
 	r.searchNotes = "optional working notes"
 	fake := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: `{"summaries":[{"id":"old","summary":"The official report confirms total 12345 on 2026-11-27; a secondary source disagrees. https://example.com/report"}]}`, InputTokens: 9000, OutputTokens: 100}}}
-	r.s.Summarizer = summarizer.New(fake, "gemini-3.5-flash-lite", "conversation summary prompt must not be used here")
+	r.s.Summarizer = summarizer.New(fake, "gpt-6-luna", "conversation summary prompt must not be used here")
 	r.webRecords = map[string]webRecord{
 		"old":   {round: 1, compact: "https://example.com/report\nhttps://example.com/disagreement"},
 		"fresh": {round: 5, compact: "https://example.com/fresh"},
@@ -60,7 +60,7 @@ func TestWebSummaryUsesFullEvidencePreservesSourcesAndReusesDigest(t *testing.T)
 		t.Fatal("expected one batch helper call")
 	}
 	call := fake.Requests[0]
-	if call.APIModelID != "gemini-3.5-flash-lite" || call.Messages[0].Content != webEvidenceSummaryPrompt {
+	if call.APIModelID != "gpt-6-luna" || call.Messages[0].Content != webEvidenceSummaryPrompt {
 		t.Fatal("wrong summarizer or prompt")
 	}
 	var body struct {
@@ -89,7 +89,7 @@ func TestWebSummaryUsesFullEvidencePreservesSourcesAndReusesDigest(t *testing.T)
 		t.Fatal("summarized the same source twice")
 	}
 	entries := r.s.CostLog.(*costlog.InMemoryStore).Entries()
-	if len(entries) != 1 || entries[0].Mode != "web_summary" || entries[0].ModelID != "gemini-3.5-flash-lite" {
+	if len(entries) != 1 || entries[0].Mode != "web_summary" || entries[0].ModelID != "gpt-6-luna" {
 		t.Fatal("helper cost not recorded separately")
 	}
 }

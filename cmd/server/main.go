@@ -169,7 +169,7 @@ func main() {
 	// overrides independently) -- see summarizer package doc comment.
 	summarizerModelID := os.Getenv("SUMMARIZER_API_MODEL_ID")
 	if summarizerModelID == "" {
-		summarizerModelID = "gemini-3.5-flash-lite"
+		summarizerModelID = "gpt-6-luna"
 	}
 
 	// SummaryTailMessages: how many of the most recent messages are
@@ -245,8 +245,15 @@ func main() {
 		trustedProxies = append(trustedProxies, prefix)
 	}
 	summaryClient := summarizer.New(retryingClient, summarizerModelID, summarizerSystemPrompt)
-	summaryClient.CostInputPerMTok = getenvFloatDefault("SUMMARIZER_COST_INPUT_PER_MTOK", 0.303)
-	summaryClient.CostOutputPerMTok = getenvFloatDefault("SUMMARIZER_COST_OUTPUT_PER_MTOK", 2.5253)
+	// Use the selected model's catalog estimates, rather than Gemini's old
+	// defaults. Explicit operator pricing overrides still apply.
+	summaryInputRate, summaryOutputRate := 0.05, 0.25
+	if model, ok := catalog.FindModel(summarizerModelID); ok {
+		summaryInputRate, summaryOutputRate = model.CostInputPerMTok, model.CostOutputPerMTok
+	}
+	summaryClient.CostInputPerMTok = getenvFloatDefault("SUMMARIZER_COST_INPUT_PER_MTOK", summaryInputRate)
+	summaryClient.CostOutputPerMTok = getenvFloatDefault("SUMMARIZER_COST_OUTPUT_PER_MTOK", summaryOutputRate)
+	log.Printf("summarizer: model=%s (conversation and web evidence summaries)", summarizerModelID)
 	authStore := auth.NewPostgresStore(pgDB)
 	// The Manual picker follows Poe's releases (package modelcatalog):
 	// fetched now, then again when someone opens the app and the list is

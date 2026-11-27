@@ -54,6 +54,8 @@ services:
       # network the databases are reachable by service name, not localhost.
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
+      # Keep both summary paths on Luna even with an inherited Gemini .env.
+      SUMMARIZER_API_MODEL_ID: gpt-6-luna
       REQUIRE_HTTPS: "true"
       TRUSTED_PROXY_CIDRS: "172.30.77.2/32"
     networks:

@@ -45,8 +45,8 @@ All of these go in `.env` (gitignored) — `cmd/server` loads it automatically o
 | `ROUTER_ENABLED` | Optional. Unset/anything but `true` = router disabled, Manual-only direct mode (see above). |
 | `MODEL_CATALOG_LIVE` | Optional. `false` keeps the checked-in Poe snapshot; otherwise the public list refreshes hourly. |
 | `MAX_OUTPUT_TOKENS` | Optional, defaults to `16000` (range 1..16000). Hard ceiling on output tokens per generation call. |
-| `SUMMARIZER_API_MODEL_ID` | Optional, defaults to `gemini-3.5-flash-lite`. Independent of model routing. |
-| `SUMMARIZER_COST_INPUT_PER_MTOK` / `SUMMARIZER_COST_OUTPUT_PER_MTOK` | Optional internal summary estimates, defaults `0.303` / `2.5253`. |
+| `SUMMARIZER_API_MODEL_ID` | Optional for host runs, defaults to `gpt-6-luna`. Docker Compose pins Luna for both conversation and search summaries. Independent of answer model routing. |
+| `SUMMARIZER_COST_INPUT_PER_MTOK` / `SUMMARIZER_COST_OUTPUT_PER_MTOK` | Optional internal summary estimates, defaults from the selected model’s catalog entry (Luna fallback: `0.05` / `0.25`). |
 | `POSTGRES_USER` / `POSTGRES_PASSWORD` / `POSTGRES_DB` | Required. Must match what `docker-compose.yml` started Postgres with. |
 | `POSTGRES_HOST` / `POSTGRES_PORT` | Optional, default to `127.0.0.1` / `5432` (docker-compose's published address). |
 | `REDIS_PASSWORD` | Required. Must match what `docker-compose.yml` started Redis with. |
