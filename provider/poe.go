@@ -257,7 +257,9 @@ func (r poeResponse) result() (GenerateResult, error) {
 			}
 		case "function_call":
 			out.ToolCalls = append(out.ToolCalls, ToolCall{ID: item.CallID, Name: item.Name, Arguments: item.Arguments})
-			out.FinishReason = "tool_calls"
+			if r.Status != "incomplete" {
+				out.FinishReason = "tool_calls"
+			}
 		case "web_search_call":
 			out.WebSearches++
 			for _, source := range item.Action.Sources {

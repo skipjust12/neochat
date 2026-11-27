@@ -102,7 +102,7 @@ func (r *webRun) summarizeWebEvidence(ctx context.Context, inputs []evidenceSumm
 		return nil, err
 	}
 	r.s.recordAuxCostLog(callCtx, r.req.UserID, r.prepared.requestID, "web_summary", helper.APIModelID, helper.CostInputPerMTok, helper.CostOutputPerMTok, &res)
-	if len(res.ToolCalls) > 0 || res.FinishReason == "length" || res.FinishReason == "max_tokens" {
+	if len(res.ToolCalls) > 0 || res.Truncated() || res.FinishReason == "content_filter" || res.FinishReason == "refusal" {
 		return nil, fmt.Errorf("incomplete evidence summary")
 	}
 	var decoded struct {

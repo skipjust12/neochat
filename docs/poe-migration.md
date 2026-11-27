@@ -153,3 +153,20 @@ means the requested control could not be mapped from the available metadata.
 Message bodies, keys and attachments are not logged. Payload regression tests
 cover long histories, multiple tool rounds and alias/fallback effort forwarding;
 these are transport checks, not a live model-quality benchmark.
+
+## Incomplete summaries and research follow-ups
+
+Bot Query now preserves `choices[].finish_reason` instead of treating SSE
+`done` as a successful full completion. Responses marked incomplete also keep
+their truncated status when they contain tool calls. Both conversation and
+web-evidence summarizers reject token-limited, filtered or tool-calling output;
+a truncated conversation summary cannot advance the stored history offset.
+
+Follow-up turns retain search snippets and page excerpts alongside their source
+URLs, with a shared 6,000-character excerpt budget favoring the newest replies
+and actions. These are explicitly partial observations, not a substitute for
+complete source pages; cached originals can be read again. Existing result and
+page excerpts are reused without another model call. The same bounded evidence
+is included in conversation-summary input so rolling compaction can retain the
+facts. Private history now keeps the latest 16 actions (rather than the first
+16), retaining bounded snippets and page excerpts instead of discarding them.

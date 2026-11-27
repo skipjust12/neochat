@@ -392,3 +392,48 @@ func TestBotQueryThreeGenerationsKeepEvidenceOnWire(t *testing.T) {
 		t.Fatalf("unexpected extra generation: %d", calls)
 	}
 }
+
+func TestBotQueryKeepsTokenLimitFinishReason(t *testing.T) {
+	for _, stream := range []bool{false, true} {
+		t.Run(fmt.Sprint(stream), func(t *testing.T) {
+			c := nativeFixture(t, func(w http.ResponseWriter, _ *http.Request) {
+				fmt.Fprint(w, "event: text\ndata: {\"text\":\"Partial summary\"}\n\nevent: json\ndata: {\"choices\":[{\"delta\":{},\"finish_reason\":\"length\"}]}\n\nevent: done\ndata: {}\n\n")
+			})
+			var result GenerateResult
+			if stream {
+				ch, err := c.GenerateStream(context.Background(), "bot", []Message{{Role: "user", Content: "summarize"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+				for chunk := range ch {
+					if chunk.Err != nil {
+						t.Fatal(chunk.Err)
+					}
+					if chunk.Done {
+						result = chunk.Final
+					}
+				}
+			} else {
+				var err error
+				result, err = c.Generate(context.Background(), "bot", []Message{{Role: "user", Content: "summarize"}})
+				if err != nil {
+					t.Fatal(err)
+				}
+			}
+			if result.FinishReason != "length" || !result.Truncated() || result.Text != "Partial summary" {
+				t.Fatalf("lost truncation status: %+v", result)
+			}
+		})
+	}
+}
+
+func TestPoeIncompleteResponseWithCallsStaysTruncated(t *testing.T) {
+	var response poeResponse
+	if err := json.Unmarshal([]byte(`{"status":"incomplete","output":[{"type":"function_call","call_id":"c1","name":"web_fetch","arguments":"{}"}]}`), &response); err != nil {
+		t.Fatal(err)
+	}
+	result, err := response.result()
+	if err != nil || !result.Truncated() || len(result.ToolCalls) != 1 {
+		t.Fatalf("%+v %v", result, err)
+	}
+}

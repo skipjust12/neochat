@@ -460,7 +460,8 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 				}
 				var chunk struct {
 					Choices []struct {
-						Delta struct {
+						FinishReason string `json:"finish_reason"`
+						Delta        struct {
 							Content   string `json:"content"`
 							Reasoning string `json:"reasoning_content"`
 							Calls     []struct {
@@ -479,6 +480,9 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 					return false
 				}
 				for _, choice := range chunk.Choices {
+					if choice.FinishReason != "" {
+						result.FinishReason = choice.FinishReason
+					}
 					d := choice.Delta
 					result.Reasoning += d.Reasoning
 					if d.Reasoning != "" && !send(StreamChunk{Reasoning: d.Reasoning}) {
@@ -556,9 +560,11 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 			}
 			result.ToolCalls = append(result.ToolCalls, call)
 		}
-		result.FinishReason = "stop"
-		if len(result.ToolCalls) > 0 {
-			result.FinishReason = "tool_calls"
+		if result.FinishReason == "" {
+			result.FinishReason = "stop"
+			if len(result.ToolCalls) > 0 {
+				result.FinishReason = "tool_calls"
+			}
 		}
 		// Bot Query does not report token/cache usage. Mark conservative local
 		// estimates explicitly; never invent provider-measured cache counters.

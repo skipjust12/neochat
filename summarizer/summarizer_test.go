@@ -87,3 +87,20 @@ func TestLoadSystemPrompt(t *testing.T) {
 		t.Error("expected a non-empty prompt")
 	}
 }
+
+func TestSummarizeRejectsIncompleteOrToolCallingOutput(t *testing.T) {
+	for _, reason := range []string{"length", "max_tokens", "max_output_tokens", "incomplete", "content_filter", "refusal", "tool_calls"} {
+		t.Run(reason, func(t *testing.T) {
+			response := provider.GenerateResult{Text: "Only the beginning of a summary", FinishReason: reason}
+			if reason == "tool_calls" {
+				response.ToolCalls = []provider.ToolCall{{ID: "t", Name: "tool", Arguments: "{}"}}
+			}
+			fake := &provider.FakeClient{Responses: []provider.GenerateResult{response}}
+			summary := New(fake, "gpt-6-luna", "summary instructions")
+			text, err := summary.Summarize(context.Background(), "previous facts", []conversation.Message{{Role: conversation.RoleUser, Content: "new facts"}})
+			if err == nil || text != "" {
+				t.Fatalf("accepted incomplete summary %q (%s)", text, reason)
+			}
+		})
+	}
+}

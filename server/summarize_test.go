@@ -285,3 +285,21 @@ func TestPrepare_FoldsHistoryIntoSummaryWhenOverTrigger(t *testing.T) {
 	}
 	t.Logf("prepared.estimatedContextTokens = %d (down from full-history %d)", prepared.estimatedContextTokens, fullEstimate)
 }
+
+func TestTruncatedSummaryDoesNotAdvanceOrReplaceStoredHistory(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.SummaryTriggerTokens = 1
+	s.SummaryTailMessages = 2
+	old := conversation.Summary{Text: "Earlier exact fact: 12345", CoversThrough: 4}
+	must(t, s.Conversations.SetSummary(context.Background(), "u1", "c1", old))
+	s.Summarizer = summarizer.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: "Incomplete replacement", FinishReason: "length"}}}, "gpt-6-luna", "instructions")
+	history := longHistory(10)
+	got, text := s.maybeSummarize(context.Background(), "u1", "c1", old, history)
+	if len(got) != len(history) || text != old.Text {
+		t.Fatal("discarded history after an incomplete summary")
+	}
+	stored, err := s.Conversations.GetSummary(context.Background(), "u1", "c1")
+	if err != nil || stored.Text != old.Text || stored.CoversThrough != old.CoversThrough {
+		t.Fatal("advanced stored summary past facts that were not summarized", err)
+	}
+}
