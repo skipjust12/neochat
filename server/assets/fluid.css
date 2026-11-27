@@ -10256,3 +10256,8 @@ html[data-theme="dark"] .main:not(.project-mode) #homeGreeting::after {
 .slide-confirm.is-done .slide-confirm-thumb::after{content:'✓';}
 @keyframes slide-delete-spin{to{transform:rotate(360deg)}}
 @media(prefers-reduced-motion:reduce){.slide-confirm-thumb,.slide-confirm-text{transition:none;}.slide-confirm.is-busy .slide-confirm-thumb::after{animation:none;}}
+
+/* Crisp black response text on the light theme, matching the reference. */
+html[data-theme="light"] .chat-message.assistant:not(.is-error) .chat-text {
+  color: #000;
+}
