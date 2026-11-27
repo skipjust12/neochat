@@ -108,7 +108,7 @@ func main() {
 			current = liveModels.Current().Catalog
 		}
 		for _, m := range current.Models {
-			if m.ResolveAPIModelID() == id {
+			if strings.EqualFold(m.ResolveAPIModelID(), id) {
 				native, responses, chat := false, false, false
 				for _, e := range m.PoeEndpoints {
 					switch e {

@@ -62,7 +62,7 @@ func (c *PoeClient) chatRequest(ctx context.Context, model string, messages []Me
 	if len(tools) > 0 {
 		req["tools"] = tools
 	}
-	info := c.info(model)
+	info := c.requestModelInfo(ctx, model)
 	// Poe bots can enable paid search by default. NeoChat owns the search loop
 	// and supplies explicit web_search tools, so do not enable hidden searches.
 	req["web_search"] = false

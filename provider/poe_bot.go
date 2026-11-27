@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"mime"
 	"mime/multipart"
 	"net/http"
@@ -20,6 +21,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode/utf8"
 )
 
 // BotAccessDenied is a pre-generation policy refusal, not an internal failure.
@@ -157,9 +159,9 @@ func (c *PoeClient) botRequest(ctx context.Context, model string, messages []Mes
 	calls := []any{}
 	results := []any{}
 	callNames := map[string]string{}
-	// The SDK keeps the query before the latest tool round unchanged and puts
-	// that round in top-level tool_calls/tool_results. Earlier rounds retain
-	// their calls/results on the respective history messages.
+	// The latest round uses top-level tool_calls/tool_results. Older rounds
+	// use Poe's typed ProtocolMessages: bot/function_call + tool JSON arrays.
+	// Do not turn source evidence into user instructions or discard prose.
 	latest := -1
 	for i, m := range messages {
 		if len(m.ToolCalls) > 0 {
@@ -169,64 +171,89 @@ func (c *PoeClient) botRequest(ctx context.Context, model string, messages []Mes
 	if len(messages) == 0 || messages[len(messages)-1].Role != "tool" {
 		latest = -1
 	}
+	parameterTurn := -1
+	var historicalResults []any
+	var historicalImages []any
+	flushResults := func() {
+		if len(historicalResults) == 0 {
+			return
+		}
+		encoded, _ := json.Marshal(historicalResults)
+		query = append(query, map[string]any{"role": "tool", "content": string(encoded), "content_type": "text/markdown", "attachments": []PoeAttachment{}})
+		query = append(query, historicalImages...)
+		historicalResults = nil
+		historicalImages = nil
+	}
 	for i, m := range messages {
+		if m.Role != "tool" {
+			flushResults()
+		}
 		role := m.Role
 		if role == "assistant" {
 			role = "bot"
 		}
 		attachments := []PoeAttachment{}
 		text := m.Content
+		var partText []string
 		for _, p := range m.Parts {
 			if p.Type == PartText {
-				if text == "" {
-					text = p.Text
-				}
+				partText = append(partText, p.Text)
 				continue
 			}
-			a, err := c.cachedBotPart(ctx, p)
+			attachment, err := c.cachedBotPart(ctx, p)
 			if err != nil {
 				return nil, err
 			}
-			attachments = append(attachments, a)
+			attachments = append(attachments, attachment)
+		}
+		if len(partText) > 0 {
+			text = strings.Join(partText, "\n\n")
 		}
 		wireCalls := []any{}
 		for _, call := range m.ToolCalls {
 			callNames[call.ID] = call.Name
 			wireCalls = append(wireCalls, map[string]any{"id": call.ID, "type": "function", "function": map[string]any{"name": call.Name, "arguments": call.Arguments}})
 		}
-		if i == latest {
-			calls = wireCalls
-			// Match the SDK: the latest assistant tool turn is represented
-			// by top-level tool_calls, not a second bot turn in query.
-			continue
-		}
-		if role == "tool" && latest >= 0 && i > latest {
-			results = append(results, map[string]any{"role": "tool", "name": callNames[m.ToolCallID], "tool_call_id": m.ToolCallID, "content": text})
-			// Bot Query tool results are text. Keep the actual picture as a
-			// supported ProtocolMessage attachment in query, alongside the
-			// current tool_calls/tool_results rather than dropping its bytes.
-			if len(attachments) > 0 {
-				query = append(query, map[string]any{"role": "user", "content": "Image opened by " + callNames[m.ToolCallID] + " (" + m.ToolCallID + ") for your inspection: " + text, "content_type": "text/markdown", "attachments": attachments})
+		if role == "tool" {
+			result := map[string]any{"role": "tool", "name": callNames[m.ToolCallID], "tool_call_id": m.ToolCallID, "content": text}
+			if result["name"] == "" {
+				return nil, fmt.Errorf("Poe: tool result %q has no matching call", m.ToolCallID)
+			}
+			imageTurn := map[string]any{"role": "user", "content": "Image opened by " + callNames[m.ToolCallID] + " (" + m.ToolCallID + ") for your inspection: " + text, "content_type": "text/markdown", "attachments": attachments}
+			if latest >= 0 && i > latest {
+				results = append(results, result)
+				if len(attachments) > 0 {
+					query = append(query, imageTurn)
+				}
+			} else {
+				historicalResults = append(historicalResults, result)
+				if len(attachments) > 0 {
+					historicalImages = append(historicalImages, imageTurn)
+				}
 			}
 			continue
 		}
-		// Historical calls are rendered as ordinary context above. Their
-		// results must likewise be ordinary context: ProtocolMessage has no
-		// tool_call_id field, so a historical role=tool becomes an orphaned
-		// tool result when the bot forwards it to its underlying model.
-		if role == "tool" {
-			role = "user"
-		}
 		turn := map[string]any{"role": role, "content": text, "content_type": "text/markdown", "attachments": attachments}
-		if len(wireCalls) > 0 && i != latest {
-			encoded, _ := json.Marshal(wireCalls)
-			turn["content"] = text + "\nPrevious tool calls: " + string(encoded)
-		}
-		if m.ToolCallID != "" {
-			turn["content"] = "Tool result " + callNames[m.ToolCallID] + " (" + m.ToolCallID + "): " + text
+		if len(wireCalls) > 0 {
+			// The model's visible text and the structured calls are separate
+			// messages; both are required on every subsequent continuation.
+			if text != "" || len(attachments) > 0 {
+				query = append(query, turn)
+			}
+			if i == latest {
+				calls = wireCalls
+			} else {
+				encoded, _ := json.Marshal(wireCalls)
+				query = append(query, map[string]any{"role": "bot", "message_type": "function_call", "content": string(encoded), "content_type": "text/markdown", "attachments": []PoeAttachment{}})
+			}
+			continue
 		}
 		query = append(query, turn)
+		if role == "user" {
+			parameterTurn = len(query) - 1
+		}
 	}
+	flushResults()
 	params := map[string]any{}
 	if limit := outputLimit(ctx, c.MaxTokens); limit > 0 {
 		params["max_tokens"] = limit
@@ -244,8 +271,13 @@ func (c *PoeClient) botRequest(ctx context.Context, model string, messages []Mes
 	if hasPoeWeb(ctx) {
 		params["web_search"] = true
 	}
-	if len(query) > 0 {
-		query[len(query)-1].(map[string]any)["parameters"] = params
+	// Controls belong to the actual user's request, not to the last bot
+	// message or the output of an earlier tool.
+	if parameterTurn < 0 && len(query) > 0 {
+		parameterTurn = len(query) - 1
+	}
+	if parameterTurn >= 0 {
+		query[parameterTurn].(map[string]any)["parameters"] = params
 	}
 	req := map[string]any{"version": "1.2", "type": "query", "query": query, "user_id": "", "conversation_id": "", "message_id": "", "skip_system_prompt": true}
 	tools := []any{}
@@ -262,6 +294,7 @@ func (c *PoeClient) botRequest(ctx context.Context, model string, messages []Mes
 	return req, nil
 }
 func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Message) (<-chan StreamChunk, error) {
+	requestedModel := model
 	model = c.resolveBot(model)
 	if !poeHandlePattern.MatchString(model) {
 		return nil, fmt.Errorf("invalid Poe bot handle")
@@ -276,6 +309,24 @@ func (c *PoeClient) streamBot(ctx context.Context, model string, messages []Mess
 		cancel()
 		return nil, err
 	}
+	// Log only transport metadata, never message text, attachments or keys.
+	inputChars := 0
+	for _, m := range messages {
+		inputChars += utf8.RuneCountInString(m.Content)
+	}
+	info := c.requestModelInfo(ctx, model)
+	effort := "default"
+	if reasoning, ok := reasoningFromContext(ctx); ok {
+		if reasoning.Disabled {
+			effort = "disabled"
+		} else if reasoning.Effort != "" {
+			effort = reasoning.Effort
+		}
+		if info.ReasoningParameter == "" && effort != "default" {
+			effort = "unsupported:" + effort
+		}
+	}
+	log.Printf("provider: Poe Bot Query requested_model=%s bot=%s history_messages=%d protocol_messages=%d history_chars=%d effort=%s parameter=%s", requestedModel, model, len(messages), len(payload["query"].([]any)), inputChars, effort, info.ReasoningParameter)
 	body, err := json.Marshal(payload)
 	if err != nil {
 		cancel()

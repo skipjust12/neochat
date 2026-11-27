@@ -131,3 +131,25 @@ server-managed model settings. The model picker restores a saved personal ID
 even if settings arrive before the personal catalog, fixing the lost selection
 on reload/sign-in. Personal edits and ordering never enter the shared browser
 catalog cache.
+
+## Conversation fidelity audit
+
+Native Bot Query retains earlier tool rounds using the documented
+`ProtocolMessage` format: `role=bot, message_type=function_call` with a JSON
+array of calls, followed by `role=tool` containing a JSON array of results.
+The latest round still uses the SDK's top-level `tool_calls`/`tool_results`.
+Intermediate assistant prose remains in query, separately from function calls.
+Tool results are not rewritten into user messages. Text parts are all retained,
+and request parameters stay on the actual user message during continuations.
+
+Requested-model reasoning metadata is bound before an explicit alias or
+owner-selected fallback changes the bot handle. Each new helper request resets
+that binding. This preserves known supported controls; it does not establish
+reasoning support for a bot that exposes no parameter metadata.
+
+Each native request logs the bot handle, input/protocol message counts,
+text character count, requested effort and parameter name. `effort=unsupported:…`
+means the requested control could not be mapped from the available metadata.
+Message bodies, keys and attachments are not logged. Payload regression tests
+cover long histories, multiple tool rounds and alias/fallback effort forwarding;
+these are transport checks, not a live model-quality benchmark.

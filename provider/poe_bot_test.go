@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
@@ -221,29 +222,71 @@ func TestBotQueryFormattedThinkingUsesReasoningChannel(t *testing.T) {
 	}
 }
 
-func TestBotQueryMultipleToolRoundsDoNotSendOrphanedToolMessages(t *testing.T) {
+func TestBotQueryMultipleToolRoundsPreserveTypedHistoryAndProse(t *testing.T) {
 	c := NewPoeClient("key")
-	messages := []Message{{Role: "system", Content: "core"}, {Role: "user", Content: "do three things"}, {Role: "assistant", Content: "First step", ToolCalls: []ToolCall{{ID: "first", Name: "web_fetch", Arguments: "{}"}}}, {Role: "tool", ToolCallID: "first", Content: "page"}, {Role: "assistant", Content: "Second step", ToolCalls: []ToolCall{{ID: "second", Name: "run_script", Arguments: "{}"}}}, {Role: "tool", ToolCallID: "second", Content: "output"}}
+	messages := []Message{{Role: "system", Content: "core: retain exact facts"}, {Role: "user", Content: "Never guess; required total is 12345."},
+		{Role: "assistant", Content: "First step", ToolCalls: []ToolCall{{ID: "first", Name: "web_fetch", Arguments: `{"url":"https://example.com"}`}}},
+		{Role: "tool", ToolCallID: "first", Content: "Verified report: 12345, not 12354."},
+		{Role: "assistant", Content: "Second step", ToolCalls: []ToolCall{{ID: "second", Name: "run_script", Arguments: "{}"}}},
+		{Role: "tool", ToolCallID: "second", Content: "output"}}
 	body, err := c.botRequest(context.Background(), "bot", messages)
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, raw := range body["query"].([]any) {
-		m := raw.(map[string]any)
-		if m["role"] == "tool" {
-			t.Fatalf("orphaned tool message %+v", m)
-		}
-		if m["content"] == "Second step" {
-			t.Fatal("latest assistant turn duplicated outside top-level calls")
-		}
+	query := body["query"].([]any)
+	roles := []string{}
+	for _, raw := range query {
+		roles = append(roles, raw.(map[string]any)["role"].(string))
+	}
+	if strings.Join(roles, ",") != "system,user,bot,bot,tool,bot" {
+		t.Fatalf("wrong historical roles: %v", roles)
+	}
+	if query[0].(map[string]any)["content"] != messages[0].Content || query[1].(map[string]any)["content"] != messages[1].Content || query[2].(map[string]any)["content"] != "First step" || query[5].(map[string]any)["content"] != "Second step" {
+		t.Fatal("lost core, original instruction or intermediate text")
+	}
+	callTurn := query[3].(map[string]any)
+	if callTurn["message_type"] != "function_call" {
+		t.Fatal("historical calls lack protocol type")
+	}
+	var calls []map[string]any
+	if err := json.Unmarshal([]byte(callTurn["content"].(string)), &calls); err != nil || len(calls) != 1 || calls[0]["id"] != "first" {
+		t.Fatal("invalid call history", err)
+	}
+	var historical []map[string]any
+	if err := json.Unmarshal([]byte(query[4].(map[string]any)["content"].(string)), &historical); err != nil || len(historical) != 1 || historical[0]["tool_call_id"] != "first" || historical[0]["content"] != messages[3].Content {
+		t.Fatal("lost structured tool evidence", err)
 	}
 	results := body["tool_results"].([]any)
 	if len(results) != 1 || results[0].(map[string]any)["tool_call_id"] != "second" {
-		t.Fatalf("results %v", results)
+		t.Fatalf("latest results %v", results)
 	}
-	serialized := fmt.Sprint(body["query"])
-	if !strings.Contains(serialized, "page") || !strings.Contains(serialized, "web_fetch") {
-		t.Fatal("lost earlier tool context")
+	if query[1].(map[string]any)["parameters"] == nil || query[5].(map[string]any)["parameters"] != nil {
+		t.Fatal("parameters moved from user request to assistant prose")
+	}
+}
+
+func TestBotQueryMultipartTextAndLongConversationStayIntact(t *testing.T) {
+	c := NewPoeClient("key")
+	messages := []Message{{Role: "system", Content: "original instructions"}}
+	for i := 0; i < 40; i++ {
+		messages = append(messages, Message{Role: "user", Content: fmt.Sprintf("fact %d", i)}, Message{Role: "assistant", Content: fmt.Sprintf("acknowledged %d", i)})
+	}
+	messages = append(messages, Message{Role: "user", Content: "stale text view", Parts: []Part{{Type: PartText, Text: "file contents"}, {Type: PartText, Text: "quotation"}, {Type: PartText, Text: "actual question"}}})
+	body, err := c.botRequest(context.Background(), "bot", messages)
+	if err != nil {
+		t.Fatal(err)
+	}
+	query := body["query"].([]any)
+	if len(query) != len(messages) {
+		t.Fatal("trimmed short conversation")
+	}
+	for i := 0; i < len(messages)-1; i++ {
+		if query[i].(map[string]any)["content"] != messages[i].Content {
+			t.Fatalf("lost historical message %d", i)
+		}
+	}
+	if query[len(query)-1].(map[string]any)["content"] != "file contents\n\nquotation\n\nactual question" {
+		t.Fatal("lost multipart text")
 	}
 }
 
@@ -257,5 +300,95 @@ func TestBotQueryServiceFailurePreservesReferenceWithoutReplay(t *testing.T) {
 	var service *BotServiceError
 	if !errors.As(err, &service) || service.Reference != "abcdef0123456789abcdef0123456789" || calls != 1 {
 		t.Fatalf("err %v calls %d", err, calls)
+	}
+}
+
+// Inspect real HTTP request bodies across three generations, not only the
+// in-memory encoder. Later steps must retain instructions, prose and typed
+// evidence from every earlier tool round.
+func TestBotQueryThreeGenerationsKeepEvidenceOnWire(t *testing.T) {
+	calls := 0
+	c := nativeFixture(t, func(w http.ResponseWriter, r *http.Request) {
+		calls++
+		body := readPoeBody(t, r)
+		query := body["query"].([]any)
+		if query[0].(map[string]any)["content"] != "Never invent verified facts." || query[1].(map[string]any)["content"] != "Use the report; required total is 12345." {
+			t.Error("lost initial instruction")
+		}
+		known := map[string]bool{}
+		userTurns := 0
+		for _, raw := range query {
+			m := raw.(map[string]any)
+			if m["role"] == "user" {
+				userTurns++
+			}
+			if m["message_type"] == "function_call" {
+				var history []struct {
+					ID string `json:"id"`
+				}
+				if err := json.Unmarshal([]byte(m["content"].(string)), &history); err != nil {
+					t.Error(err)
+				}
+				for _, call := range history {
+					known[call.ID] = true
+				}
+			}
+			if m["role"] == "tool" {
+				var results []struct {
+					ID      string `json:"tool_call_id"`
+					Content string `json:"content"`
+				}
+				if err := json.Unmarshal([]byte(m["content"].(string)), &results); err != nil {
+					t.Error(err)
+				}
+				for _, result := range results {
+					if !known[result.ID] || result.Content != "verified total 12345" {
+						t.Error("orphaned or changed source evidence")
+					}
+				}
+			}
+		}
+		if userTurns != 1 {
+			t.Error("tool output became a new user request")
+		}
+		for step := 1; step < calls; step++ {
+			found := false
+			for _, raw := range query {
+				if raw.(map[string]any)["content"] == fmt.Sprintf("Checked step %d.", step) {
+					found = true
+				}
+			}
+			if !found {
+				t.Errorf("lost intermediate answer from step %d", step)
+			}
+		}
+		if len(known) != max(0, calls-2) {
+			t.Error("lost historical function calls")
+		}
+		if calls == 3 {
+			fmt.Fprint(w, "event: text\ndata: {\"text\":\"Done.\"}\n\nevent: done\ndata: {}\n\n")
+			return
+		}
+		data, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": fmt.Sprint(calls), "type": "function", "function": map[string]string{"name": "web_fetch", "arguments": "{}"}}}}}}})
+		fmt.Fprintf(w, "event: json\ndata: %s\n\nevent: done\ndata: {}\n\n", data)
+	})
+	ctx := WithFunctionTools(context.Background(), []FunctionTool{{Name: "web_fetch", Parameters: map[string]any{"type": "object"}}})
+	messages := []Message{{Role: "system", Content: "Never invent verified facts."}, {Role: "user", Content: "Use the report; required total is 12345."}}
+	for step := 1; step <= 3; step++ {
+		result, err := c.Generate(ctx, "model", messages)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if step < 3 {
+			if len(result.ToolCalls) != 1 {
+				t.Fatal("missing tool call")
+			}
+			messages = append(messages, Message{Role: "assistant", Content: fmt.Sprintf("Checked step %d.", step), ToolCalls: result.ToolCalls}, Message{Role: "tool", ToolCallID: result.ToolCalls[0].ID, Content: "verified total 12345"})
+		} else if result.Text != "Done." {
+			t.Fatal("missing final output")
+		}
+	}
+	if calls != 3 {
+		t.Fatalf("unexpected extra generation: %d", calls)
 	}
 }

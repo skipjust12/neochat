@@ -53,7 +53,26 @@ func (c *PoeClient) fallbackBot(model string, err error) string {
 	}
 	return bot
 }
+
+// Bind the requested model's parameter metadata before an alias/fallback
+// changes its handle. Private prompt-bot names are absent from /v1/models.
+// Each public entry point replaces this value, so helper calls cannot inherit
+// the main model's controls and concurrent users never share request state.
+type poeRequestModelInfoKey struct{}
+
+func (c *PoeClient) requestModelContext(ctx context.Context, model string) context.Context {
+	return context.WithValue(ctx, poeRequestModelInfoKey{}, c.info(poeModelName(model)))
+}
+
+func (c *PoeClient) requestModelInfo(ctx context.Context, model string) PoeModelInfo {
+	if info, ok := ctx.Value(poeRequestModelInfoKey{}).(PoeModelInfo); ok {
+		return info
+	}
+	return c.info(model)
+}
+
 func (c *PoeClient) Generate(ctx context.Context, model string, messages []Message) (GenerateResult, error) {
+	ctx = c.requestModelContext(ctx, model)
 	result, err := c.generatePoe(ctx, model, messages)
 	if bot := c.fallbackBot(model, err); bot != "" {
 		log.Printf("provider: Poe bot fallback model=%s bot=%s after pre-generation refusal", model, bot)
@@ -62,6 +81,7 @@ func (c *PoeClient) Generate(ctx context.Context, model string, messages []Messa
 	return result, err
 }
 func (c *PoeClient) GenerateStream(ctx context.Context, model string, messages []Message) (<-chan StreamChunk, error) {
+	ctx = c.requestModelContext(ctx, model)
 	stream, err := c.streamPoe(ctx, model, messages)
 	// Only initial HTTP refusal is eligible. Never replay an accepted stream.
 	if bot := c.fallbackBot(model, err); bot != "" {
