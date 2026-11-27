@@ -129,7 +129,11 @@ func (c *CircuitBreakerClient) GenerateStream(ctx context.Context, apiModelID st
 			}
 		}()
 		for chunk := range upstream {
-			out <- chunk
+			select {
+			case out <- chunk:
+			case <-ctx.Done():
+				return
+			}
 			if chunk.Err != nil {
 				c.recordResult(apiModelID, chunk.Err)
 				return
@@ -190,6 +194,10 @@ func (c *CircuitBreakerClient) recordResult(apiModelID string, err error) {
 // may open the circuit for every other user of the same model; 5xx,
 // timeouts and broken streams still do.
 func countsAgainstModel(err error) bool {
+	var denied *BotAccessDenied
+	if errors.As(err, &denied) {
+		return false
+	}
 	if errors.Is(err, context.Canceled) || errors.Is(err, ErrMissingAPIKey) {
 		return false
 	}

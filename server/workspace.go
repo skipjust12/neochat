@@ -7,13 +7,11 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
 	"neochat/auth"
 	"neochat/conversation"
-	"neochat/provider"
 )
 
 // maxConversationList is how many chats GET /conversations returns: in
@@ -65,72 +63,62 @@ func (s *Server) handleProjectDelete(w http.ResponseWriter, r *http.Request, ide
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// defaultBalanceURL is Polza's balance endpoint (GET /v2/balance).
-const defaultBalanceURL = "https://polza.ai/api/v2/balance"
+// Poe usage endpoints are outside /v1 and report points, never currency.
+const defaultBalanceURL = "https://api.poe.com/usage/current_balance"
 
 type balanceResponse struct {
-	// AmountRUB is the wallet; AvailableRUB what can still be spent after
-	// reservations and the key's own spending limit.
-	AmountRUB    float64 `json:"amount_rub"`
-	AvailableRUB float64 `json:"available_rub"`
+	CurrentPointBalance int64  `json:"current_point_balance"`
+	Unit                string `json:"unit"`
 }
 
-// handleBalance reports the Polza balance behind the user's own key
-// (X-Provider-Key), for Settings -> Usage. The browser can't ask Polza
-// itself: the page's CSP keeps it to this origin.
 func (s *Server) handleBalance(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
 	key := strings.TrimSpace(r.Header.Get(providerKeyHeader))
 	if key == "" || len(key) > 512 || strings.ContainsAny(key, " \t\r\n") {
-		http.Error(w, "Add your Polza AI key in Settings → Account to see the balance.", http.StatusBadRequest)
+		http.Error(w, "Add your Poe API key in Settings → Account to see the balance.", http.StatusBadRequest)
 		return
 	}
-	url := s.BalanceURL
-	if url == "" {
-		url = defaultBalanceURL
+	endpoint := s.BalanceURL
+	if endpoint == "" {
+		endpoint = defaultBalanceURL
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		http.Error(w, "an internal error occurred processing this request", http.StatusInternalServerError)
+		http.Error(w, "Could not create balance request.", http.StatusInternalServerError)
 		return
 	}
 	request.Header.Set("Authorization", "Bearer "+key)
-	response, err := http.DefaultClient.Do(request)
+	client := *http.DefaultClient
+	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	response, err := client.Do(request)
 	if err != nil {
-		log.Printf("server: balance for user_id=%s: %v", identity.UserID, err)
-		http.Error(w, "Couldn't reach Polza AI. Try again in a moment.", http.StatusBadGateway)
+		log.Printf("server: Poe balance user_id=%s: %v", identity.UserID, err)
+		http.Error(w, "Couldn't reach Poe. Try again in a moment.", http.StatusBadGateway)
 		return
 	}
 	defer response.Body.Close()
-	body, _ := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	body, err := io.ReadAll(io.LimitReader(response.Body, 64<<10))
+	if err != nil {
+		http.Error(w, "Could not read Poe balance.", http.StatusBadGateway)
+		return
+	}
 	if response.StatusCode != http.StatusOK {
-		message := vendorErrorMessage(&provider.StatusError{StatusCode: response.StatusCode, Body: string(body)})
-		if message == "" {
-			message = "Polza AI couldn't report the balance right now."
-		}
-		http.Error(w, message, http.StatusBadGateway)
+		http.Error(w, "Poe could not report the balance. Check your API key and try again.", http.StatusBadGateway)
 		return
 	}
-	// Polza sends the amounts as decimal strings ("1234.56000000").
 	var parsed struct {
-		Amount    json.RawMessage `json:"amount"`
-		Available json.RawMessage `json:"available"`
+		Balance *int64 `json:"current_point_balance"`
 	}
-	if err := json.Unmarshal(body, &parsed); err != nil {
-		http.Error(w, "Polza AI sent a balance this server couldn't read.", http.StatusBadGateway)
+	if err = json.Unmarshal(body, &parsed); err != nil || parsed.Balance == nil {
+		http.Error(w, "Poe sent a balance this server couldn't read.", http.StatusBadGateway)
 		return
 	}
-	out := balanceResponse{AmountRUB: decimal(parsed.Amount), AvailableRUB: decimal(parsed.Available)}
 	w.Header().Set("Content-Type", "application/json")
-	if err := json.NewEncoder(w).Encode(out); err != nil {
+	w.Header().Set("Cache-Control", "no-store")
+	if err = json.NewEncoder(w).Encode(balanceResponse{CurrentPointBalance: *parsed.Balance, Unit: "points"}); err != nil {
 		log.Printf("server: encode balance: %v", err)
 	}
-}
-
-func decimal(raw json.RawMessage) float64 {
-	value, _ := strconv.ParseFloat(strings.Trim(string(raw), `" `), 64)
-	return value
 }
 
 // Artifacts: a model's complete HTML page (a ```html block holding a whole

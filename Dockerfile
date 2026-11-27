@@ -1,6 +1,6 @@
 # Builds cmd/server -- the real HTTP entry point (see docs/running-locally.md).
 # main.go at the repo root is a separate router-only demo and is not built here.
-FROM golang:1.26-alpine AS build
+FROM golang:1.26.11-alpine AS build
 
 WORKDIR /src
 
@@ -15,7 +15,7 @@ FROM alpine:3.20
 # bash, Python and pip for the models' terminal (server/terminal.go, on
 # by default): commands and scripts run in this container as the neochat
 # user.
-RUN apk add --no-cache bash python3 py3-pip \
+RUN apk add --no-cache ca-certificates bash python3 py3-pip py3-pillow font-dejavu ffmpeg \
     && addgroup -S neochat && adduser -S -G neochat neochat
 
 WORKDIR /app
@@ -24,6 +24,7 @@ COPY --from=build /out/server ./server
 # (configs/*.json, prompts/*.md) -- see cmd/server/main.go.
 COPY configs ./configs
 COPY prompts ./prompts
+COPY scripts/diagnose-poe-bots.py ./diagnose-poe-bots.py
 
 USER neochat
 EXPOSE 8080

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	"neochat/auth"
@@ -13,11 +14,11 @@ import (
 )
 
 // The Manual picker's model list. GET /models answers from the live
-// catalog (package modelcatalog), refreshing it from Polza first when it's
+// catalog (package modelcatalog), refreshing it from Poe first when it's
 // older than its TTL -- so opening the app brings in models released since
-// -- but waiting at most modelsWait for that: a slow Polza gets the list as
+// -- but waiting at most modelsWait for that: a slow Poe gets the list as
 // it was. POST /models/refresh (Settings -> General -> Refresh) fetches
-// right away. Polza is asked at most once per cooldown however many people
+// right away. Poe is asked at most once per cooldown however many people
 // open the app or press Refresh.
 
 const (
@@ -27,15 +28,20 @@ const (
 )
 
 type modelEntry struct {
-	ID          string   `json:"id"`
-	Name        string   `json:"name"`
-	Provider    string   `json:"provider"`
-	Description string   `json:"description,omitempty"`
-	Tier        string   `json:"tier"`
-	Kind        string   `json:"kind,omitempty"`
-	Inputs      []string `json:"inputs"`
-	Legacy      bool     `json:"legacy,omitempty"`
-	New         bool     `json:"new,omitempty"`
+	URL           string   `json:"url,omitempty"`
+	Custom        bool     `json:"custom,omitempty"`
+	ContextWindow int      `json:"context_window,omitempty"`
+	Unstable      bool     `json:"unstable,omitempty"`
+	Unavailable   bool     `json:"unavailable,omitempty"`
+	ID            string   `json:"id"`
+	Name          string   `json:"name"`
+	Provider      string   `json:"provider"`
+	Description   string   `json:"description,omitempty"`
+	Tier          string   `json:"tier"`
+	Kind          string   `json:"kind,omitempty"`
+	Inputs        []string `json:"inputs"`
+	Legacy        bool     `json:"legacy,omitempty"`
+	New           bool     `json:"new,omitempty"`
 	// Video is a video model's choices and price tiers, for the composer;
 	// MaxReferences is how many pictures it takes (a video counts as two).
 	Video         *router.VideoOptions `json:"video,omitempty"`
@@ -43,8 +49,12 @@ type modelEntry struct {
 }
 
 type modelsResponse struct {
-	Models    []modelEntry `json:"models"`
-	UpdatedAt *time.Time   `json:"updated_at,omitempty"`
+	Preferences     map[string]modelPreference `json:"preferences,omitempty"`
+	Order           []string                   `json:"order,omitempty"`
+	ChangedID       string                     `json:"changed_id,omitempty"`
+	Models          []modelEntry               `json:"models"`
+	UpdatedAt       *time.Time                 `json:"updated_at,omitempty"`
+	LegacyOverrides map[string]bool            `json:"legacy_overrides,omitempty"`
 }
 
 // router is the router over the current catalog: the live one when the
@@ -60,7 +70,7 @@ func (s *Server) router() router.Router {
 // (picked in another tab, or right after a restart) through: an unknown
 // manual model refreshes a stale catalog before the request is checked.
 func (s *Server) knowModel(ctx context.Context, modelID string) {
-	if s.Models == nil || modelID == "" {
+	if s.Models == nil || modelID == "" || strings.HasPrefix(modelID, "custom-") {
 		return
 	}
 	if _, ok := s.Models.Current().Catalog.FindModel(modelID); ok {
@@ -100,7 +110,7 @@ func (s *Server) handleModelsRefresh(w http.ResponseWriter, r *http.Request, ide
 	state, err := s.Models.Refresh(r.Context(), true)
 	if err != nil {
 		log.Printf("server: refresh models for user_id=%s: %v", identity.UserID, err)
-		http.Error(w, "Couldn't reach Polza AI for the model list. Try again in a minute.", http.StatusBadGateway)
+		http.Error(w, "Couldn't reach Poe for the model list. Try again in a minute.", http.StatusBadGateway)
 		return
 	}
 	writeModelsState(w, state)
@@ -129,24 +139,20 @@ func encodeModels(w http.ResponseWriter, response modelsResponse) {
 }
 
 // modelEntries is the picker's view of a catalog, in catalog order:
-// models Polza retired are left out, and models added in the last
-// newModelDays are marked new.
+// unlisted Poe bots remain selectable, and recent additions are marked new.
 func modelEntries(catalog router.Catalog, retired map[string]bool, added map[string]time.Time) []modelEntry {
 	entries := make([]modelEntry, 0, len(catalog.Models))
 	for _, m := range catalog.Models {
-		if retired[m.ID] {
+		if retired[m.ID] && !m.Poe {
 			continue
 		}
 		inputs := m.InputModalities
 		if len(inputs) == 0 {
 			inputs = []string{"text"}
 		}
-		entry := modelEntry{ID: m.ID, Name: modelName(m), Provider: m.Provider, Tier: modelTier(m), Kind: m.Kind, Inputs: inputs, Legacy: m.Legacy}
+		entry := modelEntry{URL: poeModelURL(m), ContextWindow: m.ContextWindow, Unstable: m.Unstable, Unavailable: m.Unavailable || retired[m.ID], ID: m.ID, Name: modelName(m), Provider: m.Provider, Tier: modelTier(m), Kind: m.Kind, Inputs: inputs, Legacy: m.Legacy}
 		if m.Kind == router.KindVideo {
 			entry.Video, entry.MaxReferences = m.Video, m.MaxReferenceImages
-		}
-		if !m.Legacy {
-			entry.Description = m.Description
 		}
 		if at, ok := added[m.ID]; ok && time.Since(at) < newModelDays*24*time.Hour {
 			entry.New = true

@@ -60,6 +60,9 @@ func (s Summarizer) Summarize(ctx context.Context, previousSummary string, newMe
 		return "", fmt.Errorf("summarizer: generate: %w", err)
 	}
 
+	if result.Truncated() || len(result.ToolCalls) > 0 || result.FinishReason == "content_filter" || result.FinishReason == "refusal" {
+		return "", fmt.Errorf("summarizer: incomplete summary (finish_reason=%q)", result.FinishReason)
+	}
 	text := strings.TrimSpace(result.Text)
 	if text == "" {
 		return "", fmt.Errorf("summarizer: model returned empty summary")

@@ -56,6 +56,9 @@ services:
       # network the databases are reachable by service name, not localhost.
       POSTGRES_HOST: postgres
       REDIS_HOST: redis
+      # Both conversation and search summaries use Luna, including releases
+      # which inherit an older .env that selected Gemini.
+      SUMMARIZER_API_MODEL_ID: gpt-6-luna
     ports:
       - "127.0.0.1:8080:8080"
     depends_on:

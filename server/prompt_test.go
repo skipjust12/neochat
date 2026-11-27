@@ -3,8 +3,24 @@ package server
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+func TestStylesKeepLinuxToolsWithoutWindowsOrMCPGuidance(t *testing.T) {
+	for name, prompt := range LoadSystemPrompts("../prompts") {
+		for _, removed := range []string{"windows", "powershell", "mcp"} {
+			if strings.Contains(strings.ToLower(prompt), removed) {
+				t.Errorf("%s still includes %s guidance", name, removed)
+			}
+		}
+		for _, retained := range []string{"bash", "Python", "run_command", "run_script", "timeout_seconds", "send_file", "show_image", "non-zero exit code", "working directory", "read_file", "write_file", "list_dir"} {
+			if !strings.Contains(prompt, retained) {
+				t.Errorf("%s lost %s guidance", name, retained)
+			}
+		}
+	}
+}
 
 func TestLoadSystemPrompts_SkipsMissingAndEmptyPersonas(t *testing.T) {
 	dir := t.TempDir()

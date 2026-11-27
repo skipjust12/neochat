@@ -3,12 +3,25 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width,initial-scale=1" />
+<!-- Home-screen web app on iOS: its own window, a solid status bar in the
+     page's color (kept in step with the theme below), its own name. -->
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="NeoChat" />
+<meta name="theme-color" content="#fafafa" media="(prefers-color-scheme: light)" />
+<meta name="theme-color" content="#171717" media="(prefers-color-scheme: dark)" />
 <title>NeoChat</title>
 <link rel="icon" href="/favicon.ico" sizes="32x32" />
 <link rel="icon" href="/assets/icons/favicon.svg?v=1" type="image/svg+xml" />
 <link rel="apple-touch-icon" href="/assets/icons/apple-touch-icon.png?v=1" />
-<link rel="manifest" href="/assets/icons/manifest.json?v=1" />
-<link rel="stylesheet" href="/assets/fluid.css?v=32" />
+<link rel="manifest" href="/assets/icons/manifest.json?v=2" />
+<link rel="stylesheet" href="/assets/fluid.css?v=38" />
+<link rel="stylesheet" href="/assets/model-manager.css?v=1">
+<script src="/assets/model-manager.js?v=1"></script>
+<script src="/assets/markdown/markdown-it.min.js?v=15.0.3"></script>
+<script src="/assets/markdown/texmath.js?v=1.0.0"></script>
+<script src="/assets/markdown/chat-markdown.js?v=1"></script>
 <script id="hljsScript" src="/assets/highlight/highlight.min.js?v=11.12.0" defer></script>
 <link rel="stylesheet" href="/assets/katex/katex.min.css?v=0.16.47" />
 <script id="katexScript" src="/assets/katex/katex.min.js?v=0.16.47" defer></script>
@@ -64,6 +77,13 @@
         <button type="button" class="sketch-tool" id="sketchUndo" aria-label="Undo" title="Undo" disabled><svg class="lucide lucide-undo-2" data-lucide-icon="undo-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5a5.5 5.5 0 0 1-5.5 5.5H11" /></svg></button>
         <button type="button" class="sketch-tool" id="sketchClear" aria-label="Clear" title="Clear" disabled><svg class="lucide lucide-trash-2" data-lucide-icon="trash-2" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18" /><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6" /><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" /></svg></button>
       </div>
+    </div>
+    <div class="sketch-properties" aria-label="New drawing settings">
+      <label>Pen <input id="sketchPenWidth" type="range" min="1" max="32" value="4" aria-label="Pencil size"><output id="sketchPenWidthValue">4 px</output></label>
+      <label>Outline <input id="sketchOutlineWidth" type="range" min="1" max="24" value="4" aria-label="Outline width"><output id="sketchOutlineWidthValue">4 px</output></label>
+      <label>Opacity <input id="sketchOpacity" type="range" min="0" max="100" value="100" aria-label="Drawing opacity"><output id="sketchOpacityValue">100%</output></label>
+      <label>Line <select id="sketchLineStyle" aria-label="Line style"><option value="solid">Solid</option><option value="dashed">Dashed</option></select></label>
+      <button id="sketchPaste" type="button" class="sketch-paste">Paste image</button>
     </div>
     <div class="sketch-stage"><canvas id="sketchCanvas" width="1600" height="1120" aria-label="Drawing area"></canvas><textarea class="sketch-text-editor" id="sketchTextEditor" rows="1" spellcheck="false" aria-label="Text on the sketch" hidden></textarea></div>
     <div class="sketch-actions">
@@ -136,7 +156,7 @@
             <button class="chat-menu-item add-project-chat" type="button" role="menuitem"><svg class="lucide lucide-folder-plus" data-lucide-icon="folder-plus" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 10v6" /><path d="M9 13h6" /><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z" /></svg><span>Add to project</span></button>
             <button class="chat-menu-item danger delete-chat" type="button" role="menuitem"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span>Delete</span></button>
           </div>
-          <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><button type="button" class="hold-confirm-btn confirm-delete-chat" data-hold-ms="1000" aria-label="Hold to permanently delete this chat"><span class="hold-confirm-label"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span class="hold-confirm-text">Hold to delete</span></span><span class="hold-confirm-fill" aria-hidden="true"><span class="hold-confirm-label"><svg class="lucide lucide-trash" data-lucide-icon="trash" viewBox="0 0 24 24" aria-hidden="true"><path d="M10 11v6" /><path d="M14 11v6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" /><path d="M3 6h18" /><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg><span class="hold-confirm-text">Hold to delete</span></span></span></button></div></div>
+          <div class="chat-delete-confirm"><p class="chat-confirm-copy">Delete this chat permanently?</p><div class="chat-confirm-actions"><button type="button" class="cancel-chat-action">Cancel</button><div class="slide-confirm confirm-delete-chat" role="group" aria-label="Slide to permanently delete this chat"><span class="slide-confirm-text" aria-hidden="true">Slide to delete</span><span class="slide-confirm-thumb" aria-hidden="true"></span><input class="effort-range slide-confirm-range" type="range" min="0" max="100" step="any" value="0" aria-label="Slide to delete" aria-valuetext="Slide to delete" /></div></div></div>
           <div class="project-picker"><div class="project-picker-title">Choose a project</div><div class="project-picker-list"></div></div>
         </div>
       </div>
@@ -250,6 +270,17 @@
                   <span class="row-symbol"><svg class="lucide lucide-brain" data-lucide-icon="brain" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 18V5" /><path d="M15 13a4.17 4.17 0 01-3-4 4.17 4.17 0 01-3 4" /><path d="M17.707 6.294A3 3 0 1012 5a3 3 0 10-5.707 1.294" /><path d="M17.996 5.125a4 4 0 012.526 5.77" /><path d="M18 18a4 4 0 002-7.465" /><path d="M19.967 17.482a4 4 0 11-7.967.517 4 4 0 11-7.967-.517" /><path d="M6 18a4 4 0 01-2-7.465" /><path d="M6.004 5.125a4 4 0 00-2.526 5.77" /></svg></span>
                   <span class="row-copy row-copy-tight"><strong>Extended Thinking</strong></span>
                   <span class="row-state" id="thinkingState">On</span>
+                  <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                </button>
+                <button class="attach-row" id="executeOnRow" role="menuitem" aria-label="Execute commands on">
+                  <span class="row-symbol"><svg class="lucide lucide-terminal" data-lucide-icon="terminal" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19h8" /><path d="m4 17 6-6-6-6" /></svg></span>
+                  <span class="row-copy row-copy-tight"><strong>Execute commands on</strong></span>
+                  <span class="row-state" id="executeOnState">Server</span>
+                  <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
+                </button>
+                <button class="attach-row" id="approvalRow" role="menuitem" aria-label="Approval mode">
+                  <span class="row-symbol"><svg class="lucide lucide-shield" data-lucide-icon="shield" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z" /></svg></span>
+                  <span class="row-copy row-copy-tight"><strong id="approvalState">Ask for approval</strong></span>
                   <svg class="row-chevron" viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>
                 </button>
               </div>
@@ -471,6 +502,7 @@
             <span class="label label-icon"><svg class="lucide lucide-boxes" data-lucide-icon="boxes" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.97 12.92A2 2 0 0 0 2 14.63v3.24a2 2 0 0 0 .97 1.71l3 1.8a2 2 0 0 0 2.06 0L12 19v-5.5l-5-3-4.03 2.42Z"/><path d="m7 16.5-4.74-2.85"/><path d="m7 16.5 5-3"/><path d="M7 16.5v5.17"/><path d="M12 13.5V19l3.97 2.38a2 2 0 0 0 2.06 0l3-1.8a2 2 0 0 0 .97-1.71v-3.24a2 2 0 0 0-.97-1.71L17 10.5l-5 3Z"/><path d="m17 16.5-5-3"/><path d="m17 16.5 4.74-2.85"/><path d="M17 16.5v5.17"/><path d="M7.97 4.42A2 2 0 0 0 7 6.13v4.37l5 3 5-3V6.13a2 2 0 0 0-.97-1.71l-3-1.8a2 2 0 0 0-2.06 0l-3 1.8Z"/><path d="M12 8 7.26 5.15"/><path d="m12 8 4.74-2.85"/><path d="M12 13.5V8"/></svg><span class="models-label">Models<span class="models-updated" id="modelsUpdated"></span></span></span>
             <span class="val"><button class="link-btn" id="refreshModels" type="button"><svg class="lucide lucide-refresh-cw" data-lucide-icon="refresh-cw" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>Refresh models list</button></span>
           </div>
+          <div class="set-row"><span class="label">Model library</span><span class="val"><button class="link-btn" id="openModelManager" type="button">Manage models</button></span></div>
           <div class="tone-wrap" id="toneWrap">
             <button class="set-row tone-trigger-row" id="toneTrigger" type="button" aria-expanded="false">
               <span class="label" style="display:flex;align-items:center;gap:10px">
@@ -569,10 +601,10 @@
         </div>
         <div class="set-sec" id="providerKeySec">
           <div class="set-sec-title"><svg class="lucide lucide-key-round" data-lucide-icon="key-round" viewBox="0 0 24 24" aria-hidden="true"><path d="M2.586 17.414A2 2 0 0 0 2 18.828V21a1 1 0 0 0 1 1h3a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h1a1 1 0 0 0 1-1v-1a1 1 0 0 1 1-1h.172a2 2 0 0 0 1.414-.586l.814-.814a6.5 6.5 0 1 0-4-4z" /><circle cx="16.5" cy="7.5" r=".5" fill="currentColor" /></svg>API key</div>
-          <p class="set-note">Your Polza AI key (it starts with <code>pza_</code>). NeoChat sends it with each message to call the model you pick in Manual mode, so usage is billed to your Polza balance. It stays in this browser and is never stored on the server. <a href="https://polza.ai" target="_blank" rel="noopener noreferrer">Get a key at polza.ai</a></p>
+          <p class="set-note">Your Poe API key. NeoChat sends it with each message to call the model you pick in Manual mode, so usage is billed to your Poe balance. It stays in this browser and is never stored on the server. <a href="https://poe.com/api_key" target="_blank" rel="noopener noreferrer">Get a Poe API key</a></p>
           <form class="set-row provider-key-row" id="providerKeyForm" autocomplete="off">
-            <label class="label soft" for="providerKey">Polza AI key</label>
-            <span class="val"><input class="api-key-input" id="providerKey" type="password" autocomplete="off" spellcheck="false" placeholder="pza_…" maxlength="512" /><button class="link-btn" id="providerKeySave" type="submit">Save</button></span>
+            <label class="label soft" for="providerKey">Poe key</label>
+            <span class="val"><input class="api-key-input" id="providerKey" type="password" autocomplete="off" spellcheck="false" placeholder="Poe API key…" maxlength="512" /><button class="link-btn" id="providerKeySave" type="submit">Save</button></span>
           </form>
           <div class="set-row">
             <span class="label soft" id="providerKeyStatus" aria-live="polite">No key added yet.</span>
@@ -581,10 +613,10 @@
         </div>
         <div class="set-sec" id="imageKeySec">
           <div class="set-sec-title"><svg class="lucide lucide-image" data-lucide-icon="image" viewBox="0 0 24 24" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2" /><circle cx="9" cy="9" r="2" /><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21" /></svg>Image API</div>
-          <p class="set-note">A separate Polza AI key for image and video models (Nano Banana, Gemini Omni). NeoChat sends it only when you make a picture or a video, so they are billed apart from chat. It stays in this browser and is never stored on the server.</p>
+          <p class="set-note">An optional separate Poe API key for image and video models. Leave it empty to use your chat key. A separate key lets you track media usage apart from chat. It stays in this browser and is never stored on the server.</p>
           <form class="set-row provider-key-row" id="imageKeyForm" autocomplete="off">
             <label class="label soft" for="imageKey">Image API key</label>
-            <span class="val"><input class="api-key-input" id="imageKey" type="password" autocomplete="off" spellcheck="false" placeholder="pza_…" maxlength="512" /><button class="link-btn" type="submit">Save</button></span>
+            <span class="val"><input class="api-key-input" id="imageKey" type="password" autocomplete="off" spellcheck="false" placeholder="Poe API key…" maxlength="512" /><button class="link-btn" type="submit">Save</button></span>
           </form>
           <div class="set-row">
             <span class="label soft" id="imageKeyStatus" aria-live="polite">No key added yet.</span>
@@ -630,24 +662,24 @@
       </section>
 
       <section class="settings-pane" data-pane="usage" role="tabpanel" aria-label="Usage">
-        <h3 class="pane-heading">Usage</h3><p class="pane-description">What's left on your Polza AI balance.</p>
+        <h3 class="pane-heading">Usage</h3><p class="pane-description">What's left on your Poe balance.</p>
         <div class="set-sec">
           <div class="set-sec-title"><svg class="lucide lucide-chart-no-axes-column" data-lucide-icon="chart-no-axes-column" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 21v-6" /><path d="M12 21V3" /><path d="M19 21V9" /></svg>Balance</div>
           <div class="usage usage-single">
-            <div class="usage-item"><span class="usage-figure"><strong id="balanceAmount">—</strong><span>Polza AI balance</span></span></div>
+            <div class="usage-item"><span class="usage-figure"><strong id="balanceAmount">—</strong><span>Poe balance</span></span></div>
           </div>
-          <p class="set-note" id="balanceNote" style="margin-top:22px">The balance behind the Polza AI key in Account.</p>
+          <p class="set-note" id="balanceNote" style="margin-top:22px">The balance behind the Poe key in Account.</p>
         </div>
         <div class="set-sec">
           <div class="set-sec-title"><svg class="lucide lucide-bell" data-lucide-icon="bell" viewBox="0 0 24 24" aria-hidden="true"><path d="M10.268 21a2 2 0 0 0 3.464 0" /><path d="M3.262 15.326A1 1 0 0 0 4 17h16a1 1 0 0 0 .74-1.673C19.41 13.956 18 12.499 18 8A6 6 0 0 0 6 8c0 4.499-1.411 5.956-2.738 7.326" /></svg>Low balance alerts</div>
           <p class="set-note">A note above the message box when the balance gets close to running out, and when it does. Sending is never blocked. Leave a field empty to turn that note off.</p>
           <div class="set-row">
             <label class="label soft" for="balanceWarnAt">Low balance approaching below</label>
-            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceWarnAt" type="number" min="0" step="10" inputmode="decimal" value="300" /><span aria-hidden="true">₽</span></span></span>
+            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceWarnAt" type="number" min="0" step="10" inputmode="decimal" value="10000" /><span aria-hidden="true">points</span></span></span>
           </div>
           <div class="set-row">
             <label class="label soft" for="balanceLowAt">Low balance below</label>
-            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceLowAt" type="number" min="0" step="10" inputmode="decimal" value="100" /><span aria-hidden="true">₽</span></span></span>
+            <span class="val"><span class="balance-field"><input class="balance-input" id="balanceLowAt" type="number" min="0" step="10" inputmode="decimal" value="1000" /><span aria-hidden="true">points</span></span></span>
           </div>
         </div>
       </section>
@@ -1045,10 +1077,10 @@
 
     /* ---------- model list ---------- */
     // The rows come from GET /models (server/models.go), which follows
-    // Polza's releases: a new model joins its vendor's list and the one it
-    // replaces moves to Legacy. The last list is kept in this browser so
+    // Poe's public metadata: new models join their vendor's list.
+    // Unlisted curated bots remain selectable as Unstable. The last list is kept in this browser so
     // the picker is filled before the server answers.
-    const MODELS_CACHE='neochat-models-v1';
+    const MODELS_CACHE='neochat-models-poe-v2';
     const tierNames={max:'Max',thinking:'Thinking',instant:'Instant'};
     const modelIcons={};
     document.getElementById('modelIcons').content.querySelectorAll('[data-provider]').forEach(function(icon){
@@ -1072,7 +1104,7 @@
       trigger.title=name?'Manual · '+name:'';
     }
     new MutationObserver(syncManualTrigger).observe(manualState,{childList:true,characterData:true,subtree:true,attributes:true,attributeFilter:['data-model-id']});
-    let modelsData=null;
+    let modelsData=null, publicModels=null, customModels=[], modelLegacy={}, modelPreferences={}, modelOrder=[];
     function modelRowFor(model){
       const row=document.createElement('button');
       row.type='button';
@@ -1081,6 +1113,7 @@
       row.dataset.modelId=model.id;
       row.dataset.inputs=(Array.isArray(model.inputs)&&model.inputs.length?model.inputs:['text']).join(',');
       if(model.kind)row.dataset.kind=model.kind;
+      if(model.unavailable){row.disabled=true;row.setAttribute('aria-disabled','true');row.dataset.unavailable='Not available through Poe (N/A).';row.style.opacity='0.45';}
       if(model.kind==='video'&&model.video){
         row.dataset.maxReferences=String(model.max_references||0);
         row.dataset.maxVideos=String(model.video.max_reference_videos||0);
@@ -1092,35 +1125,45 @@
       copy.className='model-copy';
       const name=document.createElement('strong');
       name.textContent=model.name;
-      if(model.new){
+      if(model.new&&!model.unavailable){
         const badge=document.createElement('span');
         badge.className='model-new';
         badge.textContent='New';
         name.append(badge);
       }
       copy.append(name);
-      if(model.description){
+      if(model.description&&!model.unavailable){const subtitle=document.createElement('span');subtitle.className='model-meta';subtitle.textContent=model.description;copy.append(subtitle)}
+      if(model.unavailable){
         const meta=document.createElement('span');
         meta.className='model-meta';
         const text=document.createElement('span');
-        text.textContent=model.description;
+        text.textContent='N/A';
         meta.append(text);
         copy.append(meta);
       }
       const tier=document.createElement('span');
-      tier.className='model-tier'+(model.description?'':' is-solo');
+      tier.className='model-tier is-solo';
       tier.textContent=(tierNames[model.tier]||'Instant')+(model.kind==='image'?'/image':model.kind==='video'?'/video':'')+' tier';
-      copy.append(tier);
+      if(!model.unavailable)copy.append(tier);
       row.append(symbol,copy);
       return row;
     }
     function renderModels(data){
+      const positions=new Map(modelOrder.map(function(id,index){return [id,index]}));
+      data=Object.assign({},data,{models:((data&&data.models)||[]).map(function(model){
+        const pref=modelPreferences[model.id]||{},entry=Object.assign({},model);
+        ['name','provider','url','tier','context_window'].forEach(function(key){if(pref[key])entry[key]=pref[key]});
+        if(Object.prototype.hasOwnProperty.call(pref,'description'))entry.description=pref.description;
+        if(pref.hidden)entry.hidden=true;
+        if(Object.prototype.hasOwnProperty.call(modelLegacy,model.id))entry.legacy=modelLegacy[model.id];
+        return entry;
+      }).sort(function(a,b){return (positions.has(a.id)?positions.get(a.id):Infinity)-(positions.has(b.id)?positions.get(b.id):Infinity)})});
       const models=data&&Array.isArray(data.models)?data.models:[];
       if(!models.length)return false;
       const lists=panel.querySelectorAll('.model-list[data-provider]');
       lists.forEach(function(list){list.replaceChildren()});
       models.forEach(function(model){
-        if(!model||typeof model.id!=='string'||typeof model.name!=='string')return;
+        if(!model||model.hidden||typeof model.id!=='string'||typeof model.name!=='string')return;
         const list=panel.querySelector('.model-list[data-provider="'+model.provider+'"]'+(model.legacy?'[data-legacy]':':not([data-legacy])'));
         if(list)list.append(modelRowFor(model));
       });
@@ -1137,16 +1180,18 @@
       return true;
     }
     function applyModels(data){
-      if(!renderModels(data))return;
+      publicModels=data;
+      if(!renderModels(Object.assign({},data,{models:(data.models||[]).concat(customModels)})))return;
       try{localStorage.setItem(MODELS_CACHE,JSON.stringify(data))}catch(error){}
     }
-    try{renderModels(JSON.parse(localStorage.getItem(MODELS_CACHE)||'null'))}catch(error){}
-    // Opening the app brings the list up to date; the server asks Polza at
+    panel.querySelectorAll('.model-row').forEach(function(row){row.disabled=true});
+    try{const cached=JSON.parse(localStorage.getItem(MODELS_CACHE)||'null');if(cached){publicModels=cached;renderModels(cached)}}catch(error){}
+    // Opening the app brings the list up to date; the server asks Poe at
     // most every few minutes however often this runs.
     fetch('/models',{credentials:'same-origin'}).then(function(response){
       return response.ok?response.json():null;
     }).then(function(data){if(data)applyModels(data)}).catch(function(){});
-    window.NeoChatModels={apply:applyModels,current:function(){return modelsData}};
+    window.NeoChatModels={apply:applyModels,current:function(){return modelsData},custom:function(models,legacy,preferences,order){modelLegacy=legacy||{};modelPreferences=preferences||{};modelOrder=order||[];customModels=Array.isArray(models)?models:[];renderModels(Object.assign({},publicModels||modelsData||{},{models:((publicModels||modelsData||{}).models||[]).filter(function(m){return !m.id.startsWith("custom-")}).concat(customModels)}))}};
     syncManualTrigger();
 
     document.addEventListener('pointerdown',function(event){
@@ -1218,7 +1263,7 @@
     });
 
     /* ---------- low balance ---------- */
-    // A note above the message box once the Polza balance behind the chat
+    // A note above the message box once the Poe balance behind the chat
     // key nears or passes the thresholds set in Usage. Sending is never
     // blocked. The balance is asked when the app opens, a moment after
     // each answer, when the key changes, and when the app comes back after
@@ -1233,11 +1278,10 @@
       const value=Number(raw);
       return raw!==''&&Number.isFinite(value)&&value>=0?value:null;
     }
-    // What can be spent: the available amount when Polza holds some back.
+    // Poe reports the current point balance directly.
     function noteBalance(data){
-      const amount=Number(data&&data.amount_rub)||0;
-      const available=Number(data&&data.available_rub);
-      knownBalance=Number.isFinite(available)&&available>0?Math.min(amount,available):amount;
+      const points=Number(data&&data.current_point_balance);
+      knownBalance=Number.isFinite(points)?points:null;
       balanceCheckedAt=Date.now();
       renderBalanceBanner();
     }
@@ -1265,7 +1309,7 @@
         noteBalance(await response.json());
       }catch(error){}
     }
-    // After an answer Polza needs a moment to charge for it.
+    // After an answer Poe needs a moment to charge for it.
     function scheduleBalanceCheck(){
       clearTimeout(balanceTimer);
       balanceTimer=setTimeout(refreshBalance,2500);
@@ -1279,22 +1323,21 @@
     });
 
     /* ---------- usage bars ---------- */
-    // The Polza balance behind the chat key, asked fresh each time the
+    // The Poe balance behind the chat key, asked fresh each time the
     // tab opens (through the server: the page may only talk to it).
     async function runUsage(){
       const amount=document.getElementById('balanceAmount');
       const note=document.getElementById('balanceNote');
       const key=providerKey();
-      if(!key){amount.textContent='—';note.textContent='Add your Polza AI key in Account to see the balance.';return}
+      if(!key){amount.textContent='—';note.textContent='Add your Poe key in Account to see the balance.';return}
       amount.textContent='…';
       try{
         const response=await apiFetch('/account/balance',{headers:{'X-Provider-Key':key}});
         if(!response.ok)throw new Error((await response.text()).trim()||'Could not load the balance.');
         const data=await response.json();
         noteBalance(data);
-        const rub=function(value){return new Intl.NumberFormat('ru-RU',{style:'currency',currency:'RUB',maximumFractionDigits:2}).format(Number(value)||0)};
-        amount.textContent=rub(data.amount_rub);
-        note.textContent=Math.abs((data.available_rub||0)-(data.amount_rub||0))>0.005?'Available to spend: '+rub(data.available_rub)+'.':'The balance behind the Polza AI key in Account.';
+        amount.textContent=new Intl.NumberFormat('en-US').format(data.current_point_balance)+' points';
+        note.textContent='The balance behind the Poe API key in Account.';
       }catch(error){amount.textContent='—';note.textContent=error.message}
     }
 
@@ -1345,6 +1388,16 @@
     let themePref='system';
     function applyTheme(){
       root.dataset.theme=themePref==='system'?(mq.matches?'dark':'light'):themePref;
+      syncThemeColor();
+    }
+    // The status bar (and Safari's toolbar) take the page's own color, so
+    // a theme chosen in Settings, not just the system's, shows up there.
+    function syncThemeColor(){
+      const color=root.dataset.theme==='dark'?'#171717':'#fafafa';
+      document.querySelectorAll('meta[name="theme-color"]').forEach(function(meta){
+        meta.setAttribute('content',color);
+        meta.removeAttribute('media');
+      });
     }
     function placeThumb(){
       const active=segButtons.find(function(b){return b.classList.contains('is-active')});
@@ -1422,14 +1475,21 @@
     // In incognito the greeting stays and reads "Incognito mode".
     function renderHomeGreeting(){
       homeGreeting.textContent=document.getElementById('incognitoState').checked?'Incognito mode':selectedGreeting.replace('NICK_OF_SETTINGS',nameInput.value.trim()||'skipjust');
+      homeGreeting.dataset.text=homeGreeting.textContent;
     }
 
     const suggestionPool=[
-      {label:'Explain something complex',iconClass:'lucide-brain-circuit',paths:'<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M9 13a4.5 4.5 0 0 0 3-4"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M12 13h4"/><path d="M12 18h6a2 2 0 0 1 2 2v1"/><path d="M12 8h8"/><path d="M16 8V5a2 2 0 0 1 2-2"/><circle cx="16" cy="13" r=".5"/><circle cx="18" cy="3" r=".5"/><circle cx="20" cy="21" r=".5"/><circle cx="20" cy="8" r=".5"/>'},
-      {label:'Improve my writing',iconClass:'lucide-pencil-sparkles',paths:'<path d="M10 3H8"/><path d="m15.007 5.008 3.987 3.986"/><path d="M20 15v4"/><path d="M21.174 6.813a2.82 2.82 0 0 0-3.986-3.987L3.842 16.175a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="M22 17h-4"/><path d="M4 5v4"/><path d="M6 7H2"/><path d="M9 2v2"/>'},
-      {label:'Brainstorm an idea',iconClass:'lucide-atom',paths:'<circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z"/><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z"/>'},
-      {label:'Schedule task',iconClass:'lucide-clock',paths:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'},
-      {label:'Help me understand',iconClass:'lucide-graduation-cap',paths:'<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>'}
+      {label:'Explain something complex',prompt:'Explain this to me in simple terms, starting with the big picture and using a concrete example',iconClass:'lucide-brain-circuit',paths:'<path d="M12 5a3 3 0 1 0-5.997.125 4 4 0 0 0-2.526 5.77 4 4 0 0 0 .556 6.588A4 4 0 1 0 12 18Z"/><path d="M9 13a4.5 4.5 0 0 0 3-4"/><path d="M6.003 5.125A3 3 0 0 0 6.401 6.5"/><path d="M3.477 10.896a4 4 0 0 1 .585-.396"/><path d="M6 18a4 4 0 0 1-1.967-.516"/><path d="M12 13h4"/><path d="M12 18h6a2 2 0 0 1 2 2v1"/><path d="M12 8h8"/><path d="M16 8V5a2 2 0 0 1 2-2"/><circle cx="16" cy="13" r=".5"/><circle cx="18" cy="3" r=".5"/><circle cx="20" cy="21" r=".5"/><circle cx="20" cy="8" r=".5"/>'},
+      {label:'Improve my writing',prompt:'Improve this text so it reads clearly and naturally, keep my voice and meaning, and tell me what you changed',iconClass:'lucide-pencil-sparkles',paths:'<path d="M10 3H8"/><path d="m15.007 5.008 3.987 3.986"/><path d="M20 15v4"/><path d="M21.174 6.813a2.82 2.82 0 0 0-3.986-3.987L3.842 16.175a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="M22 17h-4"/><path d="M4 5v4"/><path d="M6 7H2"/><path d="M9 2v2"/>'},
+      {label:'Brainstorm an idea',prompt:'Brainstorm a wide range of ideas on this, from the obvious to the unexpected, and point out the most promising ones',iconClass:'lucide-atom',paths:'<circle cx="12" cy="12" r="1"/><path d="M20.2 20.2c2.04-2.03.02-7.36-4.5-11.9-4.54-4.52-9.87-6.54-11.9-4.5-2.04 2.03-.02 7.36 4.5 11.9 4.54 4.52 9.87 6.54 11.9 4.5Z"/><path d="M15.7 15.7c4.52-4.54 6.54-9.87 4.5-11.9-2.03-2.04-7.36-.02-11.9 4.5-4.52 4.54-6.54 9.87-4.5 11.9 2.03 2.04 7.36.02 11.9-4.5Z"/>'},
+      {label:'Schedule task',prompt:'Help me plan this task by breaking it into steps, estimating the time for each and suggesting a realistic schedule',iconClass:'lucide-clock',paths:'<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>'},
+      {label:'Help me understand',prompt:'Help me understand this by walking me through it step by step and explaining why it works, not only what it does',iconClass:'lucide-graduation-cap',paths:'<path d="M21.42 10.922a1 1 0 0 0-.019-1.838L12.83 5.18a2 2 0 0 0-1.66 0L2.6 9.08a1 1 0 0 0 0 1.832l8.57 3.908a2 2 0 0 0 1.66 0z"/><path d="M22 10v6"/><path d="M6 12.5V16a6 3 0 0 0 12 0v-3.5"/>'},
+      {label:'Create an image',prompt:'Create an image based on this description',iconClass:'lucide-image',paths:'<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>'},
+      {label:'Solve the problem',prompt:'Help me solve this problem step by step and explain the reasoning behind each step',iconClass:'lucide-wrench',paths:'<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.106-3.105c.32-.322.863-.22.983.218a6 6 0 0 1-8.259 7.057l-7.91 7.91a1 1 0 0 1-2.999-3l7.91-7.91a6 6 0 0 1 7.057-8.259c.438.12.54.662.219.984z"/>'},
+      {label:'Refine the idea',prompt:'Refine this idea by pointing out its weak spots and suggesting how to make it stronger',iconClass:'lucide-sparkle',paths:'<path d="M11.017 2.814a1 1 0 0 1 1.966 0l1.051 5.558a2 2 0 0 0 1.594 1.594l5.558 1.051a1 1 0 0 1 0 1.966l-5.558 1.051a2 2 0 0 0-1.594 1.594l-1.051 5.558a1 1 0 0 1-1.966 0l-1.051-5.558a2 2 0 0 0-1.594-1.594l-5.558-1.051a1 1 0 0 1 0-1.966l5.558-1.051a2 2 0 0 0 1.594-1.594z"/>'},
+      {label:'Find the best solution',prompt:'Compare the possible solutions to this and tell me which one is best and why',iconClass:'lucide-locate-fixed',paths:'<line x1="2" x2="5" y1="12" y2="12"/><line x1="19" x2="22" y1="12" y2="12"/><line x1="12" x2="12" y1="2" y2="5"/><line x1="12" x2="12" y1="19" y2="22"/><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="3"/>'},
+      {label:'Dot all the i’s',prompt:'Go through this carefully, check every detail and point out anything wrong, missing or inconsistent',iconClass:'lucide-waypoints',paths:'<path d="m10.586 5.414-5.172 5.172"/><path d="m18.586 13.414-5.172 5.172"/><path d="M6 12h12"/><circle cx="12" cy="20" r="2"/><circle cx="12" cy="4" r="2"/><circle cx="20" cy="12" r="2"/><circle cx="4" cy="12" r="2"/>'},
+      {label:'Help me make a decision',prompt:'Help me make a decision by weighing the pros and cons of each option and telling me which you would choose',iconClass:'lucide-circle-question-mark',paths:'<circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/>'}
     ];
 
     function renderHomeSuggestions(){
@@ -1441,6 +1501,7 @@
       shuffled.slice(0,3).forEach(function(suggestion){
         const button=document.createElement('button');
         button.type='button';
+        if(suggestion.prompt)button.dataset.prompt=suggestion.prompt;
         const icon=document.createElementNS('http://www.w3.org/2000/svg','svg');
         icon.setAttribute('viewBox','0 0 24 24');
         icon.setAttribute('aria-hidden','true');
@@ -1502,6 +1563,7 @@
 
     /* ---------- chat API ---------- */
     const textarea=document.getElementById('message');
+    let composerSearchMode=false, searchModeCard=null;
     const sendButton=document.querySelector('.send');
     const chatContent=document.querySelector('.content');
     const chatLog=document.getElementById('chatLog');
@@ -1540,12 +1602,12 @@
     // and so other tabs notice a sign-in, a sign-out or a switch of user.
     const signedInHintKey='neochat-signed-in';
     const currentConversationStorageKey='neochat-current-conversation';
-    // The user's own Polza AI key (Settings -> Account). Sent per request
+    // The user's own Poe key (Settings -> Account). Sent per request
     // as X-Provider-Key; the server never stores it.
-    const providerKeyStorageKey='neochat-provider-key';
+    const providerKeyStorageKey='neochat-poe-provider-key-v1';
     // The separate key for image models (Settings -> Account -> Image API),
     // sent as X-Image-Key only with requests to an image model.
-    const imageKeyStorageKey='neochat-image-key';
+    const imageKeyStorageKey='neochat-poe-image-key-v1';
     const providerKeyForm=document.getElementById('providerKeyForm');
     const providerKeyField=document.getElementById('providerKey');
     const providerKeyStatus=document.getElementById('providerKeyStatus');
@@ -1616,10 +1678,10 @@
     }
 
     function providerKey(){return storedValue(localStorage,providerKeyStorageKey).trim()}
-    function imageKey(){return storedValue(localStorage,imageKeyStorageKey).trim()}
+    function imageKey(){return storedValue(localStorage,imageKeyStorageKey).trim()||providerKey()}
     function maskedProviderKey(key){return key.length>12?key.slice(0,6)+'…'+key.slice(-4):'••••'}
 
-    // A key kept in this browser (Settings -> Account): the Polza key for
+    // A key kept in this browser (Settings -> Account): the Poe key for
     // chat, and the separate one for image models. Both work the same way.
     function keySetting(storageKey,form,field,status,remove,name){
       function render(){
@@ -1627,17 +1689,17 @@
         status.textContent=key?'Saved: '+maskedProviderKey(key):'No key added yet.';
         remove.hidden=!key;
         field.value='';
-        field.placeholder=key?maskedProviderKey(key):'pza_…';
+        field.placeholder=key?maskedProviderKey(key):'Poe API key…';
       }
       form.addEventListener('submit',function(event){
         event.preventDefault();
         const key=field.value.trim();
         if(!key){toast('Paste your '+name+' first.');return}
-        if(/\s/.test(key)){toast('That key contains spaces — copy it again from polza.ai.');return}
+        if(/\s/.test(key)){toast('That key contains spaces — copy it again from poe.com/api_key.');return}
         storeValue(localStorage,storageKey,key);
         render();
         document.dispatchEvent(new CustomEvent('key:change',{detail:storageKey}));
-        toast(key.startsWith('pza_')?name+' saved.':'Saved. Polza keys usually start with pza_ — double-check it.');
+        toast(name+' saved.');
       });
       remove.addEventListener('click',function(){
         storeValue(localStorage,storageKey,'');
@@ -1648,7 +1710,7 @@
       render();
       return render;
     }
-    const renderProviderKey=keySetting(providerKeyStorageKey,providerKeyForm,providerKeyField,providerKeyStatus,providerKeyRemove,'Polza AI key');
+    const renderProviderKey=keySetting(providerKeyStorageKey,providerKeyForm,providerKeyField,providerKeyStatus,providerKeyRemove,'Poe key');
     const renderImageKey=keySetting(imageKeyStorageKey,document.getElementById('imageKeyForm'),document.getElementById('imageKey'),document.getElementById('imageKeyStatus'),document.getElementById('imageKeyRemove'),'Image API key');
 
     function modelRow(modelID){
@@ -1667,7 +1729,7 @@
     // A video model (Gemini Omni) is asked for a length, a quality and a
     // shape. Once one is picked, a pill next to the model shows them and
     // opens a small panel to change them, with what the clip costs on the
-    // Image API key (Polza's price tiers, sent with /models). The choice is
+    // Image API key. Poe reports charges in points. The choice is
     // kept per model in this browser. With a video attached the model edits
     // it instead, and picks the length itself.
     const videoSettings=(function(){
@@ -1708,24 +1770,11 @@
         });
         return choice;
       }
-      // The most specific of Polza's price tiers that applies (the server's
-      // router.VideoOptions.PriceRUB).
-      function priceRUB(entry,choice,hasVideo){
-        const facts={duration:choice.duration,resolution:choice.resolution,has_video:String(hasVideo)};
-        let best=-1,price=null;
-        (entry.video.prices||[]).forEach(function(tier){
-          const when=tier&&tier.when||{};
-          const keys=Object.keys(when);
-          if(keys.every(function(key){return facts[key]===when[key]})&&keys.length>best){best=keys.length;price=Number(tier.rub)}
-        });
-        return price;
-      }
       function valueLabel(key,value){
-        if(key==='duration')return value+'s';
+        if(key==='duration')return value==='auto'?'Auto':value+'s';
         if(key==='resolution')return value==='4k'?'4K':value;
         return value;
       }
-      function rubles(value){return Math.round(value).toLocaleString('en-US')+' ₽'}
 
       function render(){
         const modelID=manualMode()?manualState.dataset.modelId||'':'';
@@ -1759,16 +1808,16 @@
             return button;
           }));
         });
-        const price=priceRUB(model,choice,editing);
+
         label.replaceChildren();
         const main=document.createElement('span');
         main.textContent=editing?'Edit':valueLabel('duration',choice.duration);
         const extra=document.createElement('span');
         extra.className='video-options-extra';
-        extra.textContent=' · '+valueLabel('resolution',choice.resolution)+(price!==null?' · '+rubles(price):'');
+        extra.textContent=' · '+valueLabel('resolution',choice.resolution);
         label.append(main,extra);
-        trigger.title='Video: '+(editing?'edit the attached clip':valueLabel('duration',choice.duration))+', '+valueLabel('resolution',choice.resolution)+', '+choice.aspect_ratio+(price!==null?', '+rubles(price):'');
-        note.textContent=(editing?'Edits the attached video (its first 10 seconds); the model picks the length. ':'')+(price!==null?rubles(price)+' per video, billed to your Image API key.':'');
+        trigger.title='Video: '+(editing?'edit the attached clip':valueLabel('duration',choice.duration))+', '+valueLabel('resolution',choice.resolution)+', '+choice.aspect_ratio;
+        note.textContent=(editing?'Edits the attached video (its first 10 seconds); the model picks the length. ':'')+'Billed by Poe in points.';
       }
       function choose(key,value){
         if(!model)return;
@@ -1827,14 +1876,46 @@
       return reasoningEffortValues[Math.max(0,Math.min(reasoningEffortValues.length-1,index))]||'medium';
     }
 
+    /* ---------- Execute commands on / approvals (+ menu) ---------- */
+    // Server: the model's terminal is this server's. Computer: the user's
+    // own, through the NeoChat desktop app, which has to be running.
+    const executeOnState=document.getElementById('executeOnState');
+    const approvalState=document.getElementById('approvalState');
+    function pulseState(element){element.classList.remove('row-state');void element.offsetWidth;element.classList.add('row-state')}
+    async function checkComputer(){
+      try{
+        const response=await apiFetch('/device/status',{});
+        if(!response.ok)return;
+        const status=await response.json();
+        if(status.connected){
+          const tools=(status.mcp||[]).reduce(function(sum,server){return sum+(server.tools||0)},0);
+          toast('Commands will run on '+(status.name||'your computer')+(tools?' · '+plural(tools,'MCP tool','MCP tools'):'')+'.');
+        }else toast('Open the NeoChat app on your computer to connect it.');
+      }catch(error){}
+    }
+    document.getElementById('executeOnRow').addEventListener('click',function(){
+      pulseState(executeOnState);
+      executeOnState.textContent=executeOnState.textContent.trim()==='Computer'?'Server':'Computer';
+      if(executeOnState.textContent==='Computer')checkComputer();
+      document.dispatchEvent(new CustomEvent('preferences:save'));
+    });
+    document.getElementById('approvalRow').addEventListener('click',function(){
+      approvalState.textContent=approvalState.textContent.trim()==='Allow all'?'Ask for approval':'Allow all';
+      document.dispatchEvent(new CustomEvent('preferences:save'));
+    });
+
     // Shared by send and regenerate: settings that shape every reply.
     function applyReplySettings(request){
       request.reasoning_effort=selectedReasoningEffort();
       const webSearchMode=(document.getElementById('webSearchState').textContent||'Auto').trim().toLowerCase();
       request.web_search=['auto','on','off'].indexOf(webSearchMode)>-1?webSearchMode:'auto';
+      if(composerSearchMode){request.search_mode=true;request.web_search='on'}
       // Extended Thinking (+ menu) turns thinking on or off; the effort is
       // sent either way and never changes with it.
       request.extended_thinking=(document.getElementById('thinkingState').textContent||'On').trim()!=='Off';
+      // Where the model's commands run, and whether each waits for a yes.
+      request.execute_on=executeOnState.textContent.trim()==='Computer'?'computer':'server';
+      request.approval=approvalState.textContent.trim()==='Allow all'?'allow':'ask';
       const instructions=document.getElementById('instructions').value.trim();
       if(instructions)request.instructions=instructions;
       if(request.requested_mode==='manual')request.manual_model_id=document.getElementById('manualState').dataset.modelId||'';
@@ -1856,7 +1937,7 @@
         return true;
       }
       if(!providerKey()){
-        toast('Add your Polza AI API key in Settings → Account.');
+        toast('Add your Poe API key in Settings → Account.');
         if(window.openSettings)window.openSettings('account');
         return false;
       }
@@ -1896,30 +1977,53 @@
     // moment after the last edit.
     let settingsTimer=null;
     let settingsReady=false;
+    let pendingPreferences=null,lastModelSelection='';
     async function syncSettings(){
+      const user=sessionUser;
       settingsReady=false;
       try{
         const response=await apiFetch('/account/settings',{});
         if(!response.ok)return;
         const saved=await response.json();
-        if(saved&&typeof saved==='object'&&Object.keys(saved).length){
+        if(user!==sessionUser)return;
+        if(pendingPreferences){
+          const pending=pendingPreferences;pendingPreferences=null;saveSettingsNow(pending);
+        }else if(saved&&typeof saved==='object'&&Object.keys(saved).length){
           if(JSON.stringify(saved)!==JSON.stringify(window.NeoChatPreferences.current()))window.NeoChatPreferences.apply(saved);
         }else{
           saveSettingsNow(window.NeoChatPreferences.current());
         }
+        const current=window.NeoChatPreferences.current();lastModelSelection=JSON.stringify([current.workMode,current.manualModelId]);
         settingsReady=true;
       }catch(error){}
     }
     function saveSettingsNow(preferences){
-      return apiFetch('/account/settings',{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(preferences)}).catch(function(){});
+      return apiFetch('/account/settings',{method:'PUT',keepalive:true,headers:{'Content-Type':'application/json'},body:JSON.stringify(preferences)}).catch(function(){});
     }
     document.addEventListener('preferences:change',function(event){
-      if(!sessionUser||!settingsReady)return;
+      if(!sessionUser)return;
+      if(!settingsReady){pendingPreferences=event.detail;return}
       clearTimeout(settingsTimer);
+      const selection=JSON.stringify([event.detail.workMode,event.detail.manualModelId]);
+      if(selection!==lastModelSelection){lastModelSelection=selection;saveSettingsNow(event.detail);return}
       settingsTimer=setTimeout(function(){saveSettingsNow(event.detail)},800);
     });
 
-    // Settings -> General -> Refresh models list: the server checks Polza
+    let customModelsGeneration=0;
+    function selectManagedModel(id){const row=id?document.querySelector('.model-row[data-model-id="'+CSS.escape(id)+'"]'):null;if(row)row.click();else{const state=document.getElementById('manualState');state.dataset.modelId='';state.textContent='Select a model';state.dispatchEvent(new Event('model:selected'))}}
+    const modelManager=window.NeoChatModelManager.create({apiFetch:apiFetch,session:function(){return sessionUser},signIn:promptForSignIn,models:function(){const data=window.NeoChatModels.current();return data&&data.models||[]},selected:function(){return document.getElementById('manualState').dataset.modelId||''},select:selectManagedModel,onChange:applyCustomModels});
+    function applyCustomModels(data){
+      window.NeoChatModels.custom(data.models||[],data.legacy_overrides||{},data.preferences||{},data.order||[]);
+      modelManager.update(data);
+    }
+    document.getElementById('openModelManager').addEventListener('click',function(){modelManager.open()});
+    async function loadCustomModels(){
+      const generation=++customModelsGeneration;modelManager.reset();applyCustomModels({models:[]});
+      if(!sessionUser)return;
+      try{const response=await apiFetch('/account/models',{});if(response.ok){const data=await response.json();if(generation===customModelsGeneration)applyCustomModels(data)}}catch(error){}
+    }
+
+    // Settings -> General -> Refresh models list: the server checks Poe
     // right away (and holds back repeats within half a minute).
     const refreshModelsButton=document.getElementById('refreshModels');
     const modelsUpdated=document.getElementById('modelsUpdated');
@@ -1957,6 +2061,8 @@
     function switchSession(userID){
       if(userID===sessionUser)return;
       sessionUser=userID;
+      settingsReady=false;pendingPreferences=null;lastModelSelection='';clearTimeout(settingsTimer);
+      loadCustomModels();
       if(userID&&window.NeoChatPreferences)syncSettings();
       conversationID='';
       setConversationTitle('New chat');
@@ -2039,11 +2145,23 @@
       }
       // A tab opened before sessions existed still has its key in
       // sessionStorage: trade it for a session once, then forget it.
+      // The desktop app (cmd/neochat-desktop) opens its window at
+      // /#desktop-key=<key>, so the window signs in with the key the app
+      // already has. The fragment never reaches the server, and it leaves
+      // the address bar at once.
+      function desktopKey(){
+        const match=/^#desktop-key=([^&]+)/.exec(location.hash||'');
+        if(!match)return '';
+        try{history.replaceState(null,'',location.pathname+location.search)}catch(error){}
+        try{return decodeURIComponent(match[1]).trim()}catch(error){return ''}
+      }
       function start(){
         const legacyKey=storedValue(sessionStorage,legacyKeyStorageKey).trim();
         storeValue(sessionStorage,legacyKeyStorageKey,'');
         storeValue(localStorage,legacyKeyStorageKey,'');
-        if(legacyKey)signIn(legacyKey).catch(check);else check();
+        const appKey=desktopKey();
+        const key=legacyKey||appKey;
+        if(key)signIn(key).catch(check);else check();
         // Signing in, out or as someone else in another tab changes the
         // hint: follow it here.
         window.addEventListener('storage',function(event){if(event.key===signedInHintKey)check()});
@@ -2054,89 +2172,6 @@
     function createIdempotencyKey(){
       if(window.crypto&&typeof window.crypto.randomUUID==='function')return window.crypto.randomUUID();
       return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2);
-    }
-
-    function appendInlineMarkdown(parent,text){
-      const tokenPattern=/(?:`[^`\n]+`|\$\$[^$\n]+?\$\$|\\\([^\n]+?\\\)|(?<![\\\w$])\$(?=[^\s$])[^$\n]*?[^\s$\\]\$(?!\d)|\*\*[^*\n]+\*\*|__[^_\n]+__|~~[^~\n]+~~|\*[^*\n]+\*|_[^_\n]+_|\[[^\]\n]+\]\(https?:\/\/[^\s)]+\))/g;
-      let cursor=0;
-      text.replace(tokenPattern,function(token,offset){
-        if(offset>cursor)parent.append(document.createTextNode(text.slice(cursor,offset)));
-        let element=null;
-        if(token.startsWith('$$')||token.startsWith('\\(')){
-          element=mathElement(token.slice(2,-2),false);
-        }else if(token[0]==='$'){
-          element=mathElement(token.slice(1,-1),false);
-        }else if(token[0]==='`'){
-          element=document.createElement('code');
-          element.textContent=token.slice(1,-1);
-        }else if(token.startsWith('**')||token.startsWith('__')){
-          element=document.createElement('strong');
-          element.textContent=token.slice(2,-2);
-        }else if(token.startsWith('~~')){
-          element=document.createElement('del');
-          element.textContent=token.slice(2,-2);
-        }else if(token[0]==='*'||token[0]==='_'){
-          element=document.createElement('em');
-          element.textContent=token.slice(1,-1);
-        }else{
-          const link=token.match(/^\[([^\]]+)\]\((https?:\/\/[^\s)]+)\)$/);
-          if(link){
-            element=document.createElement('a');
-            element.textContent=link[1];
-            element.href=link[2];
-            element.target='_blank';
-            element.rel='noopener noreferrer';
-          }
-        }
-        parent.append(element||document.createTextNode(token));
-        cursor=offset+token.length;
-        return token;
-      });
-      if(cursor<text.length)parent.append(document.createTextNode(text.slice(cursor)));
-    }
-
-    function isMarkdownBlockStart(line){
-      return /^\s*$|^```|^\s*\$\$|^\s*\\\[|^#{1,6}\s+|^>\s?|^\s*([-+*]|\d+\.)\s+|^\s*([-*_])(?:\s*\2){2,}\s*$/.test(line);
-    }
-
-    function splitMarkdownTableRow(line){
-      let value=String(line||'').trim();
-      if(value.startsWith('|'))value=value.slice(1);
-      if(value.endsWith('|')&&!value.endsWith('\\|'))value=value.slice(0,-1);
-      const cells=[];
-      let cell='';
-      let inCode=false;
-      for(let index=0;index<value.length;index++){
-        const character=value[index];
-        if(character==='\\'&&value[index+1]==='|'){
-          cell+='|';index++;continue;
-        }
-        if(character==='`')inCode=!inCode;
-        if(character==='|'&&!inCode){cells.push(cell.trim());cell='';continue}
-        cell+=character;
-      }
-      cells.push(cell.trim());
-      return cells;
-    }
-
-    function markdownTableDetails(lines,index){
-      if(index+1>=lines.length||!lines[index].includes('|'))return null;
-      const headers=splitMarkdownTableRow(lines[index]);
-      const dividers=splitMarkdownTableRow(lines[index+1]);
-      if(headers.length!==dividers.length||!dividers.every(function(cell){return /^:?-{3,}:?$/.test(cell.replace(/\s/g,''))}))return null;
-      return {headers:headers,alignments:dividers.map(function(cell){
-        const marker=cell.replace(/\s/g,'');
-        if(marker.startsWith(':')&&marker.endsWith(':'))return 'center';
-        return marker.endsWith(':')?'right':'left';
-      })};
-    }
-
-    function appendMarkdownTableCell(row,tagName,text,alignment){
-      const cell=document.createElement(tagName);
-      if(tagName==='th')cell.scope='col';
-      if(alignment!=='left')cell.className='align-'+alignment;
-      appendInlineMarkdown(cell,text);
-      row.append(cell);
     }
 
     /* ---------- math ---------- */
@@ -2306,110 +2341,70 @@
       return block;
     }
 
+    function parseInlineImage(marker){
+      const match=String(marker||'').trim().match(/^<!--neochat-image:([A-Za-z0-9_-]+)-->$/);
+      if(!match)return null;
+      try{
+        const bytes=Uint8Array.from(atob(match[1].replace(/-/g,'+').replace(/_/g,'/')),function(ch){return ch.charCodeAt(0)});
+        const shown=JSON.parse(new TextDecoder().decode(bytes));
+        const file=shown&&shown.file;
+        if(!file||file.kind!=='image'||!/^[a-f0-9]{32}$/.test(file.id)||!/^[a-f0-9]{32}$/.test(shown.display_id)||!/^image\/(png|jpeg|webp|gif)$/.test(file.mime))return null;
+        if(typeof file.name!=='string'||(shown.caption!==undefined&&typeof shown.caption!=='string'))return null;
+        return shown;
+      }catch(error){return null}
+    }
+    function inlineImageElement(shown){
+      const figure=document.createElement('figure');
+      figure.className='inline-answer-image';
+      figure.dataset.displayId=shown.display_id;
+      const open=document.createElement('button');
+      open.type='button';
+      open.className='inline-answer-image-open';
+      open.setAttribute('aria-label','Open image: '+(shown.caption||shown.file.name));
+      const image=document.createElement('img');
+      image.alt=shown.caption||shown.file.name;
+      image.decoding='async';
+      if(shown.file.width>0&&shown.file.height>0){image.width=shown.file.width;image.height=shown.file.height}
+      open.append(image);
+      open.addEventListener('click',function(){openAttachment(shown.file)});
+      figure.append(open);
+      const footer=document.createElement('figcaption');
+      const caption=document.createElement('span');
+      caption.textContent=shown.caption||shown.file.name;
+      const download=document.createElement('button');
+      download.type='button';
+      download.className='inline-answer-image-download';
+      download.textContent='Download';
+      download.setAttribute('aria-label','Download '+shown.file.name);
+      download.addEventListener('click',function(){downloadSentFile(shown.file)});
+      footer.append(caption,download);figure.append(footer);
+      attachmentURL(shown.file.id).then(function(url){image.src=url}).catch(function(){
+        figure.classList.add('is-missing');
+        caption.textContent='Image unavailable';
+      });
+      return figure;
+    }
+    function readableInlineImages(text){
+      return String(text||'').replace(/<!--neochat-image:[A-Za-z0-9_-]+-->/g,function(marker){
+        const shown=parseInlineImage(marker);
+        return shown?'[Image: '+(shown.caption||shown.file.name)+']':'';
+      });
+    }
+    // A display marker arrives as one delta. Keep it atomic in the smooth
+    // stream so its metadata never flashes as text before the picture.
+    function streamTextParts(text){
+      return String(text||'').split(/(<!--neochat-image:[A-Za-z0-9_-]+-->)/g).flatMap(function(part){
+        return part.startsWith('<!--neochat-image:')?[part]:Array.from(part);
+      });
+    }
+    const chatMarkdown=window.NeoChatMarkdown.create({
+      codeBlock:codeBlock,
+      mathElement:mathElement,
+      parseInlineImage:parseInlineImage,
+      inlineImageElement:inlineImageElement
+    });
     function renderMarkdown(container,source){
-      container.replaceChildren();
-      const lines=String(source||'').replace(/\r\n?/g,'\n').split('\n');
-      let index=0;
-      while(index<lines.length){
-        const line=lines[index];
-        if(!line.trim()){index++;continue}
-
-        // The info string's first word is the language: ```c++, ```python title="x".
-        const fence=line.match(/^```\s*([^\s`]*)[^`]*$/);
-        if(fence){
-          index++;
-          const codeLines=[];
-          while(index<lines.length&&!/^```\s*$/.test(lines[index]))codeLines.push(lines[index++]);
-          const complete=index<lines.length;
-          if(complete)index++;
-          container.append(codeBlock(fence[1],codeLines.join('\n'),complete));continue;
-        }
-
-        const mathOpen=line.trim().match(/^(\$\$|\\\[)(.*)$/);
-        if(mathOpen){
-          const close=mathOpen[1]==='$$'?'$$':'\\]';
-          const rest=mathOpen[2].trim();
-          let texLines=[],complete=false;
-          index++;
-          if(rest.length>=close.length&&rest.endsWith(close)){
-            texLines=[rest.slice(0,-close.length)];complete=true;
-          }else{
-            if(rest)texLines.push(rest);
-            while(index<lines.length){
-              const current=lines[index++].trim();
-              if(current.endsWith(close)){texLines.push(current.slice(0,-close.length));complete=true;break}
-              texLines.push(current);
-            }
-          }
-          container.append(mathElement(texLines.join('\n').trim(),true,complete));continue;
-        }
-
-        const heading=line.match(/^(#{1,6})\s+(.+)$/);
-        if(heading){
-          const element=document.createElement('h'+heading[1].length);
-          appendInlineMarkdown(element,heading[2]);
-          container.append(element);index++;continue;
-        }
-
-        if(/^\s*([-*_])(?:\s*\1){2,}\s*$/.test(line)){
-          container.append(document.createElement('hr'));index++;continue;
-        }
-
-        if(/^>\s?/.test(line)){
-          const quote=document.createElement('blockquote');
-          const parts=[];
-          while(index<lines.length&&/^>\s?/.test(lines[index]))parts.push(lines[index++].replace(/^>\s?/,''));
-          appendInlineMarkdown(quote,parts.join(' '));
-          container.append(quote);continue;
-        }
-
-        const tableDetails=markdownTableDetails(lines,index);
-        if(tableDetails){
-          const wrapper=document.createElement('div');
-          wrapper.className='chat-table-wrap';
-          const table=document.createElement('table');
-          const head=document.createElement('thead');
-          const headerRow=document.createElement('tr');
-          tableDetails.headers.forEach(function(header,column){appendMarkdownTableCell(headerRow,'th',header,tableDetails.alignments[column])});
-          head.append(headerRow);table.append(head);
-          const body=document.createElement('tbody');
-          index+=2;
-          while(index<lines.length&&lines[index].trim()&&lines[index].includes('|')){
-            const values=splitMarkdownTableRow(lines[index]);
-            const row=document.createElement('tr');
-            tableDetails.headers.forEach(function(_,column){appendMarkdownTableCell(row,'td',values[column]||'',tableDetails.alignments[column])});
-            body.append(row);index++;
-          }
-          table.append(body);wrapper.append(table);container.append(wrapper);continue;
-        }
-
-        const listMatch=line.match(/^\s*([-+*]|\d+\.)\s+(.+)$/);
-        if(listMatch){
-          const ordered=/\d+\./.test(listMatch[1]);
-          const list=document.createElement(ordered?'ol':'ul');
-          while(index<lines.length){
-            const item=lines[index].match(/^\s*([-+*]|\d+\.)\s+(.+)$/);
-            if(!item||(/\d+\./.test(item[1]))!==ordered)break;
-            const li=document.createElement('li');
-            appendInlineMarkdown(li,item[2]);
-            list.append(li);index++;
-          }
-          container.append(list);continue;
-        }
-
-        const paragraph=document.createElement('p');
-        let firstLine=true;
-        while(index<lines.length&&!isMarkdownBlockStart(lines[index])&&!markdownTableDetails(lines,index)){
-          if(!firstLine)paragraph.append(document.createTextNode(' '));
-          appendInlineMarkdown(paragraph,lines[index]);
-          firstLine=false;index++;
-        }
-        if(firstLine){
-          appendInlineMarkdown(paragraph,lines[index]);
-          index++;
-        }
-        container.append(paragraph);
-      }
+      chatMarkdown.render(container,source);
     }
 
     // While a model thinks, the label is one of these, a new one every 10s.
@@ -2434,6 +2429,147 @@
       });
     },10000);
 
+    /* ---------- state dots ---------- */
+    // A small field of dots before a working state's label, a different
+    // motion for each state: "orbit" while the request goes out and the
+    // model thinks, "swap" while a command or script runs, "brackets"
+    // while the model writes a script, "bubbles" while it sends a file,
+    // "reveal" while it searches the web, "nod" while it waits for the
+    // user's approval. Each is a function of time to dots ({x, y, r, a},
+    // x and y in -1..1 of the field), all at 0.8x speed; one animation
+    // frame loop draws every field on the page, in the text color.
+    const stateDots=(function(){
+      const TAU=Math.PI*2,N=12,R=0.15,SPEED=0.8,BOUNCE=1.9,TRANSITION=420;
+      const clamp=function(x,a,b){a=a===undefined?0:a;b=b===undefined?1:b;return Math.min(b,Math.max(a,x))};
+      const ss=function(a,b,x){const t=clamp((x-a)/(b-a));return t*t*(3-2*t)};
+      const lerp=function(a,b,t){return a+(b-a)*t};
+      const easeIn=function(t){return t*t*t};
+      const curves={
+        cubic:function(t){return t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2},
+        sine:function(t){return .5-.5*Math.cos(Math.PI*t)}
+      };
+      let ease=curves.cubic;
+      const easeIO=function(t){return ease(t)};
+      const back=function(t){return 1+(BOUNCE+1)*Math.pow(t-1,3)+BOUNCE*Math.pow(t-1,2)};
+      const D=function(x,y,r,a){return {x:x,y:y,r:r===undefined?R:r,a:a===undefined?1:a}};
+      const fill=function(arr){while(arr.length<N)arr.push(Object.assign({},arr[0],{r:0}));return arr};
+      // A loop of poses: each dot hops to its next place, on an arc.
+      function seq(t,poses,hold,move,arc){
+        const step=hold+move,T=t/step,i=Math.floor(T),f=T-i;
+        const e=easeIO(clamp((f-hold)/move));
+        const A=poses[i%poses.length],B=poses[(i+1)%poses.length];
+        return A.map(function(p,k){
+          const q=B[k],dx=q[0]-p[0],dy=q[1]-p[1],len=Math.hypot(dx,dy)||1;
+          const h=arc*Math.sin(Math.PI*clamp(e));
+          return D(lerp(p[0],q[0],e)+(dy/len)*h,lerp(p[1],q[1],e)-(dx/len)*h);
+        });
+      }
+      const SQ=[[-.32,-.32],[.32,-.32],[.32,.32],[-.32,.32]];
+      const motions={
+        orbit:{curve:'cubic',still:30,f:function(t){
+          const T=t/0.55,i=Math.floor(T),e=back(clamp((T-i-0.25)/0.75)),a0=(i+e)*TAU/3-Math.PI/2;
+          return [0,1,2].map(function(k){const a=a0+k*TAU/3;return D(.42*Math.cos(a),.42*Math.sin(a))});
+        }},
+        swap:{curve:'sine',still:30,f:function(t){
+          return seq(t,[SQ,[SQ[2],SQ[1],SQ[0],SQ[3]],[SQ[2],SQ[3],SQ[0],SQ[1]],[SQ[0],SQ[3],SQ[2],SQ[1]]],0.15,0.38,0.22);
+        }},
+        bubbles:{curve:'cubic',still:30.3,f:function(t){
+          return [0,1,2].map(function(k){
+            const q=(t*0.8+k/3)%1,a=ss(0,.15,q)*(1-ss(.8,1,q));
+            return D([-.25,.05,.3][k]+.14*Math.sin(q*TAU*1.5+k*2),lerp(.75,-.75,q),R*lerp(.5,1.05,q)*a,a);
+          });
+        }},
+        reveal:{curve:'cubic',still:30.8,f:function(t){
+          const p=(t/1.6)%1,O=[0,2,1,3];
+          return SQ.map(function(xy,k){const o=O[k];return D(xy[0],xy[1],R*Math.max(0,back(ss(o*.1,o*.1+.15,p)))*(1-easeIn(ss(.72+o*.05,.82+o*.05,p))))});
+        }},
+        brackets:{curve:'cubic',still:30.3,f:function(t){
+          const p=(t/.9)%1,q=back(ss(0,.4,p))*(1-easeIO(ss(.5,.9,p))),bx=lerp(.55,.26,q);
+          return [D(-bx,0,R*.8),D(bx,0,R*.8),D(0,0,R*Math.max(0,.4+.6*q))];
+        }},
+        nod:{curve:'cubic',still:30,f:function(t){
+          const p=(t/2.2)%1;
+          return [-.35,0,.35].map(function(x,k){return D(x,-.25*Math.sin(Math.PI*ss(.05+k*.03,.25+k*.03,p)),R*.85)});
+        }}
+      };
+      const reduced=window.matchMedia?window.matchMedia('(prefers-reduced-motion: reduce)'):{matches:false};
+      const fields=new Set();
+      let frame=0,last=0;
+      function dotsAt(kind,u){
+        const motion=motions[kind]||motions.orbit;
+        ease=curves[motion.curve]||curves.cubic;
+        return fill(motion.f(reduced.matches?motion.still:u));
+      }
+      function colorOf(canvas){
+        const match=/rgba?\(([^)]+)\)/.exec(getComputedStyle(canvas).color||'');
+        return match?match[1].split(',').slice(0,3).join(','):'128,128,128';
+      }
+      function draw(canvas,dots){
+        const w=canvas.clientWidth;if(!w)return;
+        const dpr=window.devicePixelRatio||1,px=Math.round(w*dpr);
+        if(canvas.width!==px||canvas.height!==px){canvas.width=px;canvas.height=px}
+        const ctx=canvas.getContext('2d');
+        ctx.setTransform(dpr,0,0,dpr,0,0);ctx.clearRect(0,0,w,w);
+        const h=w/2,color=colorOf(canvas);
+        dots.forEach(function(d){
+          const r=d.r*h;if(r<0.15||d.a<0.01)return;
+          ctx.fillStyle='rgba('+color+','+d.a+')';
+          ctx.beginPath();ctx.arc(h+d.x*h,h+d.y*h,r,0,TAU);ctx.fill();
+        });
+      }
+      function step(now){
+        frame=0;
+        const dt=last?Math.min(0.1,(now-last)/1000):0;last=now;
+        fields.forEach(function(canvas){
+          if(!canvas.isConnected){fields.delete(canvas);return}
+          const state=canvas.dotsState;
+          state.u+=dt*SPEED;
+          let dots=dotsAt(state.kind,state.u);
+          if(state.from){
+            const k=(now-state.since)/TRANSITION;
+            if(k>=1)state.from=null;
+            else{
+              ease=curves.cubic;const e=easeIO(k);
+              dots=dots.map(function(d,i){const f=state.from[i];return D(lerp(f.x,d.x,e),lerp(f.y,d.y,e)-0.15*Math.sin(Math.PI*e),lerp(f.r,d.r,e),lerp(f.a,d.a,e))});
+            }
+          }
+          state.current=dots;
+          draw(canvas,dots);
+        });
+        if(fields.size)frame=requestAnimationFrame(step);else last=0;
+      }
+      function set(canvas,kind){
+        if(!motions[kind])kind='orbit';
+        const state=canvas.dotsState;
+        if(!state){canvas.dotsState={kind:kind,u:30,from:null,current:null,since:0}}
+        else if(state.kind!==kind){
+          state.from=state.current&&state.current.map(function(d){return Object.assign({},d)});
+          state.kind=kind;state.since=performance.now();
+        }
+        fields.add(canvas);
+        if(!frame)frame=requestAnimationFrame(step);
+      }
+      function create(kind){
+        const canvas=document.createElement('canvas');
+        canvas.className='state-dots';
+        canvas.setAttribute('aria-hidden','true');
+        set(canvas,kind);
+        return canvas;
+      }
+      return {create:create,set:set};
+    })();
+    // Which motion a live thinking block shows: by its running step.
+    function stateDotsKind(running){
+      const step=running.length?running[running.length-1]:null;
+      if(!step)return 'orbit';
+      if(step.approval==='pending')return 'nod';
+      if(step.tool==='run_script'&&step.phase==='writing')return 'brackets';
+      if(step.tool==='run_command'||step.tool==='run_script')return 'swap';
+      if(step.tool==='send_file'||step.tool==='show_image')return 'bubbles';
+      if(step.tool==='web_search'||step.tool==='view_image')return 'reveal';
+      return 'orbit';
+    }
+
     function setThinkingState(message,labelText){
       const body=message.querySelector('.chat-text');
       body.replaceChildren();
@@ -2444,9 +2580,7 @@
       label.textContent=labelText||thinkingPhrase(message);
       label.dataset.text=label.textContent;
       if(!labelText)label.dataset.phrase='1';
-      const dot=document.createElement('span');
-      dot.className='thinking-dot';dot.setAttribute('aria-hidden','true');
-      state.append(dot,label);body.append(state);
+      state.append(stateDots.create('orbit'),label);body.append(state);
     }
 
     /* ---------- thinking block ---------- */
@@ -2473,25 +2607,52 @@
     }
     // Terminal steps: a command (run_command) or a script the model wrote
     // and ran (run_script) on the server.
+    const terminalTools=['run_command','run_script','send_file','show_image','view_image','read_file','write_file','list_dir','mcp'];
     function isTerminalStep(step){
-      return Boolean(step&&(step.tool==='run_command'||step.tool==='run_script'));
+      return Boolean(step&&terminalTools.indexOf(step.tool)>-1);
+    }
+    function shortPath(path){
+      const text=String(path||'');
+      const parts=text.split(/[\\/]/).filter(Boolean);
+      return parts.length>2?'…'+(text.indexOf('\\')>-1?'\\':'/')+parts.slice(-2).join(text.indexOf('\\')>-1?'\\':'/'):text;
     }
     function scriptPurpose(step){
       return String(step&&step.purpose||'').trim();
     }
     // What a running terminal step is doing, for the block's label.
     function terminalLiveLabel(step){
+      if(step.approval==='pending')return 'Waiting for your approval';
+      if(step.tool==='view_image')return 'Inspecting an image';
+      if(step.tool==='show_image')return 'Showing an image';
+      if(step.tool==='send_file')return 'Sending a file';
+      if(step.tool==='read_file')return 'Reading '+(shortPath(step.title)||'a file');
+      if(step.tool==='write_file')return 'Writing '+(shortPath(step.title)||'a file');
+      if(step.tool==='list_dir')return 'Looking in '+(shortPath(step.title)||'a folder');
+      if(step.tool==='mcp')return 'Using '+(step.title||'an MCP tool');
       if(step.tool==='run_script'){
         if(step.phase==='writing'){
           const purpose=scriptPurpose(step);
           return purpose?'Writing a script for '+purpose:'Writing a script';
         }
-        return 'Running a script';
+        return 'Running a script'+(step.where==='computer'?' on your computer':'');
       }
-      return 'Running a command';
+      return 'Running a command'+(step.where==='computer'?' on your computer':'');
     }
     // A finished terminal step, in the past tense.
     function terminalDoneLabel(step){
+      if(step.error==='denied'){
+        return {run_command:'Denied a command',run_script:'Denied a script',write_file:'Denied writing '+shortPath(step.title),mcp:'Denied '+(step.title||'an MCP action')}[step.tool]||'Denied';
+      }
+      if(step.tool==='read_file')return (step.error?'Couldn’t read ':'Read ')+(shortPath(step.title)||'a file');
+      if(step.tool==='write_file')return (step.error?'Couldn’t write ':'Wrote ')+(shortPath(step.title)||'a file');
+      if(step.tool==='list_dir')return (step.error?'Couldn’t open ':'Looked in ')+(shortPath(step.title)||'a folder');
+      if(step.tool==='mcp')return (step.error&&step.error!=='the tool reported an error'?'Couldn’t use ':'Used ')+(step.title||'an MCP tool');
+      if(step.tool==='view_image')return step.error?'Couldn’t inspect an image':'Inspected '+(step.title||'an image');
+      if(step.tool==='show_image')return step.error?'Couldn’t show an image':'Showed '+(step.title||'an image');
+      if(step.tool==='send_file'){
+        if(step.error)return 'Couldn’t send a file';
+        return 'Sent '+(step.title||'a file');
+      }
       if(step.error==='stopped')return step.tool==='run_script'?'Stopped the script':'Stopped the command';
       if(step.error&&step.exit_code===undefined)return step.tool==='run_script'?'Couldn’t run the script':'Couldn’t run the command';
       if(step.tool==='run_script'){
@@ -2521,7 +2682,9 @@
     function stepIcon(kind){
       const icon=document.createElement('span');
       icon.className='web-step-icon';
-      icon.innerHTML=kind==='terminal'
+      icon.innerHTML=kind==='mcp'
+        ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg>'
+        :kind==='terminal'
         ?'<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="m7 9 3 3-3 3"/><path d="M13 15h4"/></svg>'
         :kind==='script'
         ?'<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m8 7-5 5 5 5"/><path d="m16 7 5 5-5 5"/><path d="m14 4-4 16"/></svg>'
@@ -2622,6 +2785,7 @@
         row.append(error);
       }
       if(step.results&&step.results.length)row.append(webResultList(step.results));
+      if(step.output){const details=document.createElement('details');details.className='search-raw-output';const title=document.createElement('summary');title.textContent=step.purpose?step.purpose+' · Search output':'Search output';const output=document.createElement('pre');output.className='term-output';output.textContent=step.output;details.append(title,output);row.append(details)}
       return row;
     }
     function pageStep(step){
@@ -2709,7 +2873,73 @@
         text.classList.add('thinking-label');
         text.dataset.text=text.textContent;
       }else text.textContent=terminalDoneLabel(step);
-      head.append(stepIcon(step.tool==='run_script'?'script':'terminal'),text);
+      head.append(stepIcon(step.tool==='run_script'?'script':step.tool==='send_file'||step.tool==='show_image'||step.tool==='view_image'||step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'?'fetch':step.tool==='mcp'?'mcp':'terminal'),text);
+      if(step.where==='computer'&&!step.pending){
+        const where=document.createElement('span');
+        where.className='term-where';
+        where.textContent='PC';
+        where.title='Ran on your computer';
+        head.append(where);
+      }
+      if(step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'||step.tool==='mcp'){
+        if(!step.pending&&step.duration_ms&&step.tool==='mcp'){
+          const note=document.createElement('span');
+          note.className='web-step-note';
+          note.textContent=formatDuration(step.duration_ms);
+          head.append(note);
+        }
+        if(!step.pending&&step.tool==='write_file'&&step.size){
+          const note=document.createElement('span');
+          note.className='web-step-note';
+          note.textContent=formatFileSize(step.size);
+          head.append(note);
+        }
+        row.append(head);
+        if(step.title&&step.tool!=='mcp'){
+          const path=document.createElement('div');
+          path.className='term-path';
+          path.textContent=step.title;
+          row.append(path);
+        }
+        if(step.command){
+          const label=document.createElement('div');
+          label.className='term-label';
+          label.textContent=step.tool==='mcp'?'Arguments':(step.purpose==='append'?'Appended':'Content');
+          row.append(label,terminalCode(step.command,step.tool==='mcp'?'json':''));
+        }
+        if(step.output&&!step.pending){
+          const label=document.createElement('div');
+          label.className='term-label';
+          label.textContent=step.tool==='mcp'?'Result':step.tool==='list_dir'?'Contents':'Text';
+          const out=document.createElement('pre');
+          out.className='term-output';
+          out.textContent=step.output;
+          row.append(label,out);
+        }
+        if(step.error){
+          const error=document.createElement('p');
+          error.className='web-step-error'+(step.error==='stopped'||step.error==='denied'?' is-muted':'');
+          error.textContent=step.error==='denied'?'You denied this.':step.error;
+          row.append(error);
+        }
+        return row;
+      }
+      if(step.tool==='send_file'||step.tool==='show_image'||step.tool==='view_image'){
+        if(!step.pending&&step.size){
+          const note=document.createElement('span');
+          note.className='web-step-note';
+          note.textContent=formatFileSize(step.size);
+          head.append(note);
+        }
+        row.append(head);
+        if(step.error){
+          const error=document.createElement('p');
+          error.className='web-step-error';
+          error.textContent=step.error;
+          row.append(error);
+        }
+        return row;
+      }
       if(!step.pending&&step.exit_code!==undefined&&step.error!=='stopped'){
         const note=document.createElement('span');
         note.className='web-step-note term-status';
@@ -2755,11 +2985,57 @@
       }
       if(step.error){
         const error=document.createElement('p');
-        error.className='web-step-error'+(step.error==='stopped'?' is-muted':'');
-        error.textContent=step.error;
+        error.className='web-step-error'+(step.error==='stopped'||step.error==='denied'?' is-muted':'');
+        error.textContent=step.error==='denied'?'You denied this.':step.error;
         row.append(error);
       }
       return row;
+    }
+    // A step waiting for the user: a card under the thinking block with
+    // what would run and where, and Allow / Deny.
+    function approvalCards(message,activity){
+      const copy=message.querySelector('.chat-copy');
+      const waiting=activity.filter(function(step){return step.pending&&step.approval==='pending'&&step.approval_id});
+      copy.querySelectorAll(':scope > .approval-card').forEach(function(card){
+        if(!waiting.some(function(step){return step.approval_id===card.dataset.id}))card.remove();
+      });
+      waiting.forEach(function(step){
+        if(copy.querySelector(':scope > .approval-card[data-id="'+step.approval_id+'"]'))return;
+        const card=document.createElement('div');
+        card.className='approval-card';
+        card.dataset.id=step.approval_id;
+        const where=step.where==='computer'?'on your computer':'on the server';
+        const what={run_command:'Run this command',run_script:'Run this '+(step.language||'')+' script',write_file:(step.purpose==='append'?'Add to ':'Write ')+(step.title||'a file'),mcp:'Use '+(step.title||'an MCP tool')}[step.tool]||'Allow this action';
+        card.innerHTML='<div class="approval-head"><span class="approval-icon"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1z"/></svg></span><span class="approval-copy"><strong></strong><small></small></span></div>';
+        card.querySelector('strong').textContent=what+'?';
+        card.querySelector('small').textContent=(step.tool==='run_script'&&step.purpose?'For '+step.purpose+' · ':'')+where+(step.shell?' · '+step.shell:'');
+        if(step.command)card.append(terminalCode(step.command,step.language||''));
+        const actions=document.createElement('div');
+        actions.className='approval-actions';
+        const deny=document.createElement('button');
+        deny.type='button';deny.className='approval-deny';deny.textContent='Deny';
+        const allow=document.createElement('button');
+        allow.type='button';allow.className='approval-allow';allow.textContent='Allow';
+        async function answer(yes){
+          allow.disabled=deny.disabled=true;
+          card.classList.add(yes?'is-allowed':'is-denied');
+          try{
+            const response=await apiFetch('/chat/approve',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({id:step.approval_id,allow:yes})});
+            if(!response.ok&&response.status!==404)throw new Error('HTTP '+response.status);
+          }catch(error){
+            allow.disabled=deny.disabled=false;
+            card.classList.remove('is-allowed','is-denied');
+            toast('Couldn’t send your answer. Try again.');
+          }
+        }
+        deny.addEventListener('click',function(){answer(false)});
+        allow.addEventListener('click',function(){answer(true)});
+        actions.append(deny,allow);
+        card.append(actions);
+        const block=copy.querySelector(':scope > .thought-time');
+        copy.insertBefore(card,block?block.nextSibling:copy.firstChild);
+        if(!document.hidden)allow.focus({preventScroll:true});
+      });
     }
     function thoughtBlock(message){
       const copy=message.querySelector('.chat-copy');
@@ -2786,8 +3062,9 @@
       const activity=Array.isArray(state.activity)?state.activity:[];
       const sources=Array.isArray(state.sources)?state.sources:[];
       const seconds=state.seconds?Math.max(1,Math.round(state.seconds)):0;
-      const running=activity.filter(function(step){return step.pending});
+      const running=state.displayRunning||activity.filter(function(step){return step.pending});
       const live=Boolean(state.live||running.length);
+      approvalCards(message,activity);
       if(!live&&!seconds&&!activity.length&&!sources.length&&!(state.reasoning||'').trim()){
         const old=message.querySelector('.chat-copy > .thought-time');
         if(old)old.remove();
@@ -2797,31 +3074,43 @@
       block.classList.toggle('is-live',live);
       const label=block.querySelector('.thought-label');
       const terminalSteps=activity.filter(isTerminalStep);
-      const lastStep=activity.length?activity[activity.length-1]:null;
-      // Right after a command, until the model goes on: "Ran a command".
-      const justRan=live&&!running.length&&state.sinceStep&&isTerminalStep(lastStep)&&!lastStep.error;
       let text;
       if(running.length)text=webStepLabel(running[running.length-1]);
-      else if(justRan)text=lastStep.tool==='run_script'?'Ran a script':'Ran a command';
       else if(live)text=thinkingPhrase(message);
       else if(seconds)text='Thought for '+plural(seconds,'second','seconds');
-      else if(terminalSteps.length)text=terminalSteps.length===1?terminalDoneLabel(terminalSteps[0]):'Ran '+plural(terminalSteps.length,'command','commands');
+      else if(terminalSteps.length)text=terminalSteps.length===1?terminalDoneLabel(terminalSteps[0]):'Ran '+plural(terminalSteps.filter(function(step){return step.tool!=='send_file'}).length||terminalSteps.length,'command','commands');
       else text=activity.some(function(step){return !webStepFailed(step)})?'Searched the web':activity.length?'Web search unavailable':'Sources';
       label.textContent=text;
       label.dataset.text=text;
       label.classList.toggle('thinking-label',live);
-      if(live&&!running.length&&!justRan)label.dataset.phrase='1';else delete label.dataset.phrase;
+      if(live&&!running.length)label.dataset.phrase='1';else delete label.dataset.phrase;
+      // The state's dots before the label, while the model works.
+      let dots=block.querySelector('summary > .state-dots');
+      if(live){
+        if(!dots){dots=stateDots.create(stateDotsKind(running));label.before(dots)}
+        else stateDots.set(dots,stateDotsKind(running));
+      }else if(dots)dots.remove();
 
       const done=activity.filter(function(step){return !step.pending&&!step.error});
       const searches=done.filter(function(step){return step.tool==='web_search'}).length;
       const pages=done.filter(function(step){return step.tool==='web_fetch'&&!step.error}).length;
       const commands=done.filter(function(step){return step.tool==='run_command'}).length;
       const scripts=done.filter(function(step){return step.tool==='run_script'}).length;
+      const sent=done.filter(function(step){return step.tool==='send_file'}).length;
+      const shown=done.filter(function(step){return step.tool==='show_image'}).length;
+      const inspected=done.filter(function(step){return step.tool==='view_image'}).length;
       const parts=[];
       if(searches)parts.push(plural(searches,'search','searches'));
       if(pages)parts.push(plural(pages,'page','pages'));
       if(scripts)parts.push(plural(scripts,'script','scripts'));
       if(commands)parts.push(plural(commands,'command','commands'));
+      if(sent)parts.push(plural(sent,'file','files'));
+      if(shown)parts.push(plural(shown,'image','images'));
+      if(inspected)parts.push(plural(inspected,'image inspection','image inspections'));
+      const fileOps=done.filter(function(step){return step.tool==='read_file'||step.tool==='write_file'||step.tool==='list_dir'}).length;
+      const mcpCalls=done.filter(function(step){return step.tool==='mcp'}).length;
+      if(fileOps)parts.push(plural(fileOps,'file action','file actions'));
+      if(mcpCalls)parts.push(plural(mcpCalls,'MCP call','MCP calls'));
       if(!parts.length&&activity.some(webStepFailed))parts.push('search unavailable');
       block.querySelector('.thought-meta').textContent=live||!parts.length?'':parts.join(' · ');
 
@@ -2880,6 +3169,13 @@
     function thoughtTracker(message,startedAt){
       const state={live:true,seconds:0,activity:[],sources:[],reasoning:''};
       let waiting=true;
+      let idleTimer=0;
+      let heldRunning=[];
+      function clearIdle(){clearTimeout(idleTimer);idleTimer=0}
+      function show(){
+        state.displayRunning=heldRunning;
+        renderThought(message,state);
+      }
       function since(){return (performance.now()-startedAt)/1000}
       function clearThinkingState(){
         const thinking=message.querySelector('.chat-text .thinking-state');
@@ -2887,29 +3183,45 @@
       }
       return {
         activity:function(list){
+          clearIdle();
           state.activity=Array.isArray(list)?list:[];
+          const running=state.activity.filter(function(step){return step.pending});
+          if(running.length)heldRunning=running;
+          else if(heldRunning.length){
+            // Keep label and dots together through short gaps between tools.
+            idleTimer=setTimeout(function(){
+              idleTimer=0;
+              heldRunning=[];
+              if(waiting&&state.live)show();
+            },700);
+          }
           state.sinceStep=true;
           waiting=true;
           state.live=true;
           clearThinkingState();
-          renderThought(message,state);
+          show();
         },
         text:function(){
+          clearIdle();
+          heldRunning=[];
           if(!waiting)return;
           waiting=false;
           state.sinceStep=false;
           state.live=false;
           state.seconds=since();
-          renderThought(message,state);
+          show();
         },
         done:function(data){
+          clearIdle();
+          heldRunning=[];
+          waiting=false;
           state.live=false;
           if(data&&typeof data.reasoning==='string'&&data.reasoning)state.reasoning=data.reasoning;
           if(data&&Array.isArray(data.activity))state.activity=data.activity;
           state.sources=data&&Array.isArray(data.sources)?data.sources:[];
           if(data&&data.thought_ms)state.seconds=data.thought_ms/1000;
           else if(!state.seconds)state.seconds=since();
-          renderThought(message,state);
+          show();
         },
         // A piece of the model's thinking. The first one turns "Thinking"
         // into the block's label, which opens to show it; later ones are
@@ -2917,7 +3229,7 @@
         reasoning:function(piece){
           if(!piece)return;
           state.reasoning+=piece;
-          // The model thinks again after a command: back to "Thinking".
+          // Reasoning must not replace an active or briefly held tool state.
           const afterStep=state.sinceStep;
           state.sinceStep=false;
           const shown=message.querySelector('.chat-copy > .thought-time .thought-reasoning');
@@ -2930,18 +3242,20 @@
           }
           if(!state.seconds)state.live=true;
           clearThinkingState();
-          renderThought(message,state);
+          show();
         },
         reasoningText:function(){return state.reasoning},
         ms:function(){return Math.round(state.seconds*1000)},
         stop:function(){
+          clearIdle();
+          heldRunning=[];
           if(!state.live&&!state.activity.some(function(step){return step.pending}))return;
           state.live=false;
           state.activity=state.activity.map(function(step){
             return step.pending?Object.assign({},step,{pending:false,error:step.error||'stopped'}):step;
           });
           if(!state.seconds)state.seconds=since();
-          renderThought(message,state);
+          show();
         }
       };
     }
@@ -3393,6 +3707,7 @@
       message.dataset.messageText=version.content;
       renderMarkdown(message.querySelector('.chat-text'),version.content);
       renderGeneratedImages(message,version.images,version.videos);
+      renderAnswerFiles(message,version.files);
       const time=message.querySelector('.message-time');
       if(time){
         const known=function(value){return value&&!/^0001-/.test(value)?value:''};
@@ -3418,7 +3733,7 @@
       const copy=messageActionButton('Copy response','copy','<rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>');
       copy.addEventListener('click',async function(){
         try{
-          await copyMessageText(message.dataset.messageText||message.querySelector('.chat-text').innerText);
+          await copyMessageText(readableInlineImages(message.dataset.messageText||message.querySelector('.chat-text').innerText));
           toast('Response copied.');
         }catch(error){
           toast('Could not copy the response.');
@@ -3537,6 +3852,117 @@
         list.append(item);
       });
       if(list.children.length)message.prepend(list);
+    }
+
+    /* ---------- files the model sent (send_file) ---------- */
+    // Cards under the answer for what the model made on the terminal. The
+    // icon says what kind of file it is; the card opens it (an HTML page in
+    // the page viewer, text and code in the text preview, a picture in the
+    // image viewer) and its own button downloads it.
+    const fileCardIcons={
+      download:'<path d="M12 15V3"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5"/>',
+      file:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/>',
+      text:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/>',
+      spreadsheet:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/>',
+      image:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><circle cx="10" cy="12" r="2"/><path d="m20 17-1.296-1.296a2.41 2.41 0 0 0-3.408 0L9 22"/>',
+      code:'<path d="M6 22a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h8a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8v12a2 2 0 0 1-2 2z"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M10 12.5 8 15l2 2.5"/><path d="m14 12.5 2 2.5-2 2.5"/>',
+      technical:'<path d="M15 8a1 1 0 0 1-1-1V2a2.4 2.4 0 0 1 1.704.706l3.588 3.588A2.4 2.4 0 0 1 20 8z"/><path d="M20 8v12a2 2 0 0 1-2 2h-4.182"/><path d="m3.305 19.53.923-.382"/><path d="M4 10.592V4a2 2 0 0 1 2-2h8"/><path d="m4.228 16.852-.924-.383"/><path d="m5.852 15.228-.383-.923"/><path d="m5.852 20.772-.383.924"/><path d="m8.148 15.228.383-.923"/><path d="m8.53 21.696-.382-.924"/><path d="m9.773 16.852.922-.383"/><path d="m9.773 19.148.922.383"/><circle cx="7" cy="18" r="3"/>',
+      archive:'<path d="M13.659 22H18a2 2 0 0 0 2-2V8a2.4 2.4 0 0 0-.706-1.706l-3.588-3.588A2.4 2.4 0 0 0 14 2H6a2 2 0 0 0-2 2v11.5"/><path d="M14 2v5a1 1 0 0 0 1 1h5"/><path d="M8 12v-1"/><path d="M8 18v-2"/><path d="M8 7V6"/><circle cx="8" cy="20" r="2"/>'
+    };
+    function fileCardIcon(name){
+      return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'+fileCardIcons[name]+'</svg>';
+    }
+    const fileCategories={
+      image:'png jpg jpeg gif webp svg bmp ico tif tiff heic avif',
+      spreadsheet:'csv tsv xlsx xls xlsm ods numbers',
+      archive:'zip tar gz tgz bz2 tbz xz txz 7z rar zst lz4 lzma cab',
+      code:'html htm js mjs cjs ts jsx tsx vue svelte css scss less py ipynb go rs c h cc cpp hpp cs java kt kts swift rb php pl lua r m sh bash zsh ps1 bat sql json jsonl yaml yml toml ini xml graphql proto dockerfile makefile',
+      text:'txt md markdown log rst rtf tex pdf doc docx odt pages epub srt vtt',
+      technical:'dll exe so dylib bin dat db sqlite sqlite3 mdb iso img dmg o a lib obj pyc class jar wasm pkl pickle parquet feather npy npz h5 hdf5 onnx pt pth ckpt safetensors msi apk deb rpm sys drv lock'
+    };
+    const fileTypeNames={image:'Image',spreadsheet:'Spreadsheet',archive:'Archive',code:'Code',text:'Document',technical:'Binary file',file:'File'};
+    function fileExtension(name){
+      const base=String(name||'').toLowerCase().split('/').pop();
+      if(base==='dockerfile'||base==='makefile')return base;
+      const dot=base.lastIndexOf('.');
+      return dot>0?base.slice(dot+1):'';
+    }
+    function fileCategory(file){
+      const ext=fileExtension(file.name);
+      for(const category in fileCategories){
+        if(ext&&fileCategories[category].split(' ').indexOf(ext)>-1)return category;
+      }
+      const mime=String(file.mime||'');
+      if(file.kind==='image'||mime.indexOf('image/')===0)return 'image';
+      if(file.kind==='text'||mime.indexOf('text/')===0)return 'text';
+      return 'file';
+    }
+    function isHTMLFile(file){
+      const ext=fileExtension(file.name);
+      return ext==='html'||ext==='htm'||file.mime==='text/html';
+    }
+    async function openSentFile(file){
+      if(isHTMLFile(file)&&file.kind==='text'){
+        try{
+          const response=await apiFetch('/files/'+encodeURIComponent(file.id),{});
+          if(!response.ok)throw new Error('HTTP '+response.status);
+          openArtifact(await response.text());
+        }catch(error){toast('That file is no longer available.')}
+        return;
+      }
+      openAttachment(file);
+    }
+    function downloadSentFile(file){
+      attachmentURL(file.id).then(function(url){
+        const link=document.createElement('a');
+        link.href=url;link.download=file.name||'file';
+        document.body.append(link);link.click();link.remove();
+      }).catch(function(){toast('That file is no longer available.')});
+    }
+    function answerFileCard(file){
+      const category=fileCategory(file);
+      const card=document.createElement('div');
+      card.className='answer-file is-'+category;
+      const open=document.createElement('button');
+      open.type='button';
+      open.className='answer-file-open';
+      const ext=fileExtension(file.name);
+      const opensAs=isHTMLFile(file)&&file.kind==='text'?'Open page ':file.kind==='image'?'Open image ':file.kind==='text'?'View ':'Download ';
+      open.setAttribute('aria-label',opensAs+(file.name||'file'));
+      open.title=file.name||'';
+      open.innerHTML='<span class="answer-file-icon">'+fileCardIcon(category)+'</span><span class="answer-file-copy"><strong></strong><small></small></span>';
+      open.querySelector('strong').textContent=file.name||'file';
+      const kindName=isHTMLFile(file)?'HTML page':fileTypeNames[category]+(ext&&category!=='file'?' · '+ext.toUpperCase():ext?' · '+ext.toUpperCase():'');
+      open.querySelector('small').textContent=[kindName,formatFileSize(file.size)].filter(Boolean).join(' · ');
+      open.addEventListener('click',function(){openSentFile(file)});
+      const download=document.createElement('button');
+      download.type='button';
+      download.className='answer-file-download';
+      download.setAttribute('aria-label','Download '+(file.name||'file'));
+      download.title='Download';
+      download.innerHTML=fileCardIcon('download');
+      download.addEventListener('click',function(){downloadSentFile(file)});
+      card.append(open,download);
+      return card;
+    }
+    function renderAnswerFiles(message,files){
+      const inlineIDs=new Set();
+      String(message.dataset.messageText||'').replace(/<!--neochat-image:[A-Za-z0-9_-]+-->/g,function(marker){
+        const shown=parseInlineImage(marker);if(shown)inlineIDs.add(shown.file.id);return marker;
+      });
+      const list=Array.isArray(files)?files.filter(function(file){return file&&file.id&&!inlineIDs.has(file.id)}):[];
+      let holder=message.querySelector('.chat-copy > .answer-files');
+      if(!list.length){if(holder)holder.remove();return}
+      const ids=list.map(function(file){return file.id}).join(',');
+      if(holder&&holder.dataset.ids===ids)return;
+      if(!holder){
+        holder=document.createElement('div');
+        holder.className='answer-files';
+        const body=message.querySelector('.chat-text');
+        body.parentNode.insertBefore(holder,body.nextSibling);
+      }
+      holder.dataset.ids=ids;
+      holder.replaceChildren.apply(holder,list.map(answerFileCard));
     }
 
     // Client-side mirror of the server's check, so the user hears about an
@@ -4260,6 +4686,36 @@
     selectionAsk.addEventListener('pointerup',function(event){if(event.pointerType!=='mouse')askAboutSelection()});
     selectionAsk.addEventListener('click',askAboutSelection);
 
+    function setComposerSearchMode(enabled){
+      composerSearchMode=Boolean(enabled);
+      if(!enabled){
+        if(searchModeCard){searchModeCard.remove();searchModeCard=null}
+        if(!quoteTray.children.length)quoteTrayWrap.classList.remove('is-open');
+        return;
+      }
+      if(!searchModeCard){
+        searchModeCard=document.createElement('div');
+        searchModeCard.className='quote-card search-mode-card';
+        searchModeCard.setAttribute('role','status');
+        searchModeCard.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="lucide lucide-search preview-icon" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span>Search mode</span><button type="button" aria-label="Remove Search mode"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg></button>';
+        searchModeCard.querySelector('button').addEventListener('click',function(){setComposerSearchMode(false);textarea.focus()});
+      }
+      quoteTray.prepend(searchModeCard);
+      quoteTrayWrap.classList.add('is-open');
+    }
+    function consumeSearchCommand(){
+      const value=textarea.value;
+      const pattern=/(^|\s)@search(?=\s|$)/ig;
+      if(!pattern.test(value))return;
+      const cursor=textarea.selectionStart;
+      const before=value.slice(0,cursor).replace(/(^|\s)@search(?=\s|$)/ig,'$1');
+      textarea.value=value.replace(/(^|\s)@search(?=\s|$)/ig,'$1').trimStart();
+      const position=Math.min(textarea.value.length,before.trimStart().length);
+      textarea.setSelectionRange(position,position);
+      setComposerSearchMode(true);
+    }
+    textarea.addEventListener('input',consumeSearchCommand);
+
     function setComposerQuote(text){
       const chars=Array.from(text);
       composerQuote=chars.length>maxQuoteLength?chars.slice(0,maxQuoteLength).join('')+'…':text;
@@ -4356,6 +4812,7 @@
         else collapseLongMessage(message,String(text||''));
         renderMessageAttachments(message,messageDetails&&messageDetails.attachments);
         renderMessageQuote(message,messageDetails&&messageDetails.quote);
+        if(messageDetails&&messageDetails.search_mode){message.dataset.searchMode='true';const mode=document.createElement('span');mode.className='message-search-mode';mode.textContent='Search mode';message.prepend(mode)}
         if(!String(text||'').trim()&&message.querySelector('.message-attachments'))message.classList.add('is-attachment-only');
         appendUserMessageMeta(message,String(text||''),messageDetails);
       }
@@ -4367,6 +4824,7 @@
 
     function resetConversation(){
       closeAsk();
+      setComposerSearchMode(false);
       clearComposerQuote();
       conversationID='';
       setConversationTitle('New chat');
@@ -4602,7 +5060,7 @@
       document.getElementById('attachBtn').click();
       if(sending){toast('Wait for the current response.');return}
       if(activeChatIncognito||!conversationID){toast('Compact works on a saved chat with a few messages in it.');return}
-      if(!providerKey()){toast('Add your Polza AI API key in Settings → Account.');return}
+      if(!providerKey()){toast('Add your Poe API key in Settings → Account.');return}
       const yes=await askYesNo('Compact this chat?','GPT-6 Luna will summarize the conversation so far, except the last exchange. Later answers use that summary instead of the full history: cheaper and faster, but they may miss fine details. The messages stay on screen.','Compact');
       if(!yes)return;
       const id=conversationID;
@@ -4713,6 +5171,7 @@
         syncIncognitoGreeting();
         storeValue(localStorage,currentConversationStorageKey,conversationID);
         clearComposerQuote();
+        setComposerSearchMode(false);
         chatLog.replaceChildren();
         (Array.isArray(data.messages)?data.messages:[]).forEach(function(message){
           if(message.is_summary)return;
@@ -4837,7 +5296,7 @@
 
     document.getElementById('logOut').addEventListener('click',function(){
       document.getElementById('settingsClose').click();
-      // Logging out on this device forgets the Polza keys too.
+      // Logging out on this device forgets the Poe keys too.
       storeValue(localStorage,providerKeyStorageKey,'');
       storeValue(localStorage,imageKeyStorageKey,'');
       renderProviderKey();
@@ -4880,13 +5339,13 @@
           buffer=blocks.pop()||'';
           for(const block of blocks){
             const parsed=parseServerSentEvent(block);
-            if(parsed)onEvent(parsed.event,parsed.payload,parsed.id);
+            if(parsed)await onEvent(parsed.event,parsed.payload,parsed.id);
           }
           if(part.done)break;
         }
         if(buffer.trim()){
           const parsed=parseServerSentEvent(buffer);
-          if(parsed)onEvent(parsed.event,parsed.payload,parsed.id);
+          if(parsed)await onEvent(parsed.event,parsed.payload,parsed.id);
         }
       }catch(error){
         try{await reader.cancel()}catch(cancelError){}
@@ -4956,7 +5415,7 @@
     // runChatStream posts options.request to options.url -- or, given
     // options.streamID, rejoins that stream -- and hands each event to
     // options.onEvent until the reply ends. It resolves with how it ended
-    // ('done' or 'blocked'). It rejects with what onEvent threw (a server
+    // ('done'). It rejects with what onEvent threw (a server
     // 'error'), with error.stopped for a Stop, error.gone for a stream the
     // server no longer has (the stored chat has the answer) and error.lost
     // once five tries to reconnect have failed.
@@ -4966,6 +5425,29 @@
       let lastSeq=0;
       let ending='';
       let failures=0;
+      let shownAction='';
+      let actionShownAt=0;
+      async function present(event,data){
+        let nextAction=shownAction;
+        if(event==='activity'){
+          const steps=Array.isArray(data&&data.activity)?data.activity:[];
+          const index=steps.findLastIndex(function(step){return step.pending});
+          const step=steps[index];
+          nextAction=step?JSON.stringify([index,step.tool,step.phase||'',step.approval||'']):'';
+        }else if(event==='delta'||event==='done')nextAction='';
+        // One clock for the entire state: its label, animation and following
+        // text. Network timings and server-side execution remain untouched.
+        if(shownAction&&nextAction!==shownAction&&event!=='error'){
+          const remaining=1200-(performance.now()-actionShownAt);
+          if(remaining>0)await pause(remaining,signal);
+        }
+        if(signal.aborted)throw new DOMException('Aborted','AbortError');
+        if(nextAction!==shownAction){
+          shownAction=nextAction;
+          actionShownAt=performance.now();
+        }
+        try{options.onEvent(event,data)}catch(error){throw Object.assign(error,{fromReply:true})}
+      }
       while(true){
         const local=new AbortController();
         const forwardAbort=function(){local.abort()};
@@ -5002,7 +5484,7 @@
           // Connected again: the note goes, the count stays till the
           // connection proves itself.
           if(failures)setStreamStatus(options.message,'');
-          await readServerSentEvents(response,function(event,data,id){
+          await readServerSentEvents(response,async function(event,data,id){
             lastByte=Date.now();
             if(event==='stream'){
               if(data&&data.stream_id){
@@ -5013,8 +5495,8 @@
             }
             if(id){lastSeq=id;recovered()}
             if(event==='stopped'){ending='stopped';return}
-            if(event==='done'||event==='blocked')ending=event;
-            try{options.onEvent(event,data)}catch(error){throw Object.assign(error,{fromReply:true})}
+            if(event==='done')ending=event;
+            await present(event,data);
           },function(){
             lastByte=Date.now();
             if(Date.now()-connectedAt>10000)recovered();
@@ -5114,28 +5596,32 @@
       let timer=0;
       let finishing=false;
       let cancelled=false;
-      let lastTick=performance.now();
+      let lastTick=0;
       let renderedLength=0;
       let fades=[];
       let resolveFinished=function(){};
       const finished=new Promise(function(resolve){resolveFinished=resolve});
 
       function schedule(){
-        if(!timer&&!cancelled)timer=setTimeout(renderNext,24);
+        if(!timer&&!cancelled){
+          // Start the clock when text is ready, never while the model thinks.
+          if(!lastTick)lastTick=performance.now();
+          timer=setTimeout(renderNext,24);
+        }
       }
 
       function renderNext(){
         timer=0;
         if(cancelled)return;
         const now=performance.now();
-        const elapsed=Math.max(16,Math.min(1000,now-lastTick));
+        const elapsed=lastTick?Math.max(16,Math.min(48,now-lastTick)):24;
         lastTick=now;
         const backlog=queuedCharacters.length;
         if(backlog){
           const rate=finishing
-            ?Math.min(5000,Math.max(240,Math.ceil(backlog/1.8)))
+            ?Math.min(2000,Math.max(240,Math.ceil(backlog/1.8)))
             :Math.min(1800,160+backlog*2.5);
-          const count=Math.max(1,Math.min(backlog,Math.ceil(rate*elapsed/1000)));
+          const count=Math.max(1,Math.min(backlog,48,Math.ceil(rate*elapsed/1000)));
           visibleText+=queuedCharacters.splice(0,count).join('');
           const stayAtBottom=chatLog.scrollHeight-chatLog.scrollTop-chatLog.clientHeight<96;
           renderMarkdown(body,visibleText);
@@ -5148,13 +5634,14 @@
           if(stayAtBottom)chatLog.scrollTop=chatLog.scrollHeight;
         }
         if(queuedCharacters.length){schedule();return}
+        lastTick=0;
         if(finishing)resolveFinished();
       }
 
       return {
         append:function(text){
           if(cancelled||!text)return;
-          queuedCharacters=queuedCharacters.concat(Array.from(String(text)));
+          queuedCharacters=queuedCharacters.concat(streamTextParts(text));
           schedule();
         },
         replace:function(text){
@@ -5164,10 +5651,11 @@
           const currentText=visibleText+queuedCharacters.join('');
           if(completeText===currentText)return;
           if(completeText.startsWith(visibleText)){
-            queuedCharacters=Array.from(completeText.slice(visibleText.length));
+            queuedCharacters=streamTextParts(completeText.slice(visibleText.length));
           }else{
             visibleText='';
-            queuedCharacters=Array.from(completeText);
+            renderedLength=0;fades=[];lastTick=0;
+            queuedCharacters=streamTextParts(completeText);
           }
           schedule();
         },
@@ -5208,6 +5696,7 @@
       const request=isIncognito?{
         message:incognitoMessages.length>=2?incognitoMessages[incognitoMessages.length-2].content:'',
         quote:incognitoMessages.length>=2?incognitoMessages[incognitoMessages.length-2].quote:undefined,
+        search_mode:incognitoMessages.length>=2?incognitoMessages[incognitoMessages.length-2].search_mode:undefined,
         incognito:true,
         incognito_history:incognitoMessages.slice(0,-2),
         requested_mode:mode,
@@ -5263,7 +5752,6 @@
           },
           onEvent:function(event,data){
           if(event==='error')throw new Error(data&&data.message?data.message:'The response stream failed.');
-          if(event==='blocked')throw new Error(data.response_text||'Regeneration was blocked.');
           if(event==='versions'){versionsData=data;return}
           if(event==='reasoning'){thought.reasoning(data&&data.text?String(data.text):'');return}
           if(event==='activity'){
@@ -5272,6 +5760,7 @@
             return;
           }
           if(event==='delta'){
+ if(data&&data.reset){if(typeof receivedText!=='undefined')receivedText='';stream.replace('')}
             const text=data&&data.text?String(data.text):'';
             if(text){
               if(!receivedFirstText){
@@ -5295,7 +5784,7 @@
         if(!terminalData)throw new Error('The response stream ended unexpectedly.');
         await stream.finish();
         if(isIncognito){
-          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],reasoning:terminalData.reasoning||''}]);
+          message.responseVersions=(message.responseVersions||[]).concat([{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],files:terminalData.files||[],reasoning:terminalData.reasoning||''}]);
           incognitoMessages[incognitoMessages.length-1]={role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images,terminalData.videos),questionnaire:terminalData.questionnaire||undefined,activity:terminalData.activity&&terminalData.activity.length?terminalData.activity:undefined};
         }else{
           message.responseVersions=normalizeResponseVersions(versionsData,terminalData.response_text);
@@ -5346,6 +5835,7 @@
     // composer's; the composer's draft and files then stay where they are.
     async function sendMessage(options){
       const answers=options&&typeof options.text==='string'?options.text:null;
+      if(answers===null)consumeSearchCommand();
       const request=selectedRequest();
       if(answers!==null)request.message=answers;
       const session=signedInUser();
@@ -5373,7 +5863,7 @@
       sentFiles.forEach(function(file){if(file.preview)attachmentURLs.set(file.id,Promise.resolve(file.preview))});
 
       chatLog.querySelectorAll('.is-latest-response').forEach(function(message){message.classList.remove('is-latest-response')});
-      const userMessage=appendMessage('user',request.message,{attachments:sentFiles,quote:request.quote});
+      const userMessage=appendMessage('user',request.message,{attachments:sentFiles,quote:request.quote,search_mode:request.search_mode});
       // Anything sent after a questionnaire answers or passes over it.
       updateAskState(false);
       const pending=appendMessage('assistant','');
@@ -5385,6 +5875,7 @@
       const thinkingStartedAt=performance.now();
       if(answers===null){
         clearComposerQuote();
+        setComposerSearchMode(false);
         textarea.value='';
         document.dispatchEvent(new CustomEvent('plugin:clear'));
         textarea.style.height='auto';
@@ -5433,6 +5924,7 @@
             return;
           }
           if(event==='delta'){
+ if(data&&data.reset){if(typeof receivedText!=='undefined')receivedText='';stream.replace('')}
             const text=data&&data.text?String(data.text):'';
             if(text){
               if(!receivedFirstText){
@@ -5445,7 +5937,7 @@
             stream.append(text);
             return;
           }
-          if(event==='done'||event==='blocked'){
+          if(event==='done'){
             receivedTerminalEvent=true;
             terminalData=data;
             if(!activeChatIncognito){
@@ -5457,12 +5949,13 @@
             const madeImages=(Array.isArray(data.images)&&data.images.length>0)||(Array.isArray(data.videos)&&data.videos.length>0);
             if(imageGen)imageGen.finish(data.images,data.videos);
             stream.replace(data.response_text||(data.questionnaire||madeImages?'':'The server returned an empty response.'));
+            renderAnswerFiles(pending,data.files);
           }
         }});
         if(!receivedTerminalEvent)throw new Error('The response stream ended unexpectedly.');
         if(signedInUser()!==session){stream.cancel();return}
         await stream.finish();
-        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],reasoning:terminalData.reasoning||''}];
+        pending.responseVersions=[{content:terminalData.response_text||'',model_id:terminalData.selected_model_id||'',activity:terminalData.activity||[],sources:terminalData.sources||[],thought_ms:terminalData.thought_ms||0,questionnaire:terminalData.questionnaire||null,images:terminalData.images||[],videos:terminalData.videos||[],files:terminalData.files||[],reasoning:terminalData.reasoning||''}];
         pending.responseVersionIndex=0;
         pending.classList.add('is-complete');
         openNewArtifact(pending);
@@ -5470,8 +5963,8 @@
         updateAskState(true);
         scheduleBalanceCheck();
         seenCurrentChat();
-        if(activeChatIncognito&&!terminalData.blocked){
-          incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images,terminalData.videos),questionnaire:terminalData.questionnaire||undefined,activity:terminalData.activity&&terminalData.activity.length?terminalData.activity:undefined});
+        if(activeChatIncognito){
+          incognitoMessages.push({role:'user',content:request.message,quote:request.quote,search_mode:request.search_mode},{role:'assistant',content:terminalData.response_text||imageHistoryNote(terminalData.images,terminalData.videos),questionnaire:terminalData.questionnaire||undefined,activity:terminalData.activity&&terminalData.activity.length?terminalData.activity:undefined});
         }else if(!activeChatIncognito){
           if(activeProject)refreshActiveProject();else loadConversations(false);
         }
@@ -5497,7 +5990,7 @@
           note.textContent='Stopped';
           body.append(note);
           if(activeChatIncognito&&receivedText){
-            incognitoMessages.push({role:'user',content:request.message,quote:request.quote},{role:'assistant',content:receivedText});
+            incognitoMessages.push({role:'user',content:request.message,quote:request.quote,search_mode:request.search_mode},{role:'assistant',content:receivedText});
           }else if(!activeChatIncognito&&receivedText){
             refreshAfterStop();
           }
@@ -5578,15 +6071,17 @@
             if(event==='title'){if(data)chatNamed(data.conversation_id,data.title);return}
             if(event==='activity'){thought.activity(Array.isArray(data&&data.activity)?data.activity:[]);return}
             if(event==='delta'){
+ if(data&&data.reset){if(typeof receivedText!=='undefined')receivedText='';stream.replace('')}
               const text=data&&data.text?String(data.text):'';
               if(text){pending.classList.remove('is-pending');thought.text()}
               stream.append(text);
               return;
             }
-            if(event==='done'||event==='blocked'){
+            if(event==='done'){
               pending.classList.remove('is-pending');
               thought.done(data);
               stream.replace(data.response_text||'');
+              renderAnswerFiles(pending,data.files);
             }
           }});
         await stream.finish();
@@ -5776,7 +6271,7 @@
 
     document.querySelectorAll('.suggestions button').forEach(function(button){
       button.addEventListener('click',function(){
-        textarea.value=button.textContent+': ';
+        textarea.value=(button.dataset.prompt||button.textContent)+': ';
         textarea.focus();
         textarea.dispatchEvent(new Event('input'));
       });
@@ -5908,6 +6403,48 @@
       document.execCommand('insertText',false,text);
     });
 
+    function bindSlideConfirm(control,options){
+      const input=control.querySelector('input');
+      const label=control.querySelector('.slide-confirm-text');
+      let phase='idle',pointer=null,startX=0,travel=0,sequence=0,key=null;
+      function measure(){travel=Math.max(1,input.getBoundingClientRect().width-32);control.style.setProperty('--slide-travel',travel+'px')}
+      function progress(value){input.value=String(Math.max(0,Math.min(100,value)));control.style.setProperty('--slide-p',Number(input.value)/100);control.classList.toggle('is-armed',Number(input.value)>=100);input.setAttribute('aria-valuetext',Number(input.value)>=100?'Release to delete':'Slide to delete');label.textContent=Number(input.value)>=100?'Release to delete':'Slide to delete'}
+      function reset(){sequence++;phase='idle';pointer=null;key=null;input.disabled=false;control.classList.remove('is-dragging','is-busy','is-done');control.removeAttribute('aria-busy');progress(0)}
+      control.holdReset=reset;
+      control.slideReset=reset;
+      function commit(){
+        if(phase!=='dragging'||Number(input.value)<100)return;
+        phase='busy';const token=++sequence;input.disabled=true;control.classList.remove('is-dragging');control.classList.add('is-busy');control.setAttribute('aria-busy','true');label.textContent='Deleting…';
+        Promise.resolve().then(options.onConfirm).then(function(){if(token!==sequence)return;phase='done';control.classList.remove('is-busy');control.classList.add('is-done');control.removeAttribute('aria-busy');label.textContent=options.doneLabel||'Deleted'},function(){if(token===sequence)reset()});
+      }
+      input.addEventListener('pointerdown',function(event){
+        if(phase!=='idle'||event.button!==0||event.isPrimary===false)return;
+        event.preventDefault();input.focus({preventScroll:true});measure();
+        if(event.clientX-input.getBoundingClientRect().left>35)return;
+        startX=event.clientX;pointer=event.pointerId;phase='dragging';control.classList.add('is-dragging');input.setPointerCapture(pointer);
+      });
+      input.addEventListener('pointermove',function(event){if(event.pointerId===pointer&&phase==='dragging')progress((event.clientX-startX)/travel*100)});
+      input.addEventListener('pointerup',function(event){
+        if(event.pointerId!==pointer||phase!=='dragging')return;
+        progress((event.clientX-startX)/travel*100);pointer=null;
+        const rect=input.getBoundingClientRect();
+        if(Number(input.value)>=100&&event.clientY>=rect.top-16&&event.clientY<=rect.bottom+16)commit();else reset();
+      });
+      input.addEventListener('pointercancel',function(){if(phase==='dragging')reset()});
+      input.addEventListener('lostpointercapture',function(){if(pointer!==null&&phase==='dragging')reset()});
+      input.addEventListener('blur',function(){if(phase==='dragging')reset()});
+      input.addEventListener('keydown',function(event){
+        if(event.key==='Escape'){event.preventDefault();if(phase!=='busy')reset();return}
+        if(!['ArrowRight','ArrowLeft','Home','End'].includes(event.key))return;
+        event.preventDefault();if(phase==='busy'||phase==='done')return;
+        phase='dragging';key=event.key;control.classList.add('is-dragging');measure();
+        progress(event.key==='End'?100:event.key==='Home'?0:Number(input.value)+(event.key==='ArrowRight'?10:-10));
+      });
+      input.addEventListener('keyup',function(event){if(event.key!==key)return;key=null;if(Number(input.value)>=100)commit();else reset()});
+      input.addEventListener('click',function(event){event.preventDefault()});
+      new ResizeObserver(measure).observe(control);measure();reset();
+    }
+
     function bindHoldConfirm(button,options){
       if(!button)return;
       const holdMs=Number(button.dataset.holdMs)||1000;
@@ -5986,7 +6523,7 @@
 
     document.querySelector('.delete-chat').addEventListener('click',function(){chatActionsPanel.classList.add('is-deleting')});
     document.querySelectorAll('.cancel-chat-action').forEach(function(button){button.addEventListener('click',function(){chatActionsPanel.classList.remove('is-deleting');const confirmBtn=document.querySelector('.confirm-delete-chat');if(confirmBtn&&confirmBtn.holdReset)confirmBtn.holdReset()})});
-    bindHoldConfirm(document.querySelector('.confirm-delete-chat'),{
+    bindSlideConfirm(document.querySelector('.confirm-delete-chat'),{
       doneLabel:'Deleted',
       onConfirm:async function(){
         const button=document.querySelector('.confirm-delete-chat');
@@ -6512,7 +7049,7 @@
     function loadPreferences(){
       try{return JSON.parse(localStorage.getItem(storageKey)||'{}')}catch(error){return {}}
     }
-    // A low-balance threshold in rubles, or null when the field is empty.
+    // A low-balance threshold in Poe points, or null when the field is empty.
     function thresholdValue(id){
       const raw=document.getElementById(id).value.trim();
       const value=Number(raw);
@@ -6534,6 +7071,9 @@
         reasoningEffort:Math.round(Number(reasoningRange.value)),
         webSearch:webSearchState.textContent.trim(),
         extendedThinking:document.getElementById('thinkingState').textContent.trim()!=='Off',
+        executeOn:document.getElementById('executeOnState').textContent.trim(),
+        approval:document.getElementById('approvalState').textContent.trim()==='Allow all'?'allow':'ask',
+        balanceUnit:'poe_points',
         balanceWarnAt:thresholdValue('balanceWarnAt'),
         balanceLowAt:thresholdValue('balanceLowAt')
       };
@@ -6591,9 +7131,10 @@
     if(savedModelRow){
       manualState.textContent=savedModelRow.dataset.model;
       manualState.dataset.modelId=savedModelRow.dataset.modelId;
-    }else if(!modePicker.querySelector('.model-row')&&typeof preferences.manualModelId==='string'&&preferences.manualModelId&&typeof preferences.manualModel==='string'&&preferences.manualModel){
-      // The model list hasn't arrived yet (first visit): trust the save.
-      manualState.textContent=preferences.manualModel;
+    }else if(typeof preferences.manualModelId==='string'&&preferences.manualModelId){
+      // Personal models can arrive after the public catalog. Keep the saved
+      // identity until that list arrives instead of dropping the selection.
+      manualState.textContent=preferences.manualModel||'Loading model…';
       manualState.dataset.modelId=preferences.manualModelId;
     }
     if(Number.isFinite(preferences.reasoningEffort)){
@@ -6601,6 +7142,7 @@
       reasoningRange.dispatchEvent(new Event('input'));
     }
     ['balanceWarnAt','balanceLowAt'].forEach(function(id){
+      if(preferences.balanceUnit!=='poe_points')return;
       if(preferences[id]===null)document.getElementById(id).value='';
       else if(Number.isFinite(preferences[id]))document.getElementById(id).value=String(preferences[id]);
     });
@@ -6608,6 +7150,8 @@
     if(['Auto','On','Off'].includes(preferences.webSearch)){
       while(webSearchState.textContent.trim()!==preferences.webSearch)webSearchRow.click();
     }
+    if(preferences.executeOn==='Server'||preferences.executeOn==='Computer')document.getElementById('executeOnState').textContent=preferences.executeOn;
+    if(preferences.approval==='ask'||preferences.approval==='allow')document.getElementById('approvalState').textContent=preferences.approval==='allow'?'Allow all':'Ask for approval';
     if(typeof preferences.extendedThinking==='boolean'){
       const thinkingRow=document.getElementById('thinkingRow');
       if((document.getElementById('thinkingState').textContent.trim()!=='Off')!==preferences.extendedThinking)thinkingRow.click();
@@ -6631,6 +7175,7 @@
     reasoningRange.addEventListener('effort:change',savePreferences);
     webSearchRow.addEventListener('click',savePreferences);
     document.getElementById('thinkingRow').addEventListener('click',savePreferences);
+    document.addEventListener('preferences:save',savePreferences);
     ['balanceWarnAt','balanceLowAt'].forEach(function(id){
       document.getElementById(id).addEventListener('input',function(){
         savePreferences();
@@ -6912,6 +7457,10 @@
     const coarse=window.matchMedia('(pointer: coarse)');
     const textFont=getComputedStyle(document.body).fontFamily||'system-ui, sans-serif';
     let tool='pen',color='#111111';
+    let pencilSize=PEN,outlineSize=SHAPE,opacity=1,dashed=false;
+    const imageAssets=new Map();
+    let imageSerial=0,sketchSession=0,pasteOperation=0;
+    const pasteButton=document.getElementById('sketchPaste');
     let strokes=[]; // ink: {kind:'pen'|'erase',color,width,points}
     let shapes=[];  // {kind:'rect'|'ellipse'|'line'|'arrow'|'text',color,width,x1,y1,x2,y2}, text also {text,size}
     let selected=null;
@@ -6955,17 +7504,22 @@
       inkCtx.setTransform(SCALE,0,0,SCALE,0,0);
       inkCtx.lineCap='round';inkCtx.lineJoin='round';
       inkCtx.lineWidth=stroke.width;
+      inkCtx.globalAlpha=stroke.kind==='erase'?1:(stroke.opacity===undefined?1:stroke.opacity);
+      inkCtx.setLineDash(stroke.dashed&&stroke.kind!=='erase'?[stroke.width*3,stroke.width*2]:[]);
       inkCtx.strokeStyle=stroke.color;
       inkCtx.globalCompositeOperation=stroke.kind==='erase'?'destination-out':'source-over';
     }
     function redrawInk(){
       inkCtx.setTransform(1,0,0,1,0,0);
-      inkCtx.globalCompositeOperation='source-over';
+      inkCtx.globalCompositeOperation='source-over';inkCtx.globalAlpha=1;
       inkCtx.clearRect(0,0,ink.width,ink.height);
       strokes.forEach(function(stroke){inkStyle(stroke);strokePath(inkCtx,stroke.points);inkCtx.stroke()});
     }
     // While drawing: only the newest piece, so long strokes stay fast.
     function drawTail(stroke){
+      // Alpha and dashed paths must be painted once as a whole, not as
+      // overlapping tails that darken the ink or restart every dash.
+      if(stroke.opacity<1||stroke.dashed){redrawInk();return}
       const points=stroke.points;
       inkStyle(stroke);
       strokePath(inkCtx,points.slice(Math.max(0,points.length-3)));
@@ -7004,15 +7558,19 @@
       shape.y1=Math.min(anchorY,anchorY+dirY*height);shape.y2=Math.max(anchorY,anchorY+dirY*height);
     }
     function drawShape(c,shape){
+      if(shape.kind==='image'){const asset=imageAssets.get(shape.imageId);if(!asset)return;const b=box(shape);c.save();c.globalAlpha=shape.opacity===undefined?1:shape.opacity;c.drawImage(asset,b.x,b.y,b.w,b.h);c.restore();return}
       if(shape.kind==='text'){
         const b=box(shape);
         c.save();
+        c.globalAlpha=shape.opacity===undefined?1:shape.opacity;
         c.font=fontOf(shape.size);c.fillStyle=shape.color;c.textBaseline='top';
         shape.text.split('\n').forEach(function(line,i){c.fillText(line,b.x,b.y+i*shape.size*TEXT_LINE+shape.size*(TEXT_LINE-1)/2)});
         c.restore();
         return;
       }
       c.save();
+      c.globalAlpha=shape.opacity===undefined?1:shape.opacity;
+      c.setLineDash(shape.dashed?[shape.width*3,shape.width*2]:[]);
       c.strokeStyle=shape.color;c.lineWidth=shape.width;c.lineCap='round';c.lineJoin='round';
       c.beginPath();
       if(shape.kind==='rect'){
@@ -7052,11 +7610,14 @@
     }
     function render(forExport){
       ctx.setTransform(1,0,0,1,0,0);
+      ctx.globalAlpha=1;ctx.globalCompositeOperation='source-over';
       ctx.fillStyle='#ffffff';
       ctx.fillRect(0,0,canvas.width,canvas.height);
-      ctx.drawImage(ink,0,0);
       ctx.setTransform(SCALE,0,0,SCALE,0,0);
-      shapes.forEach(function(shape){if(!editing||editing.shape!==shape)drawShape(ctx,shape)});
+      shapes.forEach(function(shape){if(shape.kind==='image')drawShape(ctx,shape)});
+      ctx.setTransform(1,0,0,1,0,0);ctx.drawImage(ink,0,0);
+      ctx.setTransform(SCALE,0,0,SCALE,0,0);
+      shapes.forEach(function(shape){if(shape.kind!=='image'&&(!editing||editing.shape!==shape))drawShape(ctx,shape)});
       if(!forExport&&selected&&!editing)drawSelection(selected);
     }
 
@@ -7091,7 +7652,7 @@
       return p.x>=b.x-slack&&p.x<=b.x+b.w+slack&&p.y>=b.y-slack&&p.y<=b.y+b.h+slack;
     }
     function shapeAt(p){
-      for(let i=shapes.length-1;i>=0;i--)if(grabs(shapes[i],p))return shapes[i];
+      for(const images of [false,true])for(let i=shapes.length-1;i>=0;i--)if((shapes[i].kind==='image')===images&&grabs(shapes[i],p))return shapes[i];
       return null;
     }
     function handleAt(p){
@@ -7101,7 +7662,7 @@
     }
     function eraseShapesAt(p){
       const before=shapes.length;
-      shapes=shapes.filter(function(shape){return outlineDistance(shape,p)>ERASER/2+shape.width/2});
+      shapes=shapes.filter(function(shape){return shape.kind==='image'||outlineDistance(shape,p)>ERASER/2+shape.width/2});
       if(shapes.indexOf(selected)<0)selected=null;
       return shapes.length!==before;
     }
@@ -7115,6 +7676,7 @@
       editor.style.font=fontOf(shape.size*k);
       editor.style.lineHeight=String(TEXT_LINE);
       editor.style.color=shape.color;
+      editor.style.opacity=String(shape.opacity===undefined?1:shape.opacity);
       editor.style.width=Math.min(r.width-shape.x1*k,Math.max(textWidth(editor.value||'M',shape.size)*k+shape.size*k,40))+'px';
       editor.style.height=lines*shape.size*TEXT_LINE*k+'px';
     }
@@ -7175,7 +7737,7 @@
         if(handle&&selected&&selected.kind==='text'){remember();drag={type:'resize',keys:handle.keys};return}
         const hit=shapeAt(p);
         if(hit&&hit.kind==='text'){startText(hit,false);return}
-        startText({kind:'text',color:color,width:0,text:'',size:TEXT_SIZE,x1:p.x,y1:Math.max(0,p.y-TEXT_SIZE*TEXT_LINE/2),x2:p.x,y2:p.y},true);
+        startText({kind:'text',color:color,width:0,opacity:opacity,text:'',size:TEXT_SIZE,x1:p.x,y1:Math.max(0,p.y-TEXT_SIZE*TEXT_LINE/2),x2:p.x,y2:p.y},true);
         return;
       }
       if(tool!=='pen'&&tool!=='eraser'){
@@ -7185,7 +7747,7 @@
         if(hit){remember();selected=hit;drag={type:'move',last:p};render();return}
         if(tool==='select'){selected=null;render();return}
         remember();
-        const shape={kind:tool,color:color,width:SHAPE,x1:p.x,y1:p.y,x2:p.x,y2:p.y};
+        const shape={kind:tool,color:color,width:outlineSize,opacity:opacity,dashed:dashed,x1:p.x,y1:p.y,x2:p.x,y2:p.y};
         shapes.push(shape);selected=shape;
         drag={type:'shape'};
         render();
@@ -7193,7 +7755,7 @@
       }
       remember();
       selected=null;
-      const stroke={kind:tool==='eraser'?'erase':'pen',color:color,width:tool==='eraser'?ERASER:PEN,points:[[p.x,p.y]]};
+      const stroke={kind:tool==='eraser'?'erase':'pen',color:color,width:tool==='eraser'?ERASER:pencilSize,opacity:tool==='eraser'?1:opacity,dashed:tool==='eraser'?false:dashed,points:[[p.x,p.y]]};
       strokes.push(stroke);
       drag={type:'stroke',stroke:stroke};
       drawTail(stroke);
@@ -7233,6 +7795,53 @@
     }
     canvas.addEventListener('pointerup',endGesture);
     canvas.addEventListener('pointercancel',endGesture);
+
+    /* Clipboard images stay as movable/resizable background objects. */
+    async function insertClipboardImage(blob,session){
+      if(!blob||!blob.type.startsWith('image/'))return;
+      if(blob.size>20*1024*1024){if(window.toast)window.toast('Paste an image under 20 MB.');return}
+      const imageOpacity=opacity,url=URL.createObjectURL(blob);
+      try{
+        const image=await new Promise(function(resolve,reject){const image=new Image();image.onload=function(){resolve(image)};image.onerror=function(){reject(new Error('Could not read the clipboard image.'))};image.src=url});
+        if(dialog.hidden||session!==sketchSession)return;
+        if(!image.naturalWidth||!image.naturalHeight)throw new Error('Could not read the clipboard image.');
+        const scale=Math.min(1,(W*SCALE)/image.naturalWidth,(H*SCALE)/image.naturalHeight);
+        const asset=document.createElement('canvas');asset.width=Math.max(1,Math.round(image.naturalWidth*scale));asset.height=Math.max(1,Math.round(image.naturalHeight*scale));asset.getContext('2d').drawImage(image,0,0,asset.width,asset.height);
+        if(editing)finishText(false);endGesture();remember();
+        const k=Math.min(W*.85/asset.width,H*.85/asset.height,1),width=asset.width*k,height=asset.height*k,id=++imageSerial;
+        imageAssets.set(id,asset);selected={kind:'image',imageId:id,width:0,opacity:imageOpacity,x1:(W-width)/2,y1:(H-height)/2,x2:(W+width)/2,y2:(H+height)/2};shapes.push(selected);
+        setTool('select');render();syncButtons();
+      }finally{URL.revokeObjectURL(url)}
+    }
+    document.addEventListener('paste',function(event){
+      if(dialog.hidden||!event.clipboardData)return;
+      const items=Array.from(event.clipboardData.items||[]).filter(function(item){return item.kind==='file'&&item.type.startsWith('image/')});
+      const files=items.length?items.map(function(item){return item.getAsFile()}).filter(Boolean):Array.from(event.clipboardData.files||[]).filter(function(file){return file.type.startsWith('image/')});
+      if(!files.length)return;
+      event.preventDefault();event.stopImmediatePropagation();const session=sketchSession;
+      (async function(){for(const file of files)await insertClipboardImage(file,session)})().catch(function(error){if(window.toast)window.toast(error.message)});
+    },true);
+    pasteButton.addEventListener('click',async function(){
+      if(!navigator.clipboard||!navigator.clipboard.read){if(window.toast)window.toast('Use Ctrl+V, ⌘V or your device’s Paste menu to insert an image.');return}
+      const operation=++pasteOperation,session=sketchSession;pasteButton.disabled=true;
+      try{
+        const items=await navigator.clipboard.read();let found=false;
+        for(const item of items){const type=item.types.find(function(type){return type.startsWith('image/')});if(!type)continue;found=true;await insertClipboardImage(await item.getType(type),session)}
+        if(!found&&window.toast)window.toast('No image in the clipboard. Copy a photo first.');
+      }catch(error){if(session===sketchSession&&window.toast)window.toast('Could not read the clipboard. Allow access or paste with Ctrl+V, ⌘V or the Paste menu.');}
+      finally{if(operation===pasteOperation)pasteButton.disabled=false}
+    });
+    function syncDrawingSettings(){
+      pencilSize=Number(document.getElementById('sketchPenWidth').value);
+      outlineSize=Number(document.getElementById('sketchOutlineWidth').value);
+      opacity=Number(document.getElementById('sketchOpacity').value)/100;
+      dashed=document.getElementById('sketchLineStyle').value==='dashed';
+      document.getElementById('sketchPenWidthValue').textContent=pencilSize+' px';
+      document.getElementById('sketchOutlineWidthValue').textContent=outlineSize+' px';
+      document.getElementById('sketchOpacityValue').textContent=Math.round(opacity*100)+'%';
+    }
+    ['sketchPenWidth','sketchOutlineWidth','sketchOpacity','sketchLineStyle'].forEach(function(id){document.getElementById(id).addEventListener('input',syncDrawingSettings);document.getElementById(id).addEventListener('change',syncDrawingSettings)});
+    syncDrawingSettings();
 
     /* toolbar */
     function setTool(name){
@@ -7275,6 +7884,7 @@
     /* open / close */
     function reset(){
       editing=null;editor.hidden=true;
+      sketchSession++;pasteOperation++;pasteButton.disabled=false;imageAssets.clear();
       strokes=[];shapes=[];selected=null;history=[];drag=null;
       color='#111111';
       dialog.querySelectorAll('.sketch-color').forEach(function(button){
@@ -7296,6 +7906,7 @@
       if(editing){editing=null;editor.hidden=true}
       dialog.classList.remove('is-open');
       dialog.hidden=true;
+      sketchSession++;pasteOperation++;pasteButton.disabled=false;imageAssets.clear();
       drag=null;
       if(lastFocus&&lastFocus.focus)lastFocus.focus({preventScroll:true});
     }
@@ -7319,7 +7930,7 @@
       if(dialog.hidden)return;
       if(event.key==='Escape'){event.preventDefault();closeSketch();return}
       if((event.ctrlKey||event.metaKey)&&!event.shiftKey&&event.key.toLowerCase()==='z'){event.preventDefault();undo();return}
-      if((event.key==='Delete'||event.key==='Backspace')&&selected){
+      if((event.key==='Delete'||event.key==='Backspace')&&selected&&!event.target.closest('input,select,textarea')){
         event.preventDefault();
         remember();
         shapes.splice(shapes.indexOf(selected),1);

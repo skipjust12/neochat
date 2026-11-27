@@ -78,9 +78,10 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 	}
 	result, callErr := call(provider.WithOutputLimit(ctx, maxOutput), gen, modelID, messages)
 	// Only a known refusal is safe to refund without usage.
+	var denied *provider.BotAccessDenied
 	var circuitErr *provider.CircuitOpenError
 	var statusErr *provider.StatusError
-	refused := errors.As(callErr, &circuitErr) || (errors.As(callErr, &statusErr) && (statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode == http.StatusBadRequest || statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusPaymentRequired || statusErr.StatusCode == http.StatusForbidden || statusErr.StatusCode == http.StatusNotFound)) || errors.Is(callErr, provider.ErrMissingAPIKey)
+	refused := errors.As(callErr, &denied) || errors.As(callErr, &circuitErr) || (errors.As(callErr, &statusErr) && (statusErr.StatusCode == http.StatusTooManyRequests || statusErr.StatusCode == http.StatusBadRequest || statusErr.StatusCode == http.StatusUnauthorized || statusErr.StatusCode == http.StatusPaymentRequired || statusErr.StatusCode == http.StatusForbidden || statusErr.StatusCode == http.StatusNotFound || statusErr.StatusCode == http.StatusRequestEntityTooLarge || statusErr.StatusCode == http.StatusUnprocessableEntity)) || errors.Is(callErr, provider.ErrMissingAPIKey)
 	// The user pressed Stop (the request context was canceled): the vendor
 	// stops generating when the connection drops, so settle on an estimate
 	// of what was actually produced instead of holding the full upper
@@ -98,10 +99,17 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 	if stopped {
 		actual = math.Min(amount, router.ComputeCostUSDRates(inputRate, outputRate, inputBound, 2*tokenizer.EstimateText(result.Text)))
 	} else if !refused {
-		if result.InputTokens < 0 || result.OutputTokens < 0 || (amount > 0 && (result.InputTokens == 0 || (result.Text != "" && result.OutputTokens == 0))) {
+		if result.UsageEstimated {
+			result.InputTokens = inputBound
+			result.OutputTokens = min(maxOutput, max(1, result.OutputTokens))
+		}
+		if result.InputTokens < 0 || result.OutputTokens < 0 || result.CachedTokens < 0 || result.CacheWriteTokens < 0 || result.CachedTokens+result.CacheWriteTokens > result.InputTokens || (amount > 0 && (result.InputTokens == 0 || (result.Text != "" && result.OutputTokens == 0))) {
 			return result, fmt.Errorf("provider returned missing or invalid usage; reservation retained")
 		}
 		actual = callCostUSD(inputRate, outputRate, result)
+		if result.UsageEstimated {
+			log.Printf("server: Poe Bot Query estimated usage model=%s input=%d output=%d; cache usage unavailable", modelID, result.InputTokens, result.OutputTokens)
+		}
 	}
 	billCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
@@ -111,12 +119,20 @@ func (s *Server) billedCall(ctx context.Context, req chatRequest, plan limits.Pl
 	return result, callErr
 }
 
-// callCostUSD is what a vendor call cost: what Polza charged for it when
-// it says -- prompt cache discounts and server tools included -- else the
-// list price of its tokens, with cache writes at Claude's 1.25x (the most
-// any vendor charges for them; reads are counted in full) plus the web
-// plugin fee.
+// callCostUSD estimates usage in USD for NeoChat plan accounting. Poe cache
+// rates are used only when known. Actual Poe charges are points, not this figure.
+// The legacy RUB branch remains for old transport regression fixtures.
 func callCostUSD(inputRate, outputRate float64, result provider.GenerateResult) float64 {
+	if result.Poe {
+		cost := router.ComputeCostUSDRates(inputRate, outputRate, result.InputTokens, result.OutputTokens)
+		if result.CacheReadPrice != nil {
+			cost += float64(result.CachedTokens) * (*result.CacheReadPrice - inputRate) / 1e6
+		}
+		if result.CacheWritePrice != nil {
+			cost += float64(result.CacheWriteTokens) * (*result.CacheWritePrice - inputRate) / 1e6
+		}
+		return math.Max(0, cost)
+	}
 	if result.CostRUB > 0 {
 		return result.CostRUB / rubPerUSD
 	}
@@ -140,13 +156,22 @@ func (c auxiliaryClient) Generate(ctx context.Context, modelID string, messages 
 }
 
 func (s *Server) validateRequest(req chatRequest) error {
+	if req.SearchMode && req.RequestedMode == "manual" {
+		if model, ok := s.requestRouter(req).Catalog.FindModel(req.ManualModelID); ok && (model.Kind != "" || !model.ToolCalling) {
+			return userErrorf("Search mode needs a chat model with web tools. Choose a model that supports tools.")
+		}
+	}
+
+	if m, ok := s.requestRouter(req).Catalog.FindModel(req.ManualModelID); req.RequestedMode == "manual" && ok && m.Unavailable {
+		return userErrorf("%s is not available through Poe (N/A). Choose another model.", modelName(m))
+	}
 	if s.RouterDisabled {
 		if req.RequestedMode != "manual" {
 			return errRouterDisabled
 		}
 		// Image and video models run on the image key alone (image.go,
 		// video.go).
-		model, found := s.router().Catalog.FindModel(req.ManualModelID)
+		model, found := s.requestRouter(req).Catalog.FindModel(req.ManualModelID)
 		switch {
 		case found && (model.Kind == router.KindImage || model.Kind == router.KindVideo):
 			if req.imageKey == "" && model.Kind == router.KindVideo {
@@ -180,6 +205,12 @@ func (s *Server) validateRequest(req chatRequest) error {
 	if !validWebSearchMode(req.WebSearch) {
 		return fmt.Errorf("%w: web_search must be auto, on or off", errInvalidRequest)
 	}
+	if req.ExecuteOn != "" && req.ExecuteOn != executeOnServer && req.ExecuteOn != executeOnComputer {
+		return fmt.Errorf("%w: execute_on must be server or computer", errInvalidRequest)
+	}
+	if req.Approval != "" && req.Approval != approvalAsk && req.Approval != approvalAllow {
+		return fmt.Errorf("%w: approval must be ask or allow", errInvalidRequest)
+	}
 	if req.ReasoningEffort != "" && !reasoningEfforts[req.ReasoningEffort] {
 		return fmt.Errorf("%w: unknown reasoning effort", errInvalidRequest)
 	}
@@ -189,7 +220,7 @@ func (s *Server) validateRequest(req chatRequest) error {
 	switch req.RequestedMode {
 	case "auto", "instant", "thinking", "max":
 	case "manual":
-		if _, ok := s.router().Catalog.FindModel(req.ManualModelID); !ok {
+		if _, ok := s.requestRouter(req).Catalog.FindModel(req.ManualModelID); !ok {
 			return fmt.Errorf("%w: unknown manual model", errInvalidRequest)
 		}
 	default:
@@ -224,9 +255,9 @@ var errInvalidRequest = errors.New("invalid request")
 // is switched off (Server.RouterDisabled). Its text is shown to the user.
 var errRouterDisabled = errors.New("Router disabled: switch to Manual mode and pick a model")
 
-// errMissingProviderKey means the user hasn't added their Polza AI key in
+// errMissingProviderKey means the user hasn't added their Poe key in
 // Settings yet. Its text is shown to the user.
-var errMissingProviderKey = errors.New("Add your Polza AI API key in Settings → Account to start chatting")
+var errMissingProviderKey = errors.New("Add your Poe API key in Settings → Account to start chatting")
 
 // reasoningFor maps the UI's effort slider onto what model accepts.
 // Models with no reasoning control get nothing (the setting would be
@@ -234,6 +265,41 @@ var errMissingProviderKey = errors.New("Add your Polza AI API key in Settings �
 // low/medium/high/max, so xhigh rounds up to max -- the user asked for
 // more than high.
 func reasoningFor(model router.Model, effort string, thinking *bool) (provider.Reasoning, bool) {
+	if model.Poe && len(model.PoeReasoningValues) > 0 {
+		values := model.PoeReasoningValues
+		if thinking != nil && !*thinking {
+			for _, v := range []string{"none", "minimal", "low"} {
+				for _, allowed := range values {
+					if v == allowed {
+						return provider.Reasoning{Effort: v, Disabled: v == "none", Adaptive: model.Reasoning == "adaptive"}, true
+					}
+				}
+			}
+			return provider.Reasoning{}, false
+		}
+		if effort == "" {
+			return provider.Reasoning{}, false
+		}
+		for _, allowed := range values {
+			if effort == allowed {
+				return provider.Reasoning{Effort: effort, Adaptive: model.Reasoning == "adaptive"}, true
+			}
+		}
+		ranks := map[string]int{"none": 0, "minimal": 0, "low": 1, "medium": 2, "high": 3, "xhigh": 4, "max": 5}
+		best := ""
+		distance := 100
+		for _, allowed := range values {
+			d := ranks[allowed] - ranks[effort]
+			if d < 0 {
+				d = -d
+			}
+			if d < distance {
+				best = allowed
+				distance = d
+			}
+		}
+		return provider.Reasoning{Effort: best, Adaptive: model.Reasoning == "adaptive"}, best != ""
+	}
 	// Extended Thinking off: no thinking at all, the effort kept as it is
 	// for when it's turned back on.
 	if thinking != nil && !*thinking && model.Reasoning != "" {

@@ -321,26 +321,6 @@ svg {
   min-width: 0;
 }
 
-.main::before {
-  transform-origin: 50% 100%;
-  will-change: opacity,transform;
-}
-
-.main::after {
-  transform-origin: 50% 100%;
-  will-change: opacity,transform;
-}
-
-html:not([data-theme="dark"]) #incognitoState:checked ~ .main::before {
-  opacity: 1;
-  transform: translate3d(0,0,0) scale(1);
-}
-
-html[data-theme="dark"] #incognitoState:checked ~ .main::after {
-  opacity: 1;
-  transform: translate3d(0,0,0) scale(1);
-}
-
 .topbar {
   display: flex;
   align-items: center;
@@ -702,9 +682,13 @@ h1 {
   position: relative;
 }
 
+/* Incognito is indicated at the input, with a theme-aware dashed outline. */
 #incognitoState:checked ~ .main .composer {
-  box-shadow: 0 22px 58px rgba(0,0,0,.2);
-  transform: translateY(-2px);
+  outline: 1px dashed var(--muted);
+  outline-offset: 0;
+  border-radius: 20px;
+  box-shadow: none;
+  transform: none;
 }
 
 .composer textarea {
@@ -971,6 +955,26 @@ html[data-theme="dark"] .row-chevron {
 
 .attach-wrap.is-open .attach-row:nth-child(3) {
   --d: 96ms;
+}
+
+.attach-wrap.is-open .attach-row:nth-child(4) {
+  --d: 112ms;
+}
+
+.attach-wrap.is-open .attach-row:nth-child(5) {
+  --d: 128ms;
+}
+
+.attach-wrap.is-open .attach-row:nth-child(6) {
+  --d: 144ms;
+}
+
+.attach-wrap.is-open .attach-row:nth-child(7) {
+  --d: 160ms;
+}
+
+.attach-wrap.is-open .attach-row:nth-child(8) {
+  --d: 176ms;
 }
 
 .attach-wrap.is-closing .attach-tile {
@@ -1610,16 +1614,6 @@ html[data-theme="dark"] .row-chevron {
   font-size: 11px;
   margin-top: 8px;
   transition: color .65s var(--ease-gentle),text-shadow .65s var(--ease-gentle);
-}
-
-html:not([data-theme="dark"]) #incognitoState:checked ~ .main .hint {
-  color: rgba(255,255,255,.9);
-  text-shadow: 0 1px 10px rgba(0,0,0,.35);
-}
-
-html[data-theme="dark"] #incognitoState:checked ~ .main .hint {
-  color: rgba(15,17,16,.82);
-  text-shadow: 0 1px 10px rgba(255,255,255,.25);
 }
 
 /* ——— settings ——— */
@@ -3211,56 +3205,6 @@ html[data-theme="light"] .composer {
   margin-top: 13px;
 }
 
-.main::before {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  left: -7%;
-  right: -7%;
-  bottom: -30px;
-  height: min(58vh,540px);
-  opacity: 0;
-  transform: translate3d(0,20px,0) scaleX(.97);
-  filter: blur(11px);
-  transition: opacity .8s ease,transform 1.05s cubic-bezier(.22,1,.36,1);
-}
-
-.main::after {
-  content: "";
-  position: absolute;
-  z-index: 0;
-  pointer-events: none;
-  left: -7%;
-  right: -7%;
-  bottom: -30px;
-  height: min(58vh,540px);
-  opacity: 0;
-  transform: translate3d(0,20px,0) scaleX(.97);
-  filter: blur(11px);
-  transition: opacity .8s ease,transform 1.05s cubic-bezier(.22,1,.36,1);
-}
-
-.main::before {
-  box-shadow: inset 42px 0 72px -54px rgba(20,21,19,.34),inset -42px 0 72px -54px rgba(20,21,19,.34);
-  background: radial-gradient(ellipse 23% 94% at 0 100%,rgba(20,21,19,.34),rgba(20,21,19,.12) 43%,transparent 73%),radial-gradient(ellipse 23% 94% at 100% 100%,rgba(20,21,19,.34),rgba(20,21,19,.12) 43%,transparent 73%),linear-gradient(to top,rgba(20,21,19,.22),rgba(20,21,19,.09) 22%,transparent 60%);
-}
-
-.main::after {
-  box-shadow: inset 42px 0 72px -54px rgba(246,246,238,.26),inset -42px 0 72px -54px rgba(246,246,238,.26);
-  background: radial-gradient(ellipse 23% 94% at 0 100%,rgba(246,246,238,.27),rgba(246,246,238,.085) 43%,transparent 73%),radial-gradient(ellipse 23% 94% at 100% 100%,rgba(246,246,238,.27),rgba(246,246,238,.085) 43%,transparent 73%),linear-gradient(to top,rgba(246,246,238,.16),rgba(246,246,238,.055) 22%,transparent 60%);
-}
-
-html:not([data-theme="dark"]) #incognitoState:checked~.main::before {
-  opacity: 1;
-  transform: translate3d(0,0,0) scaleX(1);
-}
-
-html[data-theme="dark"] #incognitoState:checked~.main::after {
-  opacity: 1;
-  transform: translate3d(0,0,0) scaleX(1);
-}
-
 .mode-choice:hover {
   background: var(--picker-hover);
 }
@@ -3378,7 +3322,8 @@ html[data-theme="dark"] #incognitoState:checked~.main::after {
 }
 
 #webSearchRow,
-#thinkingRow {
+#thinkingRow,
+#executeOnRow {
   grid-template-columns: 27px minmax(0,1fr) auto 14px;
 }
 
@@ -4401,14 +4346,6 @@ html[data-theme="dark"] .avatar {
   transition: margin-left .24s var(--ease-fluid),width .24s var(--ease-fluid);
 }
 
-.main::before {
-  display: none;
-}
-
-.main::after {
-  display: none;
-}
-
 .topbar {
   height: 52px;
   padding: 0 20px;
@@ -5203,12 +5140,14 @@ h1 {
   min-height: 36px;
 }
 
-.thinking-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--muted);
-  animation: fluid-pulse 1.4s ease-in-out infinite;
+/* The dots before a working state's label (stateDots in frontend.html):
+   drawn on a canvas in the text color, so they follow the theme. */
+.state-dots {
+  display: block;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  color: var(--text);
 }
 
 .thinking-label {
@@ -5242,12 +5181,6 @@ h1 {
   transform: rotate(-90deg);
 }
 
-@keyframes fluid-pulse {
-  50% {
-    opacity: .3;
-    transform: scale(.75);
-  }
-}
 
 /* Card layouts: real page headers, filter rows, cards with hierarchy. */
 
@@ -9868,4 +9801,379 @@ html[data-theme="light"] {
   .topbar-title.is-renamed {
     animation: none;
   }
+}
+
+/* ---------- files the model sent (send_file) ---------- */
+.answer-files {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 12px 0 4px;
+}
+
+.answer-file {
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  max-width: 100%;
+  width: 300px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface, transparent);
+  overflow: hidden;
+  transition: border-color .15s ease;
+}
+
+.answer-file:hover {
+  border-color: var(--muted);
+}
+
+.answer-file-open {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding: 9px 4px 9px 10px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.answer-file-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  background: var(--line);
+  color: var(--text);
+}
+
+.answer-file-icon svg,
+.answer-file-download svg {
+  width: 18px;
+  height: 18px;
+}
+
+.answer-file-copy {
+  display: grid;
+  min-width: 0;
+  gap: 1px;
+}
+
+.answer-file-copy strong {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 560;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.answer-file-copy small {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 11.5px;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.answer-file-download {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.answer-file-download:hover,
+.answer-file-open:focus-visible + .answer-file-download {
+  color: var(--text);
+}
+
+.answer-file-open:focus-visible,
+.answer-file-download:focus-visible {
+  outline: 2px solid var(--muted);
+  outline-offset: -2px;
+}
+
+@media (max-width: 560px) {
+  .answer-file {
+    width: 100%;
+  }
+}
+
+/* ---------- iOS ---------- */
+/* Safari zooms the page into any field under 16px when it gets focus, and
+   leaves it zoomed. On iOS (only it has -webkit-touch-callout) every text
+   field is 16px, which it doesn't zoom into. */
+@supports (-webkit-touch-callout: none) {
+  input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  textarea,
+  select,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+  }
+}
+
+/* ---------- approvals ("Ask for approval" in the + menu) ---------- */
+.approval-card {
+  display: grid;
+  gap: 10px;
+  margin: 4px 0 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  animation: approval-in .18s var(--ease-out, ease);
+}
+
+@keyframes approval-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+.approval-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.approval-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 8px;
+  background: var(--line);
+  color: var(--text);
+}
+
+.approval-icon svg {
+  width: 16px;
+  height: 16px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.approval-copy {
+  display: grid;
+  min-width: 0;
+}
+
+.approval-copy strong {
+  font-size: 13.5px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.approval-copy small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.approval-card .term-block {
+  margin-left: 0;
+}
+
+.approval-card .term-code {
+  max-height: 200px;
+}
+
+.approval-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.approval-actions button {
+  min-width: 84px;
+  height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: none;
+  color: var(--text);
+  font: 550 13px Inter, system-ui, sans-serif;
+  cursor: pointer;
+}
+
+.approval-actions .approval-allow {
+  border-color: var(--text);
+  background: var(--text);
+  color: var(--surface-1, #fafafa);
+}
+
+.approval-actions button:disabled {
+  opacity: .55;
+  cursor: default;
+}
+
+.approval-card.is-allowed,
+.approval-card.is-denied {
+  opacity: .7;
+}
+
+.term-where {
+  flex: none;
+  padding: 0 5px;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  color: var(--muted);
+  font-size: 9.5px;
+  font-weight: 650;
+  letter-spacing: .04em;
+  line-height: 15px;
+}
+
+.term-path {
+  padding-left: 21px;
+  color: var(--muted);
+  font: 400 11.5px/1.4 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  overflow-wrap: anywhere;
+}
+
+/* The home greeting gets the same text-only sweep as Thinking on hover. */
+.main:not(.project-mode) #homeGreeting {
+  position: relative;
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+}
+
+.main:not(.project-mode) #homeGreeting::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  color: transparent;
+  background-image: linear-gradient(90deg,transparent 0%,transparent 40%,#71717a 50%,transparent 60%,transparent 100%);
+  background-size: 220% 100%;
+  background-position: 140% 0;
+  background-repeat: no-repeat;
+  -webkit-background-clip: text;
+  background-clip: text;
+  opacity: 0;
+  pointer-events: none;
+}
+
+html[data-theme="dark"] .main:not(.project-mode) #homeGreeting::after {
+  background-image: linear-gradient(90deg,transparent 0%,transparent 40%,#fafafa 50%,transparent 60%,transparent 100%);
+}
+
+@media (hover: hover) and (prefers-reduced-motion: no-preference) {
+  .main:not(.project-mode) #homeGreeting:hover::after {
+    animation: thinkingSweep 1.8s linear;
+  }
+}
+
+/* Pictures made with code can sit between any two answer paragraphs. */
+.inline-answer-image {
+  margin: 20px 0;
+  max-width: 100%;
+}
+.inline-answer-image-open {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  overflow: hidden;
+  background: var(--surface-1, transparent);
+  cursor: zoom-in;
+}
+.inline-answer-image img {
+  display: block;
+  max-width: 100%;
+  height: auto;
+  min-height: 100px;
+  object-fit: contain;
+}
+.inline-answer-image figcaption {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 8px;
+  color: var(--muted);
+  font: 12px/1.5 Inter, sans-serif;
+  overflow-wrap: anywhere;
+}
+.inline-answer-image-download {
+  flex: none;
+  border: 0;
+  padding: 4px 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+.inline-answer-image-open:focus-visible,
+.inline-answer-image-download:focus-visible {
+  outline: 2px solid currentColor;
+  outline-offset: 3px;
+}
+.inline-answer-image.is-missing .inline-answer-image-open {
+  min-width: 160px;
+}
+
+/* Model management follows the existing settings controls on phones too. */
+#customModelsSettings summary { cursor: pointer; }
+#customModelsSettings .set-row { flex-wrap: wrap; justify-content: space-between; }
+#customModelsSettings .name-input { max-width: 100%; min-width: 0; }
+#customModelStatus { color: var(--muted); overflow-wrap: anywhere; }
+#customModelsList .set-row > span { overflow-wrap: anywhere; min-width: 0; }
+
+/* Sketch controls describe only the next marks, never restyle selection. */
+.sketch-properties{display:flex;align-items:center;flex-wrap:wrap;gap:10px 16px;padding:9px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.sketch-properties label{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--muted);min-width:0}
+.sketch-properties input[type=range]{width:72px;min-width:0;accent-color:var(--muted)}
+.sketch-properties output{font-variant-numeric:tabular-nums;min-width:34px;font-size:10px}
+.sketch-properties select,.sketch-paste{border:1px solid var(--line);background:var(--hover);color:var(--text);border-radius:7px;font:inherit;font-size:11px;padding:6px 8px}
+.sketch-paste{cursor:pointer}.sketch-paste:disabled{opacity:.45;cursor:wait}
+#sketchDialog .sketch-dialog{overflow:auto}#sketchDialog .sketch-stage{flex-shrink:0}
+@media(max-width:600px){.sketch-properties{display:grid;grid-template-columns:1fr 1fr;gap:9px 12px}.sketch-properties label{justify-content:space-between;gap:5px}.sketch-properties input[type=range]{flex:1;width:50px}.sketch-properties select{font-size:16px;max-width:100px}.sketch-paste{min-height:34px;justify-self:start}.sketch-properties output{min-width:31px}}
+
+/* Search is a per-message mode alongside quotes and attachments. */
+.search-mode-card{flex-direction:row;align-items:center;gap:9px;width:auto;min-width:168px;padding:12px;color:var(--text);}
+.search-mode-card>.preview-icon{flex:none;width:24px;height:24px;}
+.search-mode-card>span{font-size:13px;font-weight:600;white-space:nowrap;}
+.search-mode-card>button{display:grid;place-items:center;width:22px;height:22px;margin-left:4px;padding:0;border:0;border-radius:5px;background:transparent;color:var(--muted);cursor:pointer;}
+.search-mode-card>button:hover{background:var(--surface-2);color:var(--text);}
+
+.message-search-mode{align-self:flex-end;font-size:11px;color:var(--muted);padding:2px 8px;}
+
+.search-raw-output{margin:8px 0 0 25px;max-width:100%;}.search-raw-output>summary{font-size:12px;color:var(--muted);cursor:pointer;}.search-raw-output pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:340px;overflow:auto;}
+
+/* Continuous slide confirmation, sharing the Effort handle's geometry. */
+.slide-confirm{--slide-p:0;--slide-travel:148px;position:relative;isolation:isolate;flex:1 1 auto;min-width:180px;height:32px;border:1px solid var(--line);border-radius:9px;background:var(--surface-3);overflow:hidden;user-select:none;touch-action:none;}
+.slide-confirm-range.effort-range{inset:0;width:100%;height:100%;opacity:0;touch-action:none;cursor:grab;}
+.slide-confirm.is-dragging .slide-confirm-range{cursor:grabbing;}
+.slide-confirm-text{position:absolute;inset:0;display:grid;place-items:center;padding-left:20px;font-size:11px;color:var(--muted);pointer-events:none;transition:color .18s;}
+.slide-confirm-thumb{position:absolute;left:3px;top:3px;width:26px;height:24px;border-radius:6px;background:#fff;color:#262626;box-shadow:0 0 0 .5px rgb(0 0 0 / .12),0 1px 3px rgb(0 0 0 / .18),0 2px 8px rgb(0 0 0 / .06);transform:translateX(calc(var(--slide-p) * var(--slide-travel)));transition:transform .2s var(--ease-out);pointer-events:none;}
+.slide-confirm.is-dragging .slide-confirm-thumb{transition:none;}
+.slide-confirm-thumb::after{content:'→';position:absolute;inset:0;display:grid;place-items:center;font-size:16px;}
+.slide-confirm.is-armed .slide-confirm-text{color:var(--text);}
+.slide-confirm:focus-within{outline:2px solid var(--muted);outline-offset:2px;}
+.slide-confirm.is-busy .slide-confirm-thumb::after{content:'';inset:5px 6px;border:2px solid #ccc;border-top-color:#333;border-radius:50%;animation:slide-delete-spin .7s linear infinite;}
+.slide-confirm.is-done .slide-confirm-thumb::after{content:'✓';}
+@keyframes slide-delete-spin{to{transform:rotate(360deg)}}
+@media(prefers-reduced-motion:reduce){.slide-confirm-thumb,.slide-confirm-text{transition:none;}.slide-confirm.is-busy .slide-confirm-thumb::after{animation:none;}}
+
+/* Crisp black response text on the light theme, matching the reference. */
+html[data-theme="light"] .chat-message.assistant:not(.is-error) .chat-text {
+  color: #000;
 }

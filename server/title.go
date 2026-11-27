@@ -95,7 +95,7 @@ func (s *Server) startTitle(ctx context.Context, req chatRequest, firstTurn bool
 		return nil
 	}
 	model, ok := s.router().Catalog.FindModel(s.TitleModelID)
-	if !ok {
+	if !ok || model.Unavailable {
 		log.Printf("server: title model %q is not in the catalog", s.TitleModelID)
 		return nil
 	}

@@ -1,4 +1,4 @@
-// Package server wires classifier, moderation, router, limits, and
+// Package server wires model selection, limits, and
 // provider together behind one HTTP endpoint -- the "actual generation
 // pipeline" the rest of the repo has been built to sit in front of (see
 // README "Next steps").
@@ -22,14 +22,12 @@ import (
 
 	"neochat/attachment"
 	"neochat/auth"
-	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
 	"neochat/idempotency"
 	"neochat/imagegen"
 	"neochat/limits"
 	"neochat/modelcatalog"
-	"neochat/moderation"
 	"neochat/pagestore"
 	"neochat/provider"
 	"neochat/ratelimit"
@@ -53,12 +51,6 @@ var frontendAssets embed.FS
 // models a single request will try.
 const maxCircuitFailoverAttempts = 3
 
-// tosViolationMessage is the only thing a moderation-flagged request's
-// user ever sees -- no detail about which category tripped or why, per
-// README's Moderation section ("the user sees nothing but a ToS violation
-// message").
-const tosViolationMessage = "This message was blocked because it violates our usage policies."
-
 // maxRequestBodyBytes bounds how large a POST /chat or /chat/stream body
 // decodeChatRequest will read before giving up -- without this,
 // json.Decode reads an attacker-supplied body of any size straight into
@@ -72,8 +64,7 @@ const maxRequestBodyBytes = 64 * 1024
 // handle/handleStream) when limits.CheckInstantOverCap reports this
 // user_id has crossed their plan's 30-day Instant-tier anti-bot ceiling
 // (limits.PlanLimits.InstantExtraCapUSD) -- see docs/unit-economics.md
-// section 6.5. Checked, and the whole request rejected, before classify/
-// moderate run at all: unlike CheckThinkingMaxLock (which only changes
+// section 6.5. Checked, and the whole request rejected, before generation: unlike CheckThinkingMaxLock (which only changes
 // which mode a request downgrades to), there is no cheaper tier to fall
 // back to here, so an over-cap request has nothing useful left to do.
 // handleChat/handleChatStream map this to HTTP 429.
@@ -82,12 +73,12 @@ var ErrInstantCapExceeded = errors.New("server: instant-tier spend cap exceeded 
 // Server holds everything one /chat request needs. All fields are
 // required; use New to build one with validation.
 type Server struct {
+	settingsMu     sync.Mutex
+	webGateOnce    sync.Once
+	webGate        *webGate
 	TrustedProxies []netip.Prefix
 	RequireHTTPS   bool
 	Router         router.Router
-	Classifier     classifier.Classifier
-	Moderator      moderation.Moderator
-	ModerationLog  moderation.BlockLog
 	Conversations  conversation.Store
 	Store          limits.SpendStore
 	Plans          map[string]limits.PlanLimits
@@ -208,10 +199,10 @@ type Server struct {
 
 	// RouterDisabled switches the pipeline to direct mode: only Manual
 	// requests are accepted (anything else fails with errRouterDisabled),
-	// classify/moderate are skipped entirely, and the chosen model is
+	// the chosen model is
 	// called straight away with the user's own provider key. This is how
 	// the product runs while the auto-router is switched off; the zero
-	// value keeps the full classify -> moderate -> route pipeline.
+	// value enables catalog routing with a fixed local request profile.
 	RouterDisabled bool
 
 	// Attachments stores files uploaded through POST /files and referenced
@@ -222,11 +213,13 @@ type Server struct {
 	// Web access (see websearch.go). Fetcher downloads pages for the
 	// web_fetch tool (nil: a default webfetch.Fetcher); Pages keeps what was
 	// read per chat (nil: nothing is kept); Searcher runs web_search on
-	// the server's own SearXNG (nil: Polza's web plugin, through
+	// the server's own SearXNG (nil: Poe's web plugin, through
 	// WebSearchModelID, the catalog model that runs each search there;
 	// empty: defaultWebSearchModelID).
 	Fetcher          *webfetch.Fetcher
 	Pages            pagestore.Store
+	PoeSearch        provider.Client
+	PoeSearchCostUSD float64
 	Searcher         WebSearcher
 	WebSearchModelID string
 
@@ -234,6 +227,12 @@ type Server struct {
 	// run_command and run_script tools (terminal.go), for the users it
 	// allows. Nil: no model gets a terminal.
 	Terminal *terminal.Runner
+
+	// The users' connected computers and the actions waiting for their
+	// approval (device.go), made on first use.
+	extrasMu    sync.Mutex
+	deviceHub   *deviceHub
+	approvalHub *approvalHub
 
 	// TitleModelID is the catalog model that names new chats (title.go);
 	// empty: chats keep the start of their first message as their name.
@@ -243,7 +242,7 @@ type Server struct {
 	// answer that image generation isn't available.
 	Images *imagegen.Client
 
-	// BalanceURL is Polza's balance endpoint for GET /account/balance
+	// BalanceURL is Poe's balance endpoint for GET /account/balance
 	// (workspace.go); empty means the real one.
 	BalanceURL string
 
@@ -251,7 +250,7 @@ type Server struct {
 	// (compact.go). Nil: settings stay in each browser.
 	Settings settings.Store
 
-	// Models keeps the catalog current with Polza's releases (models.go);
+	// Models keeps the catalog current with Poe's releases (models.go);
 	// when set, it is the catalog every lookup and route uses, with
 	// Router's weights. Nil: Router's catalog, fixed at startup.
 	Models *modelcatalog.Live
@@ -261,7 +260,7 @@ type Server struct {
 	streams streamRegistry
 }
 
-// providerKeyHeader carries the user's own Polza AI key on chat requests.
+// providerKeyHeader carries the user's own Poe key on chat requests.
 // It is used for that one request and never stored server-side.
 const providerKeyHeader = "X-Provider-Key"
 
@@ -275,6 +274,7 @@ var reasoningEfforts = map[string]bool{"low": true, "medium": true, "high": true
 
 // chatRequest is the wire format for POST /chat.
 type chatRequest struct {
+	customModel             *router.Model
 	idempotencyOwner        string
 	regenerateMessageID     int64
 	regenerationHistoryDrop int
@@ -352,7 +352,15 @@ type chatRequest struct {
 
 	// WebSearch is the composer's Web search toggle: "auto", "on" or
 	// "off" (see webToolsFor). Empty means off.
-	WebSearch string `json:"web_search,omitempty"`
+	WebSearch  string `json:"web_search,omitempty"`
+	SearchMode bool   `json:"search_mode,omitempty"`
+	// ExecuteOn is where the terminal tools run: "server" (the default)
+	// or "computer", the user's own through the desktop app (device.go).
+	ExecuteOn string `json:"execute_on,omitempty"`
+	// Approval is "ask" (each command, script and file write
+	// waits for the user's yes) or "allow" (the default for API callers,
+	// who can't answer).
+	Approval string `json:"approval,omitempty"`
 
 	// Attachments are ids returned by POST /files. Images and PDF/DOCX
 	// files go to the model as native parts, text files are inlined. With
@@ -406,8 +414,7 @@ func isValidPersona(name string) bool {
 type chatResponse struct {
 	// ConversationID is always the conversation this turn belongs to --
 	// either the one the request supplied, or a freshly generated one if
-	// it didn't. Present even on a Blocked response, so a client can
-	// retry in the same thread after rephrasing.
+	// it didn't.
 	ConversationID   string  `json:"conversation_id"`
 	SelectedModelID  string  `json:"selected_model_id"`
 	SelectedMode     string  `json:"selected_mode"`
@@ -430,13 +437,10 @@ type chatResponse struct {
 	// ResponseVersion.Images, Videos).
 	Images []conversation.Attachment `json:"images,omitempty"`
 	Videos []conversation.Attachment `json:"videos,omitempty"`
+	// Files: what the model sent from the terminal (ResponseVersion.Files).
+	Files []conversation.Attachment `json:"files,omitempty"`
 	// Reasoning: the model's thinking (see ResponseVersion.Reasoning).
 	Reasoning string `json:"reasoning,omitempty"`
-
-	// Blocked is true when Layer 1 moderation flagged the request before
-	// any generation happened -- ResponseText is then tosViolationMessage,
-	// not a model reply, and every other field is zero.
-	Blocked bool `json:"blocked,omitempty"`
 }
 
 // Mux returns an http.ServeMux with routes registered. POST /chat and
@@ -467,9 +471,18 @@ func (s *Server) Mux() *http.ServeMux {
 	mux.HandleFunc("POST /chat/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleChatStream)))))
 	mux.HandleFunc("GET /chat/stream/{stream_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleStreamResume)))))
 	mux.HandleFunc("POST /chat/stop", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleStreamStop)))))
+	mux.HandleFunc("POST /chat/approve", recovered(s.rateLimited(s.authenticated(s.handleApprove))))
+	mux.HandleFunc("GET /device/connect", recovered(s.rateLimited(s.authenticated(s.handleDeviceConnect))))
+	mux.HandleFunc("GET /device/status", recovered(s.rateLimited(s.authenticated(s.handleDeviceStatus))))
 	mux.HandleFunc("POST /chat/regenerate/stream", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleRegenerateStream)))))
 	mux.HandleFunc("GET /conversations/search", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleConversationSearch)))))
 	mux.HandleFunc("DELETE /projects/{project_id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleProjectDelete))))))
+	mux.HandleFunc("GET /account/models", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("PUT /account/models/order", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("POST /account/models/actions", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("POST /account/models", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("PATCH /account/models/{id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
+	mux.HandleFunc("DELETE /account/models/{id}", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleCustomModels)))))
 	mux.HandleFunc("GET /account/settings", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleSettingsGet)))))
 	mux.HandleFunc("PUT /account/settings", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.handleSettingsPut)))))
 	mux.HandleFunc("POST /conversations/{conversation_id}/compact", recovered(s.rateLimited(s.authenticated(s.userRateLimited(s.withRequestSlot(s.handleConversationCompact))))))
@@ -737,6 +750,7 @@ func (s *Server) handleConversationHistory(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
+	cleanPoeThinkingHistory(page.Messages)
 	response := conversationHistoryResponse{ConversationID: conversationID, Messages: page.Messages, NextCursor: page.NextCursor, CompactedThroughID: s.compactedThroughID(r, identity.UserID, conversationID)}
 	data, err := json.Marshal(response)
 	if err != nil {
@@ -806,7 +820,7 @@ func recovered(next http.HandlerFunc) http.HandlerFunc {
 //
 // This is the case that actually matters (audit.md's panic finding):
 // net/http's per-connection recovery only covers the handler goroutine,
-// so before this, one panic anywhere in classify/moderate -- or in any
+// so before this, one panic anywhere in request processing -- or in any
 // dependency they call -- dropped every in-flight request for every user,
 // not just the one request that tripped it.
 //
@@ -977,6 +991,9 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 	req.PlanID = identity.PlanID
 	req.providerKey = strings.TrimSpace(r.Header.Get(providerKeyHeader))
 	req.imageKey = strings.TrimSpace(r.Header.Get(imageKeyHeader))
+	if req.imageKey == "" {
+		req.imageKey = req.providerKey
+	}
 	req.Quote = cleanQuote(req.Quote)
 
 	if req.Message == "" && len(req.Attachments) == 0 {
@@ -1008,7 +1025,7 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 // handleChatStream's log.Printf right before each call site below), but
 // only a small allowlist of errors this package builds specifically to
 // be user-facing get their own Error() text quoted back verbatim.
-// Everything else -- prepare's classify/moderate/route/generate/
+// Everything else -- prepare's context/route/generate/
 // persistence failures -- gets replaced with a generic message instead:
 // those can carry a vendor's raw response text, a model/provider
 // identifier, or a database/Redis failure detail that a caller who just
@@ -1016,6 +1033,14 @@ func decodeChatRequest(w http.ResponseWriter, r *http.Request, plans map[string]
 // finding). Add a new case here, not a bare error string at the call
 // site, for any future error that's genuinely meant to reach the client.
 func clientErrorMessage(err error) string {
+	var service *provider.BotServiceError
+	if errors.As(err, &service) {
+		return service.Error()
+	}
+	var denied *provider.BotAccessDenied
+	if errors.As(err, &denied) {
+		return denied.Error()
+	}
 	var friendly userError
 	if errors.As(err, &friendly) {
 		return friendly.text
@@ -1035,7 +1060,7 @@ func clientErrorMessage(err error) string {
 	return "an internal error occurred processing this request"
 }
 
-// vendorErrorMessage turns a Polza refusal into something the user can act
+// vendorErrorMessage turns a Poe refusal into something the user can act
 // on. Requests run on the user's own key, so the vendor's own explanation
 // (bad key, empty balance, unknown model) is about their account and is
 // safe -- and necessary -- to show. 5xx bodies stay hidden.
@@ -1047,11 +1072,11 @@ func vendorErrorMessage(err error) string {
 	detail := provider.VendorMessage(statusErr.Body)
 	switch statusErr.StatusCode {
 	case http.StatusUnauthorized, http.StatusForbidden:
-		return "Polza AI rejected your API key. Check it in Settings → Account."
+		return "Poe rejected your API key. Check it in Settings → Account."
 	case http.StatusPaymentRequired:
-		return "Your Polza AI balance is too low for this request. Top it up on polza.ai."
+		return "Your Poe balance is too low for this request. Top it up on poe.com."
 	case http.StatusTooManyRequests:
-		return "Polza AI is rate limiting this key. Wait a moment and try again."
+		return "Poe is rate limiting this key. Wait a moment and try again."
 	}
 	if detail == "" {
 		detail = http.StatusText(statusErr.StatusCode)
@@ -1059,7 +1084,7 @@ func vendorErrorMessage(err error) string {
 	if len([]rune(detail)) > 300 {
 		detail = string([]rune(detail)[:300]) + "…"
 	}
-	return fmt.Sprintf("Polza AI: %s (HTTP %d)", detail, statusErr.StatusCode)
+	return fmt.Sprintf("Poe: %s (HTTP %d)", detail, statusErr.StatusCode)
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
@@ -1102,8 +1127,6 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request, identity aut
 //     answered.
 //   - "delta": one incremental text chunk -- {text}.
 //   - "done": generation finished successfully -- the full chatResponse.
-//   - "blocked": Layer 1 moderation flagged the request -- the full
-//     chatResponse (Blocked=true), no "meta"/"delta" ever preceded it.
 //   - "error": the request failed -- {message}.
 //   - "stopped": POST /chat/stop ended it (the partial reply is stored).
 //
@@ -1131,6 +1154,9 @@ type regenerateRequest struct {
 	ExtendedThinking *bool  `json:"extended_thinking,omitempty"`
 	Instructions     string `json:"instructions,omitempty"`
 	WebSearch        string `json:"web_search,omitempty"`
+	SearchMode       bool   `json:"search_mode,omitempty"`
+	ExecuteOn        string `json:"execute_on,omitempty"`
+	Approval         string `json:"approval,omitempty"`
 	// Video: the length, resolution and shape asked of a video model.
 	Video *videoChoice `json:"video,omitempty"`
 }
@@ -1187,10 +1213,16 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 		ExtendedThinking:    input.ExtendedThinking,
 		Instructions:        input.Instructions,
 		WebSearch:           input.WebSearch,
+		SearchMode:          input.SearchMode || history[len(history)-2].SearchMode,
+		ExecuteOn:           input.ExecuteOn,
+		Approval:            input.Approval,
 		Video:               input.Video,
 		providerKey:         strings.TrimSpace(r.Header.Get(providerKeyHeader)),
 		imageKey:            strings.TrimSpace(r.Header.Get(imageKeyHeader)),
 		regenerateMessageID: target.ID, regenerationHistoryDrop: 2,
+	}
+	if req.imageKey == "" {
+		req.imageKey = req.providerKey
 	}
 	if req.Persona != "" && !isValidPersona(req.Persona) {
 		http.Error(w, "unknown persona", http.StatusBadRequest)
@@ -1200,13 +1232,13 @@ func (s *Server) handleRegenerateStream(w http.ResponseWriter, r *http.Request, 
 }
 
 // preparedRequest holds everything shared between handle and handleStream
-// once classification, moderation, and history loading have all run --
+// once validation and history loading have run --
 // only how the actual generation call is made (and its result delivered)
 // differs between the two.
 type preparedRequest struct {
 	plan           limits.PlanLimits
 	conversationID string
-	classified     router.ClassifierOutput
+	profile        router.RequestProfile
 	locked         bool
 	messages       []provider.Message
 
@@ -1228,54 +1260,32 @@ type preparedRequest struct {
 	// what an image model edits when the message attaches none.
 	lastImage *conversation.Attachment
 
-	// requestID identifies this one /chat call's costlog.Store.Record
-	// entries -- shared by the classify/moderate entries recordAuxCostLog
-	// logs partway through prepare and the generation entry finalize logs
-	// afterward, so all three of one call's billed model calls tie
-	// together for reconciliation. Distinct from conversationID (spans
-	// every turn of a thread) and chatRequest.IdempotencyKey
-	// (client-supplied, optional, for retry dedup). Generated fresh per
-	// prepare call the same way conversation.NewID mints one: 16 random
-	// bytes, hex-encoded.
+	// requestID groups generation, title, summary and search usage for one turn.
 	requestID string
 }
 
-// prepare runs classify + moderate (concurrently) -> check spend lock ->
-// load conversation history, the sequence both handle and handleStream
-// need before they can route and generate. If Layer 1 moderation flags
-// the request, blocked is non-nil and the caller must return it as-is
-// without running anything below (no route, no generate).
-func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanLimits) (prepared preparedRequest, blocked *chatResponse, err error) {
+// prepare validates budget and project access, then loads conversation context.
+func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanLimits) (prepared preparedRequest, err error) {
 	if err := s.validateRequest(req); err != nil {
-		return preparedRequest{}, nil, err
+		return preparedRequest{}, err
 	}
 	var project conversation.Project
 	if req.ProjectID != "" {
 		project, err = s.Conversations.GetProject(ctx, req.UserID, req.ProjectID)
 		if errors.Is(err, conversation.ErrConversationNotFound) {
-			return preparedRequest{}, nil, fmt.Errorf("%w: unknown project", errInvalidRequest)
+			return preparedRequest{}, fmt.Errorf("%w: unknown project", errInvalidRequest)
 		}
 		if err != nil {
-			return preparedRequest{}, nil, fmt.Errorf("load project: %w", err)
+			return preparedRequest{}, fmt.Errorf("load project: %w", err)
 		}
 	}
-	classifierForRequest := s.Classifier
-	classifierForRequest.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Classifier.Client, inputRate: s.Classifier.CostInputPerMTok, outputRate: s.Classifier.CostOutputPerMTok}
-	moderatorForRequest := s.Moderator
-	moderatorForRequest.Client = auxiliaryClient{server: s, request: req, plan: plan, client: s.Moderator.Client, inputRate: s.Moderator.CostInputPerMTok, outputRate: s.Moderator.CostOutputPerMTok}
-
-	// Checked first, before anything else in prepare runs: classify/
-	// moderate are themselves billed calls (see recordAuxCostLog below), so
-	// an already-over-the-anti-bot-ceiling request should never reach even
-	// those, let alone routing/generation -- see ErrInstantCapExceeded's
-	// doc comment and audit.md finding #2. limits.CheckInstantOverCap
-	// existed before this but was never wired into the request pipeline.
+	// Reject requests over budget before any model call.
 	overInstantCap, err := limits.CheckInstantOverCap(ctx, s.Store, plan, req.UserID)
 	if err != nil {
-		return preparedRequest{}, nil, fmt.Errorf("check instant cap: %w", err)
+		return preparedRequest{}, fmt.Errorf("check instant cap: %w", err)
 	}
 	if overInstantCap {
-		return preparedRequest{}, nil, ErrInstantCapExceeded
+		return preparedRequest{}, ErrInstantCapExceeded
 	}
 
 	conversationID := req.ConversationID
@@ -1283,115 +1293,32 @@ func (s *Server) prepare(ctx context.Context, req chatRequest, plan limits.PlanL
 		conversationID = conversation.NewID()
 	}
 
-	// Minted here rather than at the bottom of prepare (where it used to
-	// live) so the classify/moderate cost_log entries below and the
-	// eventual generation's entry (finalize) share one RequestID -- all
-	// three of a single /chat call's billed model calls tie together for
-	// reconciliation, not just the generation.
+	// Share an accounting ID across this turn's model calls.
 	requestID := conversation.NewID()
 
-	// Layer 1 moderation (README "Moderation") runs concurrently with
-	// classification -- both are cheap-model calls on the same raw
-	// request text, so there's no reason to pay their latency twice. This
-	// repo has no streaming response pipeline yet, so it skips the
-	// documented "generate concurrently into a buffer, discard on flag"
-	// optimization: without streaming, generating before moderation
-	// clears would only ever waste money, never save user-visible
-	// latency, so generation simply waits for both results below instead.
-	//
-	// Both only ever look at req.Message, never at conversation history --
-	// a deliberate limitation, not an oversight: moderating/classifying
-	// full history on every turn multiplies their cost by conversation
-	// length for comparatively little benefit on the common case (a
-	// violation is usually in the newest message, not buried in an
-	// otherwise-fine history). Revisit if that assumption turns out
-	// wrong in practice.
-	//
-	// Moderation failing (as opposed to flagging) fails the whole request
-	// closed rather than silently letting an unmoderated message through
-	// -- an outage of the moderation model becomes an outage of chat.
-	// provider.CircuitBreakerClient (README pre-launch checklist) exists
-	// but currently only wraps generation calls (see cmd/server/main.go),
-	// not this one -- extending it here would make a softer fallback
-	// safe to add.
-	var (
-		classified    router.ClassifierOutput
-		classifyUsage *provider.GenerateResult
-		classifyErr   error
-		modResult     moderation.Result
-		modUsage      *provider.GenerateResult
-		modErr        error
-	)
-	if s.RouterDisabled {
-		// Direct mode: no classifier, no moderation -- the user picked the
-		// model themselves and pays for it on their own key. Manual routing
-		// never reads the classifier output, so the zero value is enough.
-		return s.prepareHistory(ctx, req, plan, project, conversationID, requestID, router.ClassifierOutput{})
+	// Routing uses a fixed local profile without an auxiliary model call.
+	profile := router.RequestProfile{
+		TaskCategory: "general", TaskIntent: "answer",
+		ModalityInput: []string{"text"}, ModalityOutputExpected: []string{"text"},
+		ReasoningDepth: "moderate", CreativityLevel: "low", ComplexityScore: 0.5, Confidence: 1,
 	}
-
-	var wg sync.WaitGroup
-	wg.Add(2)
-	// Both goroutines recover their own panics into their err variable
-	// (see recoverGoroutine): a panic escaping either one would otherwise
-	// take the whole process down, dropping every other user's in-flight
-	// request along with this one. Moderation failing closed then applies
-	// to a panic exactly as it does to an ordinary error below.
-	go func() {
-		defer wg.Done()
-		defer recoverGoroutine("classifier.Classify", &classifyErr)
-		classified, classifyUsage, classifyErr = classifierForRequest.Classify(ctx, req.Message)
-	}()
-	go func() {
-		defer wg.Done()
-		defer recoverGoroutine("moderation.Moderate", &modErr)
-		modResult, modUsage, modErr = moderatorForRequest.Moderate(ctx, req.Message)
-	}()
-	wg.Wait()
-
-	// Logged unconditionally here, before any of the branches below
-	// return early: both calls already happened (and were billed) by this
-	// point regardless of whether moderation flags/errors or classify
-	// errors afterward -- see README pre-launch checklist item 7
-	// ("classifier and moderation calls" were the still-open piece).
-	s.recordAuxCostLog(ctx, req.UserID, requestID, "classify", s.Classifier.APIModelID, s.Classifier.CostInputPerMTok, s.Classifier.CostOutputPerMTok, classifyUsage)
-	s.recordAuxCostLog(ctx, req.UserID, requestID, "moderate", s.Moderator.APIModelID, s.Moderator.CostInputPerMTok, s.Moderator.CostOutputPerMTok, modUsage)
-
-	if modErr != nil {
-		return preparedRequest{}, nil, fmt.Errorf("moderate: %w", modErr)
+	if req.SearchMode {
+		profile.RequiredTools = []string{router.ToolWebSearch}
 	}
-	if modResult.Flagged {
-		log.Printf("server: /chat blocked by moderation for user_id=%s categories=%v reason=%q", req.UserID, modResult.Categories, modResult.Reason)
-		// The block itself already happened (nothing below this point
-		// runs) regardless of whether it's successfully recorded --
-		// logging failure is a monitoring gap, not a reason to let a
-		// flagged message through.
-		if err := s.ModerationLog.Record(ctx, moderation.BlockEntry{
-			UserID:     req.UserID,
-			Categories: modResult.Categories,
-			Reason:     modResult.Reason,
-			Timestamp:  time.Now(),
-		}); err != nil {
-			log.Printf("server: failed to record moderation block for user_id=%s: %v", req.UserID, err)
-		}
-		return preparedRequest{}, &chatResponse{ConversationID: conversationID, Blocked: true, ResponseText: tosViolationMessage}, nil
-	}
-	if classifyErr != nil {
-		return preparedRequest{}, nil, fmt.Errorf("classify: %w", classifyErr)
-	}
-	return s.prepareHistory(ctx, req, plan, project, conversationID, requestID, classified)
+	return s.prepareHistory(ctx, req, plan, project, conversationID, requestID, profile)
 }
 
 // prepareHistory is the second half of prepare, shared by the routed and
 // direct (RouterDisabled) paths: spend lock, history/summary, and the final
 // message list with persona, custom instructions and project context.
-func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limits.PlanLimits, project conversation.Project, conversationID, requestID string, classified router.ClassifierOutput) (preparedRequest, *chatResponse, error) {
+func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limits.PlanLimits, project conversation.Project, conversationID, requestID string, profile router.RequestProfile) (preparedRequest, error) {
 	locked, err := limits.CheckThinkingMaxLock(ctx, s.Store, plan, req.UserID)
 	if err != nil {
-		return preparedRequest{}, nil, fmt.Errorf("check thinking_max lock: %w", err)
+		return preparedRequest{}, fmt.Errorf("check thinking_max lock: %w", err)
 	}
 	files, err := s.loadRequestAttachments(ctx, req, conversationID)
 	if err != nil {
-		return preparedRequest{}, nil, err
+		return preparedRequest{}, err
 	}
 
 	var tail []conversation.Message
@@ -1421,12 +1348,12 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 		// history exists solely in this request body and is discarded after it.
 		summaryState, history, err := s.loadHistory(ctx, req.UserID, conversationID)
 		if err != nil {
-			return preparedRequest{}, nil, fmt.Errorf("load conversation history: %w", err)
+			return preparedRequest{}, fmt.Errorf("load conversation history: %w", err)
 		}
 		firstTurn = len(history) == 0 && summaryState.CoversThrough == 0
 		if req.regenerationHistoryDrop > 0 {
 			if len(history) < req.regenerationHistoryDrop || history[len(history)-1].ID != req.regenerateMessageID {
-				return preparedRequest{}, nil, fmt.Errorf("%w: regeneration target changed", errInvalidRequest)
+				return preparedRequest{}, fmt.Errorf("%w: regeneration target changed", errInvalidRequest)
 			}
 			history = history[:len(history)-req.regenerationHistoryDrop]
 		}
@@ -1479,7 +1406,7 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 	// far smaller than the conversation's full stored history.
 	return preparedRequest{
 		conversationID:         conversationID,
-		classified:             classified,
+		profile:                profile,
 		locked:                 locked,
 		messages:               messages,
 		estimatedContextTokens: tokenizer.EstimateMessages(messages),
@@ -1488,18 +1415,10 @@ func (s *Server) prepareHistory(ctx context.Context, req chatRequest, plan limit
 		attachments:            attachmentRefs(files),
 		lastImage:              lastImage,
 		title:                  s.startTitle(ctx, req, firstTurn, preparedRequest{plan: plan, conversationID: conversationID, requestID: requestID}, files),
-	}, nil, nil
+	}, nil
 }
 
-// recordAuxCostLog logs a cost_log entry for the classify/moderate call
-// identified by mode ("classify" or "moderate") -- the generation entry
-// itself is still logged separately by finalize, since it alone knows the
-// selected model/mode and needs RouteResult. usage nil means the
-// underlying Client.Generate call never completed (see
-// Classifier.Classify/Moderator.Moderate's doc comments), i.e. nothing
-// was billed, so there's nothing to log. Best-effort, matching
-// ModerationLog.Record just above: a logging failure costs one missing
-// analytics row, not the request itself.
+// recordAuxCostLog records titles and web-search helper usage.
 func (s *Server) recordAuxCostLog(ctx context.Context, userID, requestID, mode, apiModelID string, costInputPerMTok, costOutputPerMTok float64, usage *provider.GenerateResult) {
 	if usage == nil {
 		return
@@ -1643,7 +1562,7 @@ func directGenerate(ctx context.Context, gen provider.Client, apiModelID string,
 // every text chunk as it arrives (and onReasoning, if set, for every piece
 // of the model's thinking), and returns the stream's final GenerateResult
 // once the vendor signals it's done.
-func streamingGenerate(onDelta func(delta string), onReasoning func(text string)) generateCaller {
+func streamingGenerate(onDelta func(delta string), onReasoning func(text string), onReset ...func(string)) generateCaller {
 	return func(ctx context.Context, gen provider.Client, apiModelID string, messages []provider.Message) (provider.GenerateResult, error) {
 		streamingClient, ok := gen.(provider.StreamingClient)
 		if !ok {
@@ -1663,6 +1582,14 @@ func streamingGenerate(onDelta func(delta string), onReasoning func(text string)
 			}
 			if chunk.Reasoning != "" && onReasoning != nil {
 				onReasoning(chunk.Reasoning)
+			}
+			if chunk.Reset {
+				partial.Reset()
+				if len(onReset) > 0 {
+					onReset[0](chunk.Delta)
+					partial.WriteString(chunk.Delta)
+					continue
+				}
 			}
 			if chunk.Delta != "" {
 				if firstDelta != nil {
@@ -1701,8 +1628,8 @@ func streamingGenerate(onDelta func(delta string), onReasoning func(text string)
 func (s *Server) routeAndCall(ctx context.Context, req chatRequest, prepared preparedRequest, onRoute func(router.RouteResult), call generateCaller, onActivity func([]conversation.ToolActivity)) (router.RouteResult, router.Model, webAnswer, error) {
 	excludedModelIDs := map[string]bool{}
 	for attempt := 0; ; attempt++ {
-		catalogRouter := s.router()
-		result, err := catalogRouter.Route(prepared.classified, req.RequestedMode, req.ManualModelID, prepared.estimatedContextTokens, prepared.locked, excludedModelIDs)
+		catalogRouter := s.requestRouter(req)
+		result, err := catalogRouter.Route(prepared.profile, req.RequestedMode, req.ManualModelID, prepared.estimatedContextTokens, prepared.locked, excludedModelIDs)
 		if err != nil {
 			return router.RouteResult{}, router.Model{}, webAnswer{}, fmt.Errorf("route: %w", err)
 		}
@@ -1779,7 +1706,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 	version := conversation.ResponseVersion{
 		Content: genResult.Text, ModelID: model.ID, CreatedAt: now,
 		Activity: answer.Activity, Sources: webLinks(genResult.Citations), ThoughtMS: thought.Milliseconds(),
-		Questionnaire: answer.Questionnaire, Images: answer.Images, Videos: answer.Videos, Reasoning: answer.Reasoning,
+		Questionnaire: answer.Questionnaire, Images: answer.Images, Videos: answer.Videos, Files: answer.Files, Reasoning: answer.Reasoning,
 	}
 	if len(version.Images) > 0 || len(version.Videos) > 0 {
 		version.ThoughtMS = 0 // a picture isn't "thought for N seconds"
@@ -1816,6 +1743,7 @@ func (s *Server) finalize(ctx context.Context, req chatRequest, prepared prepare
 		Questionnaire:    version.Questionnaire,
 		Images:           version.Images,
 		Videos:           version.Videos,
+		Files:            version.Files,
 		Reasoning:        version.Reasoning,
 	}
 	if req.regenerateMessageID > 0 {
@@ -1842,7 +1770,7 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 			return regenerated, fmt.Errorf("persist regenerated response: %w", err)
 		}
 	} else {
-		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, Attachments: prepared.attachments, Quote: req.Quote, CreatedAt: now}); err != nil {
+		if err := s.Conversations.Append(ctx, req.UserID, prepared.conversationID, conversation.Message{Role: conversation.RoleUser, Content: req.Message, Attachments: prepared.attachments, Quote: req.Quote, SearchMode: req.SearchMode, CreatedAt: now}); err != nil {
 			log.Printf("server: failed to persist user message for conversation_id=%s: %v", prepared.conversationID, err)
 		}
 		if len(prepared.attachments) > 0 && s.Attachments != nil {
@@ -1861,7 +1789,7 @@ func (s *Server) persistTurn(ctx context.Context, req chatRequest, prepared prep
 	}
 	// Generated pictures and videos join the chat's files only now that the
 	// answer showing them is stored, the same order uploads follow.
-	if made := append(attachmentIDs(version.Images), attachmentIDs(version.Videos)...); len(made) > 0 && s.Attachments != nil {
+	if made := append(append(attachmentIDs(version.Images), attachmentIDs(version.Videos)...), attachmentIDs(version.Files)...); len(made) > 0 && s.Attachments != nil {
 		if err := s.Attachments.Claim(ctx, req.UserID, prepared.conversationID, made); err != nil {
 			log.Printf("server: claim generated media for conversation_id=%s: %v", prepared.conversationID, err)
 		}
@@ -1889,7 +1817,7 @@ func (s *Server) persistStopped(ctx context.Context, req chatRequest, prepared p
 	}
 	persistCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 5*time.Second)
 	defer cancel()
-	msg, err := s.persistTurn(persistCtx, req, prepared, model, conversation.ResponseVersion{Content: partial, ModelID: model.ID, CreatedAt: time.Now(), Activity: activity, ThoughtMS: thought.Milliseconds(), Reasoning: reasoning})
+	msg, err := s.persistTurn(persistCtx, req, prepared, model, conversation.ResponseVersion{Content: partial, ModelID: model.ID, CreatedAt: time.Now(), Activity: activity, ThoughtMS: thought.Milliseconds(), Reasoning: reasoning, Files: inlineImageFiles(partial)})
 	if err != nil {
 		log.Printf("server: persist stopped response for conversation_id=%s: %v", prepared.conversationID, err)
 		return conversation.Message{}, false
@@ -1918,7 +1846,7 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
 		return
 	}
 
-	outputTokens := tokenizer.EstimateText(partialText)
+	outputTokens := tokenizer.EstimateText(inlineImagePattern.ReplaceAllString(partialText, ""))
 	if outputTokens == 0 {
 		log.Printf("server: generation aborted with no measurable output, upper budget reservation retained: request_id=%s user_id=%s model_id=%s: %v",
 			prepared.requestID, req.UserID, model.ID, cause)
@@ -1947,7 +1875,7 @@ func (s *Server) recordAbortedSpend(ctx context.Context, req chatRequest, prepar
 // reserveIdempotent claims req's idempotency key, if it has one and
 // s.Idempotency is configured. It returns (cached response, true, nil) if
 // this exact (user_id, idempotency_key) already completed -- the caller
-// must return that instead of doing any work (no re-classify, re-moderate,
+// must return that instead of doing any work (no repeated generation,
 // re-generate, or re-bill). It returns (chatResponse{}, false, nil) if this
 // is a genuinely new attempt that should proceed normally, in which case
 // the caller must report its outcome back via finishIdempotent. A request
@@ -2016,13 +1944,17 @@ func (s *Server) finishIdempotent(ctx context.Context, req chatRequest, resp cha
 }
 
 // handle runs the full non-streaming sequence: reserve the idempotency key
-// (if any) -> prepare (classify + moderate concurrently -> check spend lock
+// (if any) -> prepare (check spend lock
 // -> load history) -> route + generate (with circuit-open failover) ->
 // finalize (persist + record spend) -> report the outcome back to the
 // idempotency store. Split out from handleChat so tests can call it
 // directly with a fixed request/plan and inspect the typed result instead
 // of parsing HTTP output.
 func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
+	if err := s.loadCustomModel(ctx, &req); err != nil {
+		return chatResponse{}, err
+	}
+	ctx = provider.WithPoeRequest(ctx)
 	s.knowModel(ctx, req.ManualModelID)
 	if err := s.validateRequest(req); err != nil {
 		return chatResponse{}, err
@@ -2052,12 +1984,9 @@ func (s *Server) handle(ctx context.Context, req chatRequest, plan limits.PlanLi
 // handleOnce is handle's actual work, run at most once per idempotency key
 // -- see handle's wrapping via reserveIdempotent/finishIdempotent.
 func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.PlanLimits) (chatResponse, error) {
-	prepared, blocked, err := s.prepare(ctx, req, plan)
+	prepared, err := s.prepare(ctx, req, plan)
 	if err != nil {
 		return chatResponse{}, err
-	}
-	if blocked != nil {
-		return *blocked, nil
 	}
 
 	result, model, answer, err := s.routeAndCall(ctx, req, prepared, nil, directGenerate, nil)
@@ -2077,13 +2006,17 @@ func (s *Server) handleOnce(ctx context.Context, req chatRequest, plan limits.Pl
 // pushed to send("delta", ...) as they arrive instead of being buffered
 // into one final response. send is also used for the "meta" event (once
 // routing picks a model, before generation starts) and the terminal
-// "done"/"blocked" event -- see handleChatStream's doc comment for the
+// "done" event -- see handleChatStream's doc comment for the
 // full event contract. A cached idempotent replay skips straight to
-// "done"/"blocked" -- no "meta"/"delta" events, since no generation
+// "done" -- no "meta"/"delta" events, since no generation
 // actually happens on a replay. Split out from handleChatStream the same
 // way handle is split from handleChat, for the same reason: testable
 // without parsing SSE wire output.
 func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.PlanLimits, send func(event string, payload any)) error {
+	if err := s.loadCustomModel(ctx, &req); err != nil {
+		return err
+	}
+	ctx = provider.WithPoeRequest(ctx)
 	s.knowModel(ctx, req.ManualModelID)
 	if err := s.validateRequest(req); err != nil {
 		return err
@@ -2096,11 +2029,7 @@ func (s *Server) handleStream(ctx context.Context, req chatRequest, plan limits.
 	if cached, found, err := s.reserveIdempotent(ctx, &req); err != nil {
 		return err
 	} else if found {
-		if cached.Blocked {
-			send("blocked", cached)
-		} else {
-			send("done", cached)
-		}
+		send("done", cached)
 		return nil
 	}
 
@@ -2131,13 +2060,9 @@ func clipReasoning(text string) string {
 // idempotency key -- see handleStream's wrapping via
 // reserveIdempotent/finishIdempotent.
 func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan limits.PlanLimits, send func(event string, payload any)) (chatResponse, error) {
-	prepared, blocked, err := s.prepare(ctx, req, plan)
+	prepared, err := s.prepare(ctx, req, plan)
 	if err != nil {
 		return chatResponse{}, err
-	}
-	if blocked != nil {
-		send("blocked", *blocked)
-		return *blocked, nil
 	}
 	// A new chat's name goes out as soon as the naming model has one.
 	prepared.title.follow(func(title string) {
@@ -2159,7 +2084,7 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 	// The model's thinking goes out as it comes (the client shows it only
 	// when asked) and is kept with the answer, up to maxReasoningRunes.
 	var reasoning strings.Builder
-	call := streamingGenerate(func(delta string) {
+	onDelta := func(delta string) {
 		mu.Lock()
 		if waiting {
 			thoughtUntil, waiting = time.Now(), false
@@ -2167,11 +2092,19 @@ func (s *Server) handleStreamOnce(ctx context.Context, req chatRequest, plan lim
 		streamed.WriteString(delta)
 		mu.Unlock()
 		send("delta", map[string]string{"text": delta})
-	}, func(text string) {
+	}
+	ctx = context.WithValue(ctx, inlineImageDeltaKey{}, onDelta)
+	call := streamingGenerate(onDelta, func(text string) {
 		mu.Lock()
 		reasoning.WriteString(text)
 		mu.Unlock()
 		send("reasoning", map[string]string{"text": text})
+	}, func(text string) {
+		mu.Lock()
+		streamed.Reset()
+		streamed.WriteString(text)
+		mu.Unlock()
+		send("delta", map[string]any{"text": text, "reset": true})
 	})
 	onActivity := func(activity []conversation.ToolActivity) {
 		mu.Lock()

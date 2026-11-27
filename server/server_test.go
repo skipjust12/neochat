@@ -15,12 +15,10 @@ import (
 	"time"
 
 	"neochat/auth"
-	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
 	"neochat/idempotency"
 	"neochat/limits"
-	"neochat/moderation"
 	"neochat/provider"
 	"neochat/ratelimit"
 	"neochat/router"
@@ -58,28 +56,14 @@ func testWeights() router.Weights {
 	}
 }
 
-const classifierReply = `{
-	"schema_version": "1.1", "task_category": "general", "task_intent": "answer", "language": "en",
-	"modality_input": ["text"], "modality_output_expected": ["text"],
-	"reasoning_depth": "high", "creativity_level": "low", "required_tools": [],
-	"expected_output_length": "medium", "estimated_output_tokens": 300,
-	"output_format": "", "complexity_score": 0.8, "context_dependency": "light",
-	"confidence": 0.9, "content_flags": [], "safety_risk_score": 0.0
-}`
-
-const notFlaggedReply = `{"flagged": false, "categories": [], "reason": ""}`
-
 func newTestServer(t *testing.T, genResponses []provider.GenerateResult) (*Server, *provider.FakeClient) {
 	t.Helper()
-	classifierClient := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}}}
-	moderationClient := &provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}}}
+
 	genClient := &provider.FakeClient{Responses: genResponses}
 
 	return &Server{
-		Router:        router.NewRouter(testCatalog(), testWeights()),
-		Classifier:    classifier.New(classifierClient, "fake-classifier-model", "system prompt"),
-		Moderator:     moderation.New(moderationClient, "fake-moderation-model", "system prompt"),
-		ModerationLog: moderation.NewInMemoryBlockLog(),
+		Router: router.NewRouter(testCatalog(), testWeights()),
+
 		Conversations: conversation.NewInMemoryStore(),
 		Store:         limits.NewInMemorySpendStore(),
 		Idempotency:   idempotency.NewInMemoryStore(),
@@ -90,23 +74,6 @@ func newTestServer(t *testing.T, genResponses []provider.GenerateResult) (*Serve
 		Generators: map[string]provider.Client{"openai": genClient},
 		Auth:       auth.NewInMemoryStore(),
 	}, genClient
-}
-
-// repeatableAuxClients replaces s.Classifier/s.Moderator with fakes that
-// answer the same scripted reply on every call, via
-// provider.FakeClient.PerModel (which, unlike Responses, is never
-// consumed). newTestServer's defaults script exactly one reply each and
-// panic once exhausted -- the right default for the common
-// single-request test, since it surfaces an unintended extra vendor call
-// loudly -- but it gets in the way of a test that has to push more than
-// one request all the way through the pipeline.
-func repeatableAuxClients(s *Server) {
-	s.Classifier = classifier.New(
-		&provider.FakeClient{PerModel: map[string]provider.GenerateResult{"fake-classifier-model": {Text: classifierReply}}},
-		"fake-classifier-model", "system prompt")
-	s.Moderator = moderation.New(
-		&provider.FakeClient{PerModel: map[string]provider.GenerateResult{"fake-moderation-model": {Text: notFlaggedReply}}},
-		"fake-moderation-model", "system prompt")
 }
 
 // authHeader mints a fresh API key for (userID, planID) against s.Auth --
@@ -167,14 +134,6 @@ func TestHandle_HappyPath(t *testing.T) {
 	}
 }
 
-// TestHandle_RecordsCostLogEntry checks that a successful generation logs
-// a costlog.Store record with the real token usage/cost -- distinct from
-// Store's rolling-window spend accounting (checked above), this is the
-// per-request record for billing reconciliation and unit-economics
-// tracking (README pre-launch checklist item 7). newTestServer's
-// classifier/moderator also log their own entries (see
-// TestHandle_LogsClassifyAndModerateCostEntries) -- this test picks out
-// the generation one specifically by Mode.
 func TestHandle_RecordsCostLogEntry(t *testing.T) {
 	s, _ := newTestServer(t, []provider.GenerateResult{
 		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
@@ -208,10 +167,6 @@ func TestHandle_RecordsCostLogEntry(t *testing.T) {
 	}
 }
 
-// findCostLogEntry returns the first entry with the given Mode, and
-// whether one was found -- helper for tests that need to pick one
-// specific call's record out of a /chat request's several (classify,
-// moderate, generate).
 func findCostLogEntry(entries []router.CostLogEntry, mode string) (router.CostLogEntry, bool) {
 	for _, e := range entries {
 		if e.Mode == mode {
@@ -219,102 +174,6 @@ func findCostLogEntry(entries []router.CostLogEntry, mode string) (router.CostLo
 		}
 	}
 	return router.CostLogEntry{}, false
-}
-
-// TestHandle_LogsClassifyAndModerateCostEntries checks that both the
-// classifier and moderation calls log their own cost_log entry -- README
-// pre-launch checklist item 7's previously-open "classifier and
-// moderation calls" gap -- sharing the same RequestID as the eventual
-// generation entry so all three of one /chat call's billed model calls
-// tie together.
-func TestHandle_LogsClassifyAndModerateCostEntries(t *testing.T) {
-	s, _ := newTestServer(t, []provider.GenerateResult{
-		{Text: "here is the answer", InputTokens: 1000, OutputTokens: 500},
-	})
-	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{
-		{Text: classifierReply, InputTokens: 1570, OutputTokens: 150},
-	}}, "fake-classifier-model", "system prompt")
-	s.Classifier.CostInputPerMTok, s.Classifier.CostOutputPerMTok = 0.3, 2.5
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
-		{Text: notFlaggedReply, InputTokens: 170, OutputTokens: 20},
-	}}, "fake-moderation-model", "system prompt")
-	s.Moderator.CostInputPerMTok, s.Moderator.CostOutputPerMTok = 0.03, 0.17
-
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "explain recursion", RequestedMode: "thinking", EstimatedContextTokens: 2000}
-	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	entries := s.CostLog.(*costlog.InMemoryStore).Entries()
-	if len(entries) != 3 {
-		t.Fatalf("len(CostLog.Entries()) = %d, want 3 (classify, moderate, generate)", len(entries))
-	}
-
-	classifyEntry, ok := findCostLogEntry(entries, "classify")
-	if !ok {
-		t.Fatalf("no cost_log entry with Mode=classify among %+v", entries)
-	}
-	if classifyEntry.ModelID != "fake-classifier-model" {
-		t.Errorf("classify ModelID = %q, want fake-classifier-model", classifyEntry.ModelID)
-	}
-	if classifyEntry.CostUSD <= 0 {
-		t.Errorf("classify CostUSD = %.6f, want > 0", classifyEntry.CostUSD)
-	}
-
-	moderateEntry, ok := findCostLogEntry(entries, "moderate")
-	if !ok {
-		t.Fatalf("no cost_log entry with Mode=moderate among %+v", entries)
-	}
-	if moderateEntry.ModelID != "fake-moderation-model" {
-		t.Errorf("moderate ModelID = %q, want fake-moderation-model", moderateEntry.ModelID)
-	}
-	if moderateEntry.CostUSD <= 0 {
-		t.Errorf("moderate CostUSD = %.6f, want > 0", moderateEntry.CostUSD)
-	}
-
-	generateEntry, ok := findCostLogEntry(entries, "thinking")
-	if !ok {
-		t.Fatalf("no cost_log entry with Mode=thinking among %+v", entries)
-	}
-	if classifyEntry.RequestID == "" || classifyEntry.RequestID != moderateEntry.RequestID || classifyEntry.RequestID != generateEntry.RequestID {
-		t.Errorf("expected all three entries to share one RequestID, got classify=%q moderate=%q generate=%q",
-			classifyEntry.RequestID, moderateEntry.RequestID, generateEntry.RequestID)
-	}
-}
-
-// TestHandle_LogsClassifyAndModerateCostEntriesWhenModerationBlocks checks
-// that a moderation-flagged request -- which never reaches generation --
-// still logs the classify/moderate entries, since both calls happened
-// (and were billed) regardless of the verdict. Mirrors
-// TestHandle_ModerationFlaggedBlocksBeforeGeneration's "no generate calls"
-// assertion, one layer further down the pipeline: no generation entry,
-// but the two upstream ones are still expected.
-func TestHandle_LogsClassifyAndModerateCostEntriesWhenModerationBlocks(t *testing.T) {
-	s, _ := newTestServer(t, nil)
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
-		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`, InputTokens: 170, OutputTokens: 20},
-	}}, "fake-moderation-model", "system prompt")
-	s.Moderator.CostInputPerMTok, s.Moderator.CostOutputPerMTok = 0.03, 0.17
-
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "bad request", RequestedMode: "instant", EstimatedContextTokens: 100}
-	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	entries := s.CostLog.(*costlog.InMemoryStore).Entries()
-	if len(entries) != 2 {
-		t.Fatalf("len(CostLog.Entries()) = %d, want 2 (classify + moderate, no generation)", len(entries))
-	}
-	if _, ok := findCostLogEntry(entries, "classify"); !ok {
-		t.Errorf("no cost_log entry with Mode=classify among %+v", entries)
-	}
-	moderateEntry, ok := findCostLogEntry(entries, "moderate")
-	if !ok {
-		t.Fatalf("no cost_log entry with Mode=moderate among %+v", entries)
-	}
-	if moderateEntry.InputTokens != 170 || moderateEntry.OutputTokens != 20 {
-		t.Errorf("moderate tokens = %d/%d, want 170/20", moderateEntry.InputTokens, moderateEntry.OutputTokens)
-	}
 }
 
 // TestHandle_PrependsSystemPromptWhenConfigured checks that a configured
@@ -385,17 +244,13 @@ func TestHandle_NoSystemMessageWhenPersonaPromptNotWrittenYet(t *testing.T) {
 	if len(genClient.Requests) != 1 {
 		t.Fatalf("expected exactly 1 generate call, got %d", len(genClient.Requests))
 	}
-	for _, m := range genClient.Requests[0].Messages {
+	for _, m := range withoutIdentityNote(genClient.Requests[0].Messages) {
 		if m.Role == "system" {
 			t.Errorf("expected no system message for a persona with no loaded prompt, got %+v", genClient.Requests[0].Messages)
 		}
 	}
 }
 
-// TestServeHTTP_UnknownPersonaRejected checks an unrecognized persona name
-// (a typo, or a client not yet updated to a persona list change) is
-// rejected up front with 400, before any classify/moderate/route/generate
-// work happens.
 func TestServeHTTP_UnknownPersonaRejected(t *testing.T) {
 	s, genClient := newTestServer(t, nil)
 
@@ -411,37 +266,6 @@ func TestServeHTTP_UnknownPersonaRejected(t *testing.T) {
 	}
 	if len(genClient.Requests) != 0 {
 		t.Errorf("expected no generate calls for a rejected request, got %d", len(genClient.Requests))
-	}
-}
-
-// TestHandle_ClassifyAndModerateRespectContextCancellation verifies the
-// README pre-launch checklist's "request-level cancellation" item at the
-// classify/moderate stage: if the client disconnects (net/http cancels
-// r.Context()) while those two calls are still in flight, handle() must
-// not hang waiting for them -- both goroutines should return promptly
-// once ctx is done, since they're passed the same ctx as everything
-// else.
-func TestHandle_ClassifyAndModerateRespectContextCancellation(t *testing.T) {
-	s, _ := newTestServer(t, nil)
-	s.Classifier = classifier.New(&provider.FakeClient{Block: make(chan struct{})}, "fake-classifier-model", "system prompt")
-	s.Moderator = moderation.New(&provider.FakeClient{Block: make(chan struct{})}, "fake-moderation-model", "system prompt")
-
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
-	defer cancel()
-
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
-	start := time.Now()
-	_, err := s.handle(ctx, req, s.Plans["pro"])
-	elapsed := time.Since(start)
-
-	if err == nil {
-		t.Fatal("expected an error once the context deadline is exceeded")
-	}
-	if !errors.Is(err, context.DeadlineExceeded) {
-		t.Errorf("expected the error to wrap context.DeadlineExceeded, got: %v", err)
-	}
-	if elapsed > 2*time.Second {
-		t.Errorf("handle() took %s to return, want well under 2s", elapsed)
 	}
 }
 
@@ -484,10 +308,7 @@ func TestHandle_ConversationHistoryCarriesToNextTurn(t *testing.T) {
 		{Text: "first answer", InputTokens: 100, OutputTokens: 50},
 		{Text: "second answer", InputTokens: 100, OutputTokens: 50},
 	})
-	// Two handle() calls means the classifier/moderator fakes need two
 	// scripted replies each, not newTestServer's default one.
-	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
 
 	req1 := chatRequest{UserID: "u1", PlanID: "pro", Message: "what is recursion?", RequestedMode: "instant", EstimatedContextTokens: 100}
 	resp1, err := s.handle(context.Background(), req1, s.Plans["pro"])
@@ -503,7 +324,7 @@ func TestHandle_ConversationHistoryCarriesToNextTurn(t *testing.T) {
 	if len(genClient.Requests) != 2 {
 		t.Fatalf("expected 2 generate calls, got %d", len(genClient.Requests))
 	}
-	turn2Messages := genClient.Requests[1].Messages
+	turn2Messages := withoutIdentityNote(genClient.Requests[1].Messages)
 	if len(turn2Messages) != 3 {
 		t.Fatalf("turn 2 sent %d messages, want 3 (prior user + prior assistant + new user): %+v", len(turn2Messages), turn2Messages)
 	}
@@ -543,7 +364,7 @@ func TestHandle_IncognitoUsesRequestHistoryWithoutPersisting(t *testing.T) {
 		t.Fatalf("generate calls = %d, want 1", len(genClient.Requests))
 	}
 	want := []provider.Message{{Role: "user", Content: "private question"}, {Role: "assistant", Content: "private reply"}, {Role: "user", Content: "follow up"}}
-	got := genClient.Requests[0].Messages
+	got := withoutIdentityNote(genClient.Requests[0].Messages)
 	if len(got) != len(want) {
 		t.Fatalf("generated messages = %+v, want %+v", got, want)
 	}
@@ -598,7 +419,7 @@ func TestValidateRequestRejectsInvalidIncognitoContext(t *testing.T) {
 
 func TestHandle_IncognitoDoesNotCacheResponseInIdempotencyStore(t *testing.T) {
 	s, genClient := newTestServer(t, []provider.GenerateResult{{Text: "first", InputTokens: 1, OutputTokens: 1}, {Text: "second", InputTokens: 1, OutputTokens: 1}})
-	repeatableAuxClients(s)
+
 	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "private", RequestedMode: "instant", Incognito: true, IdempotencyKey: "same-key"}
 	first, err := s.handle(context.Background(), req, s.Plans["pro"])
 	if err != nil {
@@ -610,30 +431,6 @@ func TestHandle_IncognitoDoesNotCacheResponseInIdempotencyStore(t *testing.T) {
 	}
 	if first.ResponseText != "first" || second.ResponseText != "second" || len(genClient.Requests) != 2 {
 		t.Fatalf("incognito response was cached: first=%q second=%q calls=%d", first.ResponseText, second.ResponseText, len(genClient.Requests))
-	}
-}
-
-func TestHandle_ModerationFlaggedResponseStillCarriesConversationID(t *testing.T) {
-	s, _ := newTestServer(t, nil)
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
-		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
-	}}, "fake-moderation-model", "system prompt")
-
-	req := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: "existing-thread", Message: "bad request", RequestedMode: "instant", EstimatedContextTokens: 100}
-	resp, err := s.handle(context.Background(), req, s.Plans["pro"])
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if resp.ConversationID != "existing-thread" {
-		t.Errorf("ConversationID = %q, want existing-thread (unchanged by a block)", resp.ConversationID)
-	}
-
-	history, err := s.Conversations.History(context.Background(), "u1", "existing-thread", 0)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if len(history) != 0 {
-		t.Errorf("expected a blocked message not to be persisted to history, got %d entries", len(history))
 	}
 }
 
@@ -664,13 +461,7 @@ func TestHandle_ThinkingMaxLockedDowngradesAndSkipsGeneratorButStillGenerates(t 
 	}
 }
 
-// TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate checks that
-// once a user_id's Instant-pool spend has crossed their plan's
-// InstantExtraCapUSD anti-bot ceiling, handle rejects the request with
-// ErrInstantCapExceeded before running classify/moderate at all -- both
-// are themselves billed calls, so an over-cap request should never reach
-// them (see prepare's doc comment on ErrInstantCapExceeded).
-func TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate(t *testing.T) {
+func TestHandle_InstantCapExceededRejectsBeforeGeneration(t *testing.T) {
 	s, genClient := newTestServer(t, nil)
 
 	// Push this user's recorded instant spend over the $3 pro cap.
@@ -684,14 +475,6 @@ func TestHandle_InstantCapExceededRejectsBeforeClassifyOrModerate(t *testing.T) 
 		t.Fatalf("err = %v, want ErrInstantCapExceeded", err)
 	}
 
-	classifierClient := s.Classifier.Client.(*provider.FakeClient)
-	if len(classifierClient.Requests) != 0 {
-		t.Errorf("classifier was called %d times, want 0 (over-cap request must reject before classify)", len(classifierClient.Requests))
-	}
-	moderationClient := s.Moderator.Client.(*provider.FakeClient)
-	if len(moderationClient.Requests) != 0 {
-		t.Errorf("moderator was called %d times, want 0 (over-cap request must reject before moderate)", len(moderationClient.Requests))
-	}
 	if len(genClient.Requests) != 0 {
 		t.Errorf("generator was called %d times, want 0", len(genClient.Requests))
 	}
@@ -853,8 +636,7 @@ func TestServeHTTP_UserRateLimitIsPerUserNotGlobal(t *testing.T) {
 		{Text: "b", InputTokens: 10, OutputTokens: 5},
 	})
 	// Two requests reach the pipeline here (u1's first and u2's), so the
-	// classify/moderate fakes have to answer more than once.
-	repeatableAuxClients(s)
+
 	s.UserRateLimiter = ratelimit.NewInMemoryLimiter(1, time.Minute)
 
 	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
@@ -957,10 +739,7 @@ func TestHandle_CircuitBreakerOpenSurfacesAsGenerateError(t *testing.T) {
 	s, _ := newTestServer(t, nil)
 	s.Router = router.NewRouter(singleModelCatalog, testWeights())
 	s.Generators = map[string]provider.Client{"openai": breaker}
-	// newTestServer's Classifier/Moderator fakes only script one reply
 	// each; this test calls handle() twice, so give both two.
-	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
 
@@ -1001,10 +780,7 @@ func TestHandle_CircuitOpenFailsOverToHealthyModel(t *testing.T) {
 
 	s, _ := newTestServer(t, nil)
 	s.Generators = map[string]provider.Client{"openai": breaker}
-	// newTestServer's Classifier/Moderator fakes only script one reply
 	// each; this test calls handle() twice, so give both two.
-	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
 
@@ -1036,124 +812,8 @@ func TestHandle_CircuitOpenFailsOverToHealthyModel(t *testing.T) {
 	}
 }
 
-func TestHandle_ModerationFlaggedBlocksBeforeGeneration(t *testing.T) {
-	s, genClient := newTestServer(t, nil)
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
-		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
-	}}, "fake-moderation-model", "system prompt")
-
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "bad request", RequestedMode: "instant", EstimatedContextTokens: 100}
-	resp, err := s.handle(context.Background(), req, s.Plans["pro"])
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !resp.Blocked {
-		t.Errorf("Blocked = false, want true")
-	}
-	if resp.ResponseText != tosViolationMessage {
-		t.Errorf("ResponseText = %q, want the ToS violation message", resp.ResponseText)
-	}
-	if resp.SelectedModelID != "" {
-		t.Errorf("SelectedModelID = %q, want empty (no model was ever selected)", resp.SelectedModelID)
-	}
-	if len(genClient.Requests) != 0 {
-		t.Errorf("expected no generate calls when moderation flags the request, got %d", len(genClient.Requests))
-	}
-
-	blockLog := s.ModerationLog.(*moderation.InMemoryBlockLog)
-	entries := blockLog.Entries()
-	if len(entries) != 1 {
-		t.Fatalf("len(ModerationLog.Entries()) = %d, want 1", len(entries))
-	}
-	if entries[0].UserID != "u1" {
-		t.Errorf("recorded UserID = %q, want u1", entries[0].UserID)
-	}
-	if len(entries[0].Categories) != 1 || entries[0].Categories[0] != "illegal_activity" {
-		t.Errorf("recorded Categories = %v, want [illegal_activity]", entries[0].Categories)
-	}
-}
-
 // fakeFailingBlockLog always errors on Record -- used to check that a
 // logging failure doesn't undo the block itself.
-type fakeFailingBlockLog struct{}
-
-func (fakeFailingBlockLog) Record(context.Context, moderation.BlockEntry) error {
-	return errors.New("log store unavailable")
-}
-
-func TestHandle_ModerationFlaggedStillBlocksWhenLoggingFails(t *testing.T) {
-	s, genClient := newTestServer(t, nil)
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
-		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
-	}}, "fake-moderation-model", "system prompt")
-	s.ModerationLog = fakeFailingBlockLog{}
-
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "bad request", RequestedMode: "instant", EstimatedContextTokens: 100}
-	resp, err := s.handle(context.Background(), req, s.Plans["pro"])
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !resp.Blocked {
-		t.Errorf("Blocked = false, want true even when recording the block fails")
-	}
-	if len(genClient.Requests) != 0 {
-		t.Errorf("expected no generate calls, got %d", len(genClient.Requests))
-	}
-}
-
-func TestHandle_ModerationErrorFailsClosed(t *testing.T) {
-	s, genClient := newTestServer(t, nil)
-	s.Moderator = moderation.New(&provider.FakeClient{Err: errors.New("moderation api down")}, "fake-moderation-model", "system prompt")
-
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
-	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err == nil {
-		t.Fatal("expected an error when moderation fails, got nil")
-	}
-	if len(genClient.Requests) != 0 {
-		t.Errorf("expected no generate calls when moderation errors, got %d", len(genClient.Requests))
-	}
-}
-
-// TestHandle_ClassifierPanicBecomesErrorNotProcessCrash is the regression
-// test for audit.md's panic finding. The panic is raised inside the
-// goroutine prepare spawns for Classify -- the case net/http's own
-// per-connection recovery cannot see. Before recoverGoroutine, this test
-// binary would die outright rather than fail; that it can report a normal
-// error at all is the assertion.
-func TestHandle_ClassifierPanicBecomesErrorNotProcessCrash(t *testing.T) {
-	s, genClient := newTestServer(t, nil)
-	s.Classifier = classifier.New(&provider.FakeClient{Panic: "classifier exploded"}, "fake-classifier-model", "system prompt")
-
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
-	_, err := s.handle(context.Background(), req, s.Plans["pro"])
-	if err == nil {
-		t.Fatal("expected an error when the classifier panics, got nil")
-	}
-	if !strings.Contains(err.Error(), "classifier exploded") {
-		t.Errorf("err = %v, want it to carry the panic value", err)
-	}
-	if len(genClient.Requests) != 0 {
-		t.Errorf("expected no generate calls after a classifier panic, got %d", len(genClient.Requests))
-	}
-}
-
-// TestHandle_ModeratorPanicFailsClosed checks the other spawned goroutine,
-// and that a panicking moderator fails the request closed -- exactly like
-// a moderator returning an error does -- rather than letting an
-// unmoderated message through to generation.
-func TestHandle_ModeratorPanicFailsClosed(t *testing.T) {
-	s, genClient := newTestServer(t, nil)
-	s.Moderator = moderation.New(&provider.FakeClient{Panic: "moderator exploded"}, "fake-moderation-model", "system prompt")
-
-	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
-	_, err := s.handle(context.Background(), req, s.Plans["pro"])
-	if err == nil {
-		t.Fatal("expected an error when the moderator panics, got nil")
-	}
-	if len(genClient.Requests) != 0 {
-		t.Errorf("expected no generate calls after a moderator panic, got %d", len(genClient.Requests))
-	}
-}
 
 // TestServeHTTP_PanicInHandlerReturns500 covers the HTTP-level half of the
 // same fix: recovered() turns a handler panic into a logged 500 with a
@@ -1220,8 +880,8 @@ func TestHandleStream_AbortedGenerationIsStillBilled(t *testing.T) {
 	}
 
 	entries := s.CostLog.(*costlog.InMemoryStore).Entries()
-	if len(entries) != 3 {
-		t.Fatalf("cost_log has %d entries, want 3 (classify, moderate, and the aborted generation)", len(entries))
+	if len(entries) != 1 {
+		t.Fatalf("cost_log has %d entries, want only the aborted generation", len(entries))
 	}
 	var aborted *router.CostLogEntry
 	for i := range entries {
@@ -1304,16 +964,9 @@ func TestClientErrorMessage(t *testing.T) {
 	}
 }
 
-// TestServeHTTP_InternalErrorDoesNotLeakDetails checks that a failure
-// inside the pipeline (here, moderation's vendor call erroring out) never
-// reaches the HTTP caller as raw error text -- only a generic message,
-// with the real error only in the server log (audit.md's error-leakage
-// finding). "moderation api down" standing in for anything an internal
-// error could carry: vendor response text, model IDs, database/Redis
-// failure details.
 func TestServeHTTP_InternalErrorDoesNotLeakDetails(t *testing.T) {
-	s, _ := newTestServer(t, nil)
-	s.Moderator = moderation.New(&provider.FakeClient{Err: errors.New("moderation api down")}, "fake-moderation-model", "system prompt")
+	s, gen := newTestServer(t, nil)
+	gen.Err = errors.New("internal upstream failure")
 
 	body, _ := json.Marshal(chatRequest{Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500})
 	req := httptest.NewRequest(http.MethodPost, "/chat", bytes.NewReader(body))
@@ -1325,7 +978,7 @@ func TestServeHTTP_InternalErrorDoesNotLeakDetails(t *testing.T) {
 	if rec.Code != http.StatusBadGateway {
 		t.Fatalf("status = %d, want %d", rec.Code, http.StatusBadGateway)
 	}
-	if got := rec.Body.String(); strings.Contains(got, "moderation api down") {
+	if got := rec.Body.String(); strings.Contains(got, "internal upstream failure") {
 		t.Errorf("response body leaked the internal error text: %q", got)
 	}
 }
@@ -1459,36 +1112,6 @@ func TestHandleStream_HappyPath(t *testing.T) {
 	}
 }
 
-// TestHandleStream_ModerationFlaggedSendsBlockedEvent checks a
-// moderation-flagged request produces exactly one "blocked" event and
-// never reaches routing/generation at all.
-func TestHandleStream_ModerationFlaggedSendsBlockedEvent(t *testing.T) {
-	s, genClient := newTestServer(t, nil)
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{
-		{Text: `{"flagged": true, "categories": ["illegal_activity"], "reason": "asks how to commit a crime"}`},
-	}}, "fake-moderation-model", "system prompt")
-
-	var events []streamEvent
-	req := chatRequest{UserID: "u1", PlanID: "pro", RequestedMode: "instant", Message: "how do I commit a crime"}
-	err := s.handleStream(context.Background(), req, s.Plans["pro"], func(event string, payload any) {
-		events = append(events, streamEvent{event, payload})
-	})
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(events) != 1 || events[0].event != "blocked" {
-		t.Fatalf("expected exactly one blocked event, got %+v", events)
-	}
-	resp := events[0].payload.(chatResponse)
-	if !resp.Blocked || resp.ResponseText != tosViolationMessage {
-		t.Errorf("unexpected blocked payload: %+v", resp)
-	}
-	if len(genClient.Requests) != 0 {
-		t.Errorf("expected no generate calls for a blocked request, got %d", len(genClient.Requests))
-	}
-}
-
 // TestHandleStream_CircuitOpenFailsOverToHealthyModel mirrors
 // TestHandle_CircuitOpenFailsOverToHealthyModel for the streaming path:
 // once the cheapest model's circuit is open, handleStream re-routes to
@@ -1505,8 +1128,6 @@ func TestHandleStream_CircuitOpenFailsOverToHealthyModel(t *testing.T) {
 
 	s, _ := newTestServer(t, nil)
 	s.Generators = map[string]provider.Client{"openai": breaker}
-	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 100}
 
@@ -1579,7 +1200,7 @@ func TestServeHTTP_RegenerateStreamStoresVersionWithoutDuplicatingPrompt(t *test
 		{Text: "original answer", InputTokens: 10, OutputTokens: 5},
 		{Text: "alternate answer", InputTokens: 10, OutputTokens: 5},
 	})
-	repeatableAuxClients(s)
+
 	initial, err := s.handle(context.Background(), chatRequest{UserID: "u1", PlanID: "pro", Message: "question", RequestedMode: "instant"}, s.Plans["pro"])
 	if err != nil {
 		t.Fatalf("initial response: %v", err)
@@ -1665,10 +1286,7 @@ func TestHandle_IdempotencyKeyScopedPerUser(t *testing.T) {
 		{Text: "answer for u1", InputTokens: 100, OutputTokens: 50},
 		{Text: "answer for u2", InputTokens: 100, OutputTokens: 50},
 	})
-	// Two handle() calls means the classifier/moderator fakes need two
 	// scripted replies each, not newTestServer's default one.
-	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
 
 	base := chatRequest{PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500, IdempotencyKey: "same-key"}
 	req1 := base
@@ -1695,10 +1313,7 @@ func TestHandle_IdempotencyKeyScopedPerUser(t *testing.T) {
 func TestHandle_IdempotencyKeyReleasedAfterFailure(t *testing.T) {
 	s, genClient := newTestServer(t, nil)
 	genClient.Err = errors.New("upstream boom")
-	// Two handle() calls means the classifier/moderator fakes need two
 	// scripted replies each, not newTestServer's default one.
-	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
 
 	req := chatRequest{
 		UserID: "u1", PlanID: "pro", Message: "hi",
@@ -1730,10 +1345,7 @@ func TestHandle_NoIdempotencyKeyAlwaysRegenerates(t *testing.T) {
 		{Text: "first", InputTokens: 10, OutputTokens: 5},
 		{Text: "second", InputTokens: 10, OutputTokens: 5},
 	})
-	// Two handle() calls means the classifier/moderator fakes need two
 	// scripted replies each, not newTestServer's default one.
-	s.Classifier = classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}, {Text: classifierReply}}}, "fake-classifier-model", "system prompt")
-	s.Moderator = moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}, {Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt")
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hi", RequestedMode: "instant", EstimatedContextTokens: 500}
 
@@ -1814,12 +1426,9 @@ func TestPrepare_EstimatedContextTokensComputedFromRealMessages(t *testing.T) {
 	}
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: "conv1", Message: "ok", RequestedMode: "instant", EstimatedContextTokens: 1}
-	prepared, blocked, err := s.prepare(ctx, req, s.Plans["pro"])
+	prepared, err := s.prepare(ctx, req, s.Plans["pro"])
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if blocked != nil {
-		t.Fatalf("unexpected block: %+v", blocked)
 	}
 
 	if prepared.estimatedContextTokens <= req.EstimatedContextTokens {
@@ -1847,10 +1456,8 @@ func TestHandle_ContextWindowFilterUsesRealMessageSizeNotClientValue(t *testing.
 	}}
 
 	s := &Server{
-		Router:        router.NewRouter(catalog, testWeights()),
-		Classifier:    classifier.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: classifierReply}}}, "fake-classifier-model", "system prompt"),
-		Moderator:     moderation.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: notFlaggedReply}}}, "fake-moderation-model", "system prompt"),
-		ModerationLog: moderation.NewInMemoryBlockLog(),
+		Router: router.NewRouter(catalog, testWeights()),
+
 		Conversations: conversation.NewInMemoryStore(),
 		Store:         limits.NewInMemorySpendStore(),
 		Idempotency:   idempotency.NewInMemoryStore(),
@@ -1869,5 +1476,30 @@ func TestHandle_ContextWindowFilterUsesRealMessageSizeNotClientValue(t *testing.
 
 	if _, err := s.handle(context.Background(), req, s.Plans["pro"]); err == nil {
 		t.Fatal("expected routing to fail: real message content exceeds the only model's context window, regardless of the client-declared EstimatedContextTokens")
+	}
+}
+
+// A normal turn has one generation charge; there are no preflight AI calls.
+func TestChatHasOnlyGenerationUsage(t *testing.T) {
+	for _, mode := range []string{"manual", "instant", "thinking", "auto"} {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s/stream=%t", mode, stream), func(t *testing.T) {
+				s, gen := newTestServer(t, []provider.GenerateResult{{Text: "answer", InputTokens: 10, OutputTokens: 5}})
+				req := chatRequest{UserID: "u1", PlanID: "pro", Message: "hello", RequestedMode: mode, ManualModelID: "test-instant"}
+				var err error
+				if stream {
+					err = s.handleStream(context.Background(), req, s.Plans["pro"], func(string, any) {})
+				} else {
+					_, err = s.handle(context.Background(), req, s.Plans["pro"])
+				}
+				if err != nil {
+					t.Fatal(err)
+				}
+				entries := s.CostLog.(*costlog.InMemoryStore).Entries()
+				if len(gen.Requests) != 1 || len(entries) != 1 || entries[0].ModelID != gen.Requests[0].APIModelID {
+					t.Fatalf("want only generation: calls=%d entries=%+v", len(gen.Requests), entries)
+				}
+			})
+		}
 	}
 }

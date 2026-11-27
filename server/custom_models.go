@@ -1,0 +1,428 @@
+package server
+
+import (
+	"context"
+	"crypto/rand"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
+
+	"neochat/auth"
+	"neochat/router"
+)
+
+// Only the owner can use these definitions. They are never added to the
+// shared catalog or automatic routing, and contain no API credentials.
+type customModel struct {
+	Tier          string `json:"tier,omitempty"`
+	Description   string `json:"description,omitempty"`
+	ContextWindow int    `json:"context_window,omitempty"`
+	ID            string `json:"id"`
+	Provider      string `json:"provider"`
+	URL           string `json:"url"`
+	Name          string `json:"name"`
+	Handle        string `json:"handle"`
+}
+
+var poeHandlePattern = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,100}$`)
+var customProviders = map[string]bool{"anthropic": true, "openai": true, "google": true, "spacexai": true, "deepseek": true, "moonshot": true}
+
+func normalizeCustomModel(m customModel) (customModel, error) {
+	if m.ContextWindow < 0 || m.ContextWindow > 100000000 || (m.ContextWindow > 0 && m.ContextWindow < 1024) {
+		return m, fmt.Errorf("Context window must be between 1,024 and 100,000,000 tokens, or left empty for Auto.")
+	}
+	if m.Tier != "" && m.Tier != "instant" && m.Tier != "thinking" && m.Tier != "max" {
+		return m, fmt.Errorf("Choose Instant, Thinking or Max tier.")
+	}
+	if len([]rune(m.Description)) > 160 || strings.ContainsAny(m.Description, "\r\n\x00") {
+		return m, fmt.Errorf("Subtitle must be at most 160 characters on one line.")
+	}
+	if !customProviders[m.Provider] {
+		return m, fmt.Errorf("Choose a supported provider.")
+	}
+	handle := strings.TrimSpace(m.URL)
+	if strings.Contains(handle, "://") {
+		u, err := url.Parse(handle)
+		if err != nil || u.Scheme != "https" || !strings.EqualFold(u.Host, "poe.com") || u.User != nil || u.RawPath != "" {
+			return m, fmt.Errorf("Use an https://poe.com/bot-name link or a bot name.")
+		}
+		handle = strings.TrimSuffix(strings.Trim(u.Path, "/"), "/api")
+	}
+	if !poeHandlePattern.MatchString(handle) {
+		return m, fmt.Errorf("Enter a valid Poe bot name or link.")
+	}
+	m.Handle = handle // Case is part of the Poe API identifier.
+	m.URL = "https://poe.com/" + handle
+	m.Name = strings.TrimSpace(m.Name)
+	if len([]rune(m.Name)) > 80 || strings.ContainsAny(m.Name, "\r\n\x00") {
+		return m, fmt.Errorf("Display name must be under 80 characters on one line.")
+	}
+	if m.Name == "" {
+		m.Name = strings.ReplaceAll(strings.ReplaceAll(handle, "-", " "), "_", " ")
+		if strings.HasPrefix(handle, "GPT-") {
+			m.Name = "GPT-" + strings.TrimPrefix(m.Name, "GPT ")
+		}
+	}
+	hash := sha256.Sum256([]byte(m.Provider + "\x00" + strings.ToLower(handle)))
+	m.ID = "custom-" + hex.EncodeToString(hash[:12])
+	return m, nil
+}
+func (s *Server) customSettings(ctx context.Context, userID string) (map[string]json.RawMessage, error) {
+	object := map[string]json.RawMessage{}
+	if s.Settings == nil {
+		return object, nil
+	}
+	raw, err := s.Settings.Get(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	if len(raw) > 0 {
+		if err = json.Unmarshal(raw, &object); err != nil {
+			return nil, err
+		}
+	}
+	if object == nil {
+		object = map[string]json.RawMessage{}
+	}
+	return object, nil
+}
+func customDefinitions(object map[string]json.RawMessage) ([]customModel, error) {
+	var models []customModel
+	if raw := object["custom_models"]; len(raw) > 0 {
+		if err := json.Unmarshal(raw, &models); err != nil {
+			return nil, err
+		}
+	}
+	return models, nil
+}
+func (s *Server) customRouterModel(m customModel) router.Model {
+	// Reuse authoritative capabilities/pricing whenever this bot is listed.
+	for _, known := range s.router().Catalog.Models {
+		if strings.EqualFold(known.ResolveAPIModelID(), m.Handle) {
+			known.ID = m.ID
+			known.APIModelID = m.Handle
+			known.DisplayName = m.Name
+			known.Provider = m.Provider
+			known.ManualOnly = true
+			known.Legacy = false
+			if m.ContextWindow > 0 {
+				known.ContextWindow = m.ContextWindow
+			}
+			if m.Tier != "" {
+				known.Modes = []string{m.Tier}
+			}
+			known.Description = m.Description
+			return known
+		}
+	}
+	// An unlisted chat bot uses Poe's standard Chat endpoint, including tools.
+	// Rates are reservation estimates only; Poe reports actual token usage.
+	model := router.Model{ID: m.ID, APIModelID: m.Handle, DisplayName: m.Name, Provider: m.Provider, Poe: true, ManualOnly: true, Modes: []string{"max"}, ContextWindow: 128000, MaxOutputTokens: 8192, InputModalities: []string{"text", "image", "file"}, SupportsModality: []string{"text"}, SupportsOutputFormats: []string{"text", "markdown", "json", "function_call"}, ToolCalling: true, CostInputPerMTok: 5, CostOutputPerMTok: 25}
+	for _, known := range s.router().Catalog.Models {
+		if known.Provider == m.Provider && known.Kind == "" {
+			model.CostInputPerMTok = max(model.CostInputPerMTok, known.CostInputPerMTok)
+			model.CostOutputPerMTok = max(model.CostOutputPerMTok, known.CostOutputPerMTok)
+		}
+	}
+	if m.ContextWindow > 0 {
+		model.ContextWindow = m.ContextWindow
+	}
+	if m.Tier != "" {
+		model.Modes = []string{m.Tier}
+	}
+	model.Description = m.Description
+	return model
+}
+func (s *Server) requestRouter(req chatRequest) router.Router {
+	result := s.router()
+	if req.customModel != nil {
+		result.Catalog.Models = append([]router.Model(nil), result.Catalog.Models...)
+		for i, m := range result.Catalog.Models {
+			if m.ID == req.customModel.ID {
+				result.Catalog.Models[i] = *req.customModel
+				return result
+			}
+		}
+		result.Catalog.Models = append(result.Catalog.Models, *req.customModel)
+	}
+	return result
+}
+func (s *Server) loadCustomModel(ctx context.Context, req *chatRequest) error {
+	if (req.RequestedMode != "" && req.RequestedMode != "manual") || req.ManualModelID == "" || s.Settings == nil {
+		return nil
+	}
+	object, err := s.customSettings(ctx, req.UserID)
+	if err != nil {
+		return fmt.Errorf("load personal models: %w", err)
+	}
+	definitions, err := customDefinitions(object)
+	if err != nil {
+		return err
+	}
+	var model router.Model
+	found := false
+	for _, definition := range definitions {
+		if definition.ID == req.ManualModelID {
+			model = s.customRouterModel(definition)
+			found = true
+			break
+		}
+	}
+	preferences, _, err := personalModelSettings(object)
+	if err != nil {
+		return err
+	}
+	pref, edited := preferences[req.ManualModelID]
+	if !found && edited {
+		model, found = s.router().Catalog.FindModel(req.ManualModelID)
+	}
+	if found {
+		model = applyModelPreference(model, pref)
+		req.customModel = &model
+	}
+	return nil
+}
+func (s *Server) handleCustomModels(w http.ResponseWriter, r *http.Request, identity auth.Identity) {
+	if s.Settings == nil {
+		http.Error(w, "Settings sync is unavailable.", http.StatusServiceUnavailable)
+		return
+	}
+	s.settingsMu.Lock()
+	defer s.settingsMu.Unlock()
+	object, err := s.customSettings(r.Context(), identity.UserID)
+	if err != nil {
+		http.Error(w, "Could not load models.", 500)
+		return
+	}
+	definitions, err := customDefinitions(object)
+	if err != nil {
+		http.Error(w, "Could not load models.", 500)
+		return
+	}
+	legacy := map[string]bool{}
+	if raw := object["model_legacy"]; len(raw) > 0 {
+		if json.Unmarshal(raw, &legacy) != nil {
+			http.Error(w, "Could not load model preferences.", 500)
+			return
+		}
+	}
+	if legacy == nil {
+		legacy = map[string]bool{}
+	}
+	preferences, order, err := personalModelSettings(object)
+	if err != nil {
+		http.Error(w, "Could not load model preferences.", 500)
+		return
+	}
+	known := map[string]bool{}
+	for _, m := range s.router().Catalog.Models {
+		known[m.ID] = true
+	}
+	for _, m := range definitions {
+		known[m.ID] = true
+	}
+	changedID := ""
+	switch {
+	case r.Method == http.MethodPut:
+		var input struct {
+			IDs []string `json:"ids"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&input) != nil || len(input.IDs) > 2000 {
+			http.Error(w, "Invalid model order.", 400)
+			return
+		}
+		seen := map[string]bool{}
+		for _, id := range input.IDs {
+			if !known[id] || seen[id] {
+				http.Error(w, "Model order contains unknown or duplicate entries.", 400)
+				return
+			}
+			seen[id] = true
+		}
+		order = input.IDs
+	case r.Method == http.MethodPost && strings.HasSuffix(r.URL.Path, "/actions"):
+		var input struct {
+			Action string   `json:"action"`
+			IDs    []string `json:"ids"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 128<<10)).Decode(&input) != nil || input.Action != "remove" || len(input.IDs) > 2000 {
+			http.Error(w, "Invalid model action.", 400)
+			return
+		}
+		remove := map[string]bool{}
+		for _, id := range input.IDs {
+			if !known[id] {
+				http.Error(w, "Unknown model.", 404)
+				return
+			}
+			remove[id] = true
+		}
+		kept := definitions[:0]
+		for _, m := range definitions {
+			if remove[m.ID] {
+				delete(preferences, m.ID)
+				delete(legacy, m.ID)
+				delete(remove, m.ID)
+			} else {
+				kept = append(kept, m)
+			}
+		}
+		definitions = kept
+		for id := range remove {
+			pref := preferences[id]
+			pref.Hidden = true
+			preferences[id] = pref
+		}
+	case r.Method == http.MethodPatch:
+		id := r.PathValue("id")
+		if !known[id] {
+			http.Error(w, "Unknown model.", 404)
+			return
+		}
+		var fields map[string]json.RawMessage
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&fields) != nil || fields == nil {
+			http.Error(w, "Invalid model changes.", 400)
+			return
+		}
+		if raw, ok := fields["reset"]; ok && string(raw) == "true" {
+			delete(preferences, id)
+			delete(legacy, id)
+			break
+		}
+		pref := preferences[id]
+		body, _ := json.Marshal(fields)
+		if json.Unmarshal(body, &pref) != nil {
+			http.Error(w, "Invalid model changes.", 400)
+			return
+		}
+		if err := validateModelPreference(pref); err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		if pref.URL != "" {
+			provider := pref.Provider
+			if provider == "" {
+				provider = "openai"
+			}
+			normalized, _ := normalizeCustomModel(customModel{Provider: provider, URL: pref.URL})
+			pref.URL = normalized.URL
+		}
+		if raw, ok := fields["legacy"]; ok {
+			var value *bool
+			if json.Unmarshal(raw, &value) != nil || value == nil {
+				http.Error(w, "Specify legacy: true or false.", 400)
+				return
+			}
+			legacy[id] = *value
+		}
+		preferences[id] = pref
+	case r.Method == http.MethodPost:
+		var input struct {
+			customModel
+			Legacy bool `json:"legacy"`
+			Hidden bool `json:"hidden"`
+		}
+		if json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&input) != nil {
+			http.Error(w, "Invalid model definition.", 400)
+			return
+		}
+		model, err := normalizeCustomModel(input.customModel)
+		if err != nil {
+			http.Error(w, err.Error(), 400)
+			return
+		}
+		replaced := false
+		for i, m := range definitions {
+			if m.Provider == model.Provider && strings.EqualFold(m.Handle, model.Handle) {
+				model.ID = m.ID
+				definitions[i] = model
+				replaced = true
+				break
+			}
+		}
+		if !replaced {
+			if len(definitions) >= 200 {
+				http.Error(w, "You can save up to 200 custom models.", 400)
+				return
+			}
+			if known[model.ID] {
+				var nonce [12]byte
+				if _, err := rand.Read(nonce[:]); err != nil {
+					http.Error(w, "Could not create model.", 500)
+					return
+				}
+				model.ID = "custom-" + hex.EncodeToString(nonce[:])
+			}
+			definitions = append(definitions, model)
+		}
+		delete(preferences, model.ID)
+		preferences[model.ID] = modelPreference{Hidden: input.Hidden}
+		legacy[model.ID] = input.Legacy
+		changedID = model.ID
+	case r.Method == http.MethodDelete:
+		id := r.PathValue("id")
+		kept := definitions[:0]
+		removed := false
+		for _, m := range definitions {
+			if m.ID != id {
+				kept = append(kept, m)
+			} else {
+				removed = true
+			}
+		}
+		definitions = kept
+		if removed {
+			delete(legacy, id)
+			delete(preferences, id)
+		} else if known[id] {
+			pref := preferences[id]
+			pref.Hidden = true
+			preferences[id] = pref
+		}
+	}
+	// Drop only references to removed personal models; keep public models in
+	// the order even while hidden, so restoring them restores their position.
+	stillKnown := map[string]bool{}
+	for _, m := range s.router().Catalog.Models {
+		stillKnown[m.ID] = true
+	}
+	for _, m := range definitions {
+		stillKnown[m.ID] = true
+	}
+	keptOrder := []string{}
+	for _, id := range order {
+		if stillKnown[id] {
+			keptOrder = append(keptOrder, id)
+		}
+	}
+	order = keptOrder
+	if r.Method != http.MethodGet {
+		object["custom_models"], _ = json.Marshal(definitions)
+		object["model_legacy"], _ = json.Marshal(legacy)
+		object["model_preferences"], _ = json.Marshal(preferences)
+		object["model_order"], _ = json.Marshal(order)
+		body, _ := json.Marshal(object)
+		if len(body) > maxPersonalSettingsBytes {
+			http.Error(w, "Model settings exceed 256 KB.", 400)
+			return
+		}
+		if err = s.Settings.Put(r.Context(), identity.UserID, body); err != nil {
+			http.Error(w, "Could not save models.", 500)
+			return
+		}
+	}
+	entries := []modelEntry{}
+	for _, definition := range definitions {
+		model := applyModelPreference(s.customRouterModel(definition), preferences[definition.ID])
+		entry := modelEntries(router.Catalog{Models: []router.Model{model}}, nil, nil)[0]
+		entry.Custom = true
+		entry.Description = model.Description
+		entries = append(entries, entry)
+	}
+	encodeModels(w, modelsResponse{Models: entries, LegacyOverrides: legacy, Preferences: preferences, Order: order, ChangedID: changedID})
+}

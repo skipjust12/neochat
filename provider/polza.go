@@ -72,7 +72,7 @@ const PolzaBaseURL = "https://polza.ai/api/v1"
 
 // ErrMissingAPIKey is returned when neither the request context nor the
 // client carries a Polza key -- the user has not added one in Settings.
-var ErrMissingAPIKey = errors.New("provider: no Polza AI API key configured")
+var ErrMissingAPIKey = errors.New("provider: no Poe API key configured")
 
 // NewPolzaClient builds a client against the real Polza API. fallbackKey
 // may be empty: per-user keys arrive through WithAPIKey.
@@ -291,6 +291,7 @@ type polzaStreamChunk struct {
 }
 
 func (c *PolzaClient) buildRequest(ctx context.Context, apiModelID string, messages []Message, stream bool) polzaChatRequest {
+	messages = toolImageMessages(messages)
 	req := polzaChatRequest{Model: apiModelID, MaxTokens: outputLimit(ctx, c.MaxTokens), Stream: stream}
 	if stream {
 		req.StreamOptions = &polzaStreamOptions{IncludeUsage: true}

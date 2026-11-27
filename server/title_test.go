@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"sync"
 	"testing"
@@ -85,7 +86,7 @@ func newTitleServer(t *testing.T, title string) (*Server, *titleStandIn) {
 	for name := range s.Generators {
 		s.Generators[name] = client
 	}
-	s.TitleModelID = DefaultTitleModelID
+	s.TitleModelID = "gpt-6-luna" // legacy fixture ID; Poe wire contracts are tested separately.
 	return s, standIn
 }
 
@@ -356,4 +357,52 @@ func TestTheAskingDeviceHearsTheNameWhileTheAnswerStreams(t *testing.T) {
 	if titleAt < 0 || doneAt < 0 || titleAt > doneAt || named["title"] != "Рецепт борща" || named["conversation_id"] == "" {
 		t.Fatalf("title event at %d (%v), done at %d", titleAt, named, doneAt)
 	}
+}
+
+func TestTitleUsesOwnersLunaBotAfterOfficialAccessRefusal(t *testing.T) {
+	api := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "Bearer poe-user" {
+			t.Error("title lost user key")
+		}
+		if r.URL.Path == "/GPT-6-Luna" {
+			fmt.Fprint(w, "event: error\ndata: {\"text\":\"This bot does not support API access\"}\n\n")
+			return
+		}
+		if r.URL.Path != "/neobottestapiGPT6Lun" {
+			t.Errorf("wrong title bot %s", r.URL.Path)
+		}
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Error(err)
+		}
+		query := body["query"].([]any)
+		if query[0].(map[string]any)["content"] != titleSystemPrompt {
+			t.Error("lost naming prompt")
+		}
+		if query[len(query)-1].(map[string]any)["parameters"].(map[string]any)["max_tokens"] != float64(titleOutputTokens) {
+			t.Error("lost short title output limit")
+		}
+		fmt.Fprint(w, "event: text\ndata: {\"text\":\"Рецепт борща\"}\n\nevent: done\ndata: {}\n\n")
+	}))
+	defer api.Close()
+	s := newDirectServer(t, &polzaStandIn{reply: "Ответ"})
+	s.TitleModelID = DefaultTitleModelID
+	s.Router.Catalog.Models[0].APIModelID = "GPT-6-Luna"
+	client := provider.NewPoeClient("")
+	client.BotQuery = true
+	client.BotBaseURL = api.URL
+	config, err := os.ReadFile("../configs/poe-bot-fallbacks.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	client.BotFallbacks, err = provider.ParsePoeBotAliases(string(config))
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.Generators["openai"] = client
+	response, err := s.handle(context.Background(), chatRequest{UserID: "u1", PlanID: "pro", Message: "как сварить борщ?", RequestedMode: "manual", ManualModelID: "deepseek-text", providerKey: "poe-user", WebSearch: "off"}, s.Plans["pro"])
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "name from the public Luna bot", func() bool { return listedTitle(t, s, "u1", response.ConversationID) == "Рецепт борща" })
 }

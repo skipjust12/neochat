@@ -73,6 +73,7 @@ func (p *scriptedPolza) mainCalls() []map[string]any {
 func newWebServer(t *testing.T, vendor *scriptedPolza) *Server {
 	t.Helper()
 	s := newDirectServer(t, &polzaStandIn{})
+	s.WebSearchModelID = "gpt-6-luna" // legacy fixture ID
 	srv := httptest.NewServer(vendor)
 	t.Cleanup(srv.Close)
 	client := provider.NewPolzaClient("")
@@ -254,7 +255,7 @@ func TestWebLoopSearchesReadsAndAnswers(t *testing.T) {
 		}
 	}
 	plugin := helper["plugins"].([]any)[0].(map[string]any)
-	if plugin["id"] != "web" || plugin["engine"] != "yandex" || plugin["max_results"] != float64(10) || plugin["search_prompt"] != "latest OpenAI model" || helper["model"] != "openai/gpt-6-luna" || helper["reasoning"].(map[string]any)["effort"] != "none" {
+	if plugin["id"] != "web" || plugin["max_results"] != float64(10) || plugin["search_prompt"] != "latest OpenAI model" || helper["model"] != "openai/gpt-6-luna" || helper["reasoning"].(map[string]any)["effort"] != "none" {
 		t.Errorf("search helper call = %v", helper)
 	}
 
@@ -347,8 +348,8 @@ func TestWebLoopLimits(t *testing.T) {
 		t.Errorf("searches run = %d, want the limit %d", searches.Load(), webMaxSearches)
 	}
 	main := vendor.mainCalls()
-	if len(main) != webMaxRounds {
-		t.Fatalf("model calls = %d, want %d", len(main), webMaxRounds)
+	if len(main) != webMaxSearches+3 {
+		t.Fatalf("model calls = %d, want %d", len(main), webMaxSearches+3)
 	}
 	if main[len(main)-1]["tools"] != nil {
 		t.Error("the last call still offered tools")

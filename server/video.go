@@ -19,7 +19,7 @@ import (
 )
 
 // Video answers. A model of kind router.KindVideo (Gemini Omni) doesn't
-// chat: the user's message becomes the prompt for Polza's Media API, run on
+// chat: the user's message becomes the prompt for Poe's Media API, run on
 // the user's image key like an image model (image.go), and the answer is
 // the clip it makes. The composer sends the length, resolution and shape
 // (chatRequest.Video). Pictures attached to the message guide the clip; an
@@ -67,10 +67,13 @@ func (s *Server) videoAnswer(ctx context.Context, req chatRequest, prepared prep
 		return webAnswer{}, err
 	}
 	price, ok := model.Video.PriceRUB(map[string]string{"duration": choice.Duration, "resolution": choice.Resolution, "has_video": fmt.Sprint(len(videos) > 0)})
-	if !ok {
+	if !ok && !model.Poe {
 		return webAnswer{}, fmt.Errorf("video model %q has no price for %+v", model.ID, choice)
 	}
 	amount := price / rubPerUSD
+	if model.Poe {
+		amount = model.CostPerVideoUSD
+	}
 
 	pool := generationPool(result, model)
 	cap := prepared.plan.ThinkingMaxCapUSD
@@ -82,7 +85,7 @@ func (s *Server) videoAnswer(ctx context.Context, req chatRequest, prepared prep
 		return webAnswer{}, err
 	}
 	request := imagegen.VideoRequest{
-		Model: model.ResolveAPIModelID(), Prompt: prompt, Duration: choice.Duration, Resolution: choice.Resolution, AspectRatio: choice.AspectRatio,
+		Endpoint: poeMediaEndpoint(model), Model: model.ResolveAPIModelID(), Prompt: prompt, Duration: choice.Duration, Resolution: choice.Resolution, AspectRatio: choice.AspectRatio,
 		Images: images, Videos: videos, User: req.UserID,
 	}
 	if len(videos) > 0 {
@@ -93,8 +96,8 @@ func (s *Server) videoAnswer(ctx context.Context, req chatRequest, prepared prep
 	made, genErr := s.Images.GenerateVideo(ctx, req.imageKey, request)
 
 	// Settled like a picture (imageAnswer): a refusal or a failed
-	// generation costs nothing, a finished one what Polza says (or the
-	// tier price), a stop or a timeout the tier price, since Polza goes on
+	// generation costs nothing, a finished one what Poe says (or the
+	// tier price), a stop or a timeout the tier price, since Poe goes on
 	// making it; anything else keeps the reservation for reconciliation.
 	var statusErr *provider.StatusError
 	var failed *imagegen.FailedError

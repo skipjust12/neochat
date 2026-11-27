@@ -30,10 +30,9 @@ func functionToolsFromContext(ctx context.Context) []FunctionTool {
 	return tools
 }
 
-// WebPlugin asks Polza to search the web before the model runs (the "web"
-// plugin, plugins:[{id:"web"}]) and put the results into its context;
-// they come back as url_citation annotations (GenerateResult.Citations).
-// Unlike Polza's server tools it is open to every account.
+// WebPlugin enables Poe Responses built-in web search for this call.
+// Engine is retained for legacy transports; Poe chooses its own search engine.
+// MaxResults is enforced when NeoChat builds its result list.
 type WebPlugin struct {
 	// Engine is "yandex" (Polza's own search, the default), or "native" /
 	// "exa" (run by the model's provider).

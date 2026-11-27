@@ -192,27 +192,27 @@ func TestPostgresStore_AttachmentsRoundTrip(t *testing.T) {
 	}
 }
 
-func TestPostgresStore_QuoteRoundTrip(t *testing.T) {
+func TestPostgresStore_QuoteAndSearchModeRoundTrip(t *testing.T) {
 	pgDB := dbtest.Postgres(t)
 	dbtest.TruncateTables(t, pgDB, "conversation_messages", "conversation_summaries")
 	store := NewPostgresStore(pgDB)
 	ctx := context.Background()
 
-	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "что это?", Quote: "утечка\n\nпамяти", CreatedAt: time.Now().UTC()}))
+	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleUser, Content: "что это?", Quote: "утечка\n\nпамяти", SearchMode: true, CreatedAt: time.Now().UTC()}))
 	must(t, store.Append(ctx, "u1", "c1", Message{Role: RoleAssistant, Content: "ответ", CreatedAt: time.Now().UTC()}))
 
 	history, err := store.History(ctx, "u1", "c1", 0)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(history) != 2 || history[0].Quote != "утечка\n\nпамяти" || history[1].Quote != "" {
+	if len(history) != 2 || history[0].Quote != "утечка\n\nпамяти" || !history[0].SearchMode || history[1].SearchMode || history[1].Quote != "" {
 		t.Fatalf("History quotes = %+v", history)
 	}
 	page, err := store.HistoryPage(ctx, "u1", "c1", 0, 20)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(page.Messages) != 2 || page.Messages[0].Quote != "утечка\n\nпамяти" {
+	if len(page.Messages) != 2 || page.Messages[0].Quote != "утечка\n\nпамяти" || !page.Messages[0].SearchMode {
 		t.Fatalf("HistoryPage quotes = %+v", page.Messages)
 	}
 }

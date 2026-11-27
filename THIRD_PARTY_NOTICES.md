@@ -129,3 +129,11 @@ SOFTWARE.
 ## KaTeX 0.16.47
 
 `server/assets/katex/` (katex.min.js, katex.min.css and the woff2 fonts) is KaTeX 0.16.47. MIT License, Copyright (c) 2013-2020 Khan Academy and other contributors; full text in `server/assets/katex/LICENSE`.
+
+## markdown-it
+
+Markdown parsing uses markdown-it 15.0.3, vendored from its npm release (MIT). The unmodified browser distribution and full license are in `server/assets/markdown/markdown-it.min.js` and `markdown-it-LICENSE.txt`.
+
+## markdown-it-texmath
+
+Existing KaTeX formulas are tokenized with markdown-it-texmath 1.0.0 by Stefan Goessner (MIT). The unmodified source and license are in `server/assets/markdown/texmath.js` and `texmath-LICENSE.txt`.

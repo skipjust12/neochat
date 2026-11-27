@@ -189,12 +189,9 @@ func TestPrepare_DoesNotReadAlreadySummarizedMessages(t *testing.T) {
 	}))
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: conversationID, Message: "next question", RequestedMode: "instant"}
-	prepared, blocked, err := s.prepare(ctx, req, s.Plans["pro"])
+	prepared, err := s.prepare(ctx, req, s.Plans["pro"])
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if blocked != nil {
-		t.Fatalf("unexpected block: %+v", blocked)
 	}
 
 	if len(spy.offsets) != 1 {
@@ -258,12 +255,9 @@ func TestPrepare_FoldsHistoryIntoSummaryWhenOverTrigger(t *testing.T) {
 	t.Logf("full history estimate = %d tokens, SummaryTriggerTokens = %d", fullEstimate, s.SummaryTriggerTokens)
 
 	req := chatRequest{UserID: "u1", PlanID: "pro", ConversationID: conversationID, Message: "one more question", RequestedMode: "instant"}
-	prepared, blocked, err := s.prepare(ctx, req, s.Plans["pro"])
+	prepared, err := s.prepare(ctx, req, s.Plans["pro"])
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
-	}
-	if blocked != nil {
-		t.Fatalf("unexpected block: %+v", blocked)
 	}
 
 	if len(fakeSummarizer.Requests) != 1 {
@@ -290,4 +284,22 @@ func TestPrepare_FoldsHistoryIntoSummaryWhenOverTrigger(t *testing.T) {
 		t.Errorf("estimatedContextTokens = %d, want less than the full-history estimate %d -- summarization should have shrunk it", prepared.estimatedContextTokens, fullEstimate)
 	}
 	t.Logf("prepared.estimatedContextTokens = %d (down from full-history %d)", prepared.estimatedContextTokens, fullEstimate)
+}
+
+func TestTruncatedSummaryDoesNotAdvanceOrReplaceStoredHistory(t *testing.T) {
+	s, _ := newTestServer(t, nil)
+	s.SummaryTriggerTokens = 1
+	s.SummaryTailMessages = 2
+	old := conversation.Summary{Text: "Earlier exact fact: 12345", CoversThrough: 4}
+	must(t, s.Conversations.SetSummary(context.Background(), "u1", "c1", old))
+	s.Summarizer = summarizer.New(&provider.FakeClient{Responses: []provider.GenerateResult{{Text: "Incomplete replacement", FinishReason: "length"}}}, "gpt-6-luna", "instructions")
+	history := longHistory(10)
+	got, text := s.maybeSummarize(context.Background(), "u1", "c1", old, history)
+	if len(got) != len(history) || text != old.Text {
+		t.Fatal("discarded history after an incomplete summary")
+	}
+	stored, err := s.Conversations.GetSummary(context.Background(), "u1", "c1")
+	if err != nil || stored.Text != old.Text || stored.CoversThrough != old.CoversThrough {
+		t.Fatal("advanced stored summary past facts that were not summarized", err)
+	}
 }

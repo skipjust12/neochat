@@ -206,10 +206,10 @@ func questionnaireText(q *conversation.Questionnaire) string {
 // Pictures and videos it made appear as a note (imageNote, videoNote).
 func assistantHistoryContent(m conversation.Message) string {
 	if len(m.Versions) == 0 {
-		return m.Content
+		return inlineImageHistoryText(m.Content)
 	}
 	latest := m.Versions[len(m.Versions)-1]
-	content := m.Content
+	content := inlineImageHistoryText(m.Content)
 	if len(latest.Images) > 0 {
 		content = strings.TrimSpace(content + "\n\n" + imageNote(latest.Images))
 	}

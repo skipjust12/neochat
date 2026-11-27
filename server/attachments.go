@@ -388,7 +388,7 @@ func summaryInput(messages []conversation.Message) []conversation.Message {
 	out := make([]conversation.Message, len(messages))
 	for i, m := range messages {
 		out[i] = m
-		out[i].Content = withQuote(m.Quote, m.Content)
+		out[i].Content = withQuote(m.Quote, inlineImageHistoryText(m.Content))
 		if len(m.Attachments) == 0 {
 			continue
 		}
@@ -397,6 +397,20 @@ func summaryInput(messages []conversation.Message) []conversation.Message {
 			names[j] = a.Name
 		}
 		out[i].Content = strings.TrimSpace(out[i].Content + "\n[Attached: " + strings.Join(names, ", ") + "]")
+	}
+	// Preserve bounded recent source observations when older conversation
+	// messages are replaced by a rolling summary, too.
+	budget := historyWebEvidenceRunes
+	for i := len(messages) - 1; i >= 0 && budget > 0; i-- {
+		m := messages[i]
+		if m.Role != conversation.RoleAssistant || len(m.Versions) == 0 {
+			continue
+		}
+		before := budget
+		steps := historyToolStepsWithEvidence(m.Versions[len(m.Versions)-1].Activity, &budget)
+		if budget < before {
+			out[i].Content += "\n[Earlier source observations; excerpts, not complete pages:]\n" + steps
+		}
 	}
 	return out
 }

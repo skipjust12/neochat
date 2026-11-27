@@ -1,5 +1,5 @@
 // Command server runs the real HTTP entry point: POST /chat runs
-// classify + moderate -> check spend lock -> route -> generate -> record
+// check spend lock -> load context -> select model -> generate -> record
 // spend end to end against a real vendor API. main.go at the repo root
 // stays a router-only demo; this is the first thing in the repo that
 // actually serves requests.
@@ -8,6 +8,7 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
 	"math"
 	"net/http"
@@ -21,7 +22,6 @@ import (
 
 	"neochat/attachment"
 	"neochat/auth"
-	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
 	"neochat/db"
@@ -30,7 +30,6 @@ import (
 	"neochat/internal/envfile"
 	"neochat/limits"
 	"neochat/modelcatalog"
-	"neochat/moderation"
 	"neochat/pagestore"
 	"neochat/provider"
 	"neochat/ratelimit"
@@ -73,6 +72,10 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+	catalog, err = modelcatalog.LoadPoe(catalog, "configs/poe-models.json")
+	if err != nil {
+		log.Fatal(err)
+	}
 	weights, err := router.LoadWeights("configs/weights.json")
 	if err != nil {
 		log.Fatal(err)
@@ -81,46 +84,66 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	systemPrompt, err := classifier.LoadSystemPrompt("prompts/classifier_system_prompt.md")
-	if err != nil {
-		log.Fatal(err)
-	}
-	moderationSystemPrompt, err := moderation.LoadSystemPrompt("prompts/moderation_system_prompt.md")
-	if err != nil {
-		log.Fatal(err)
-	}
-	// Chat system prompts are per-persona (server.SystemPromptNames --
-	// "Default", "Expert", "Friendly", "Cynical", "Direct"), loaded from
-	// prompts/<Name>.md. Unlike the classifier/moderation prompts above, a
-	// persona whose file is missing/empty isn't fatal: LoadSystemPrompts
-	// just skips it, and selecting that persona sends no system message
-	// until its real prompt text is written.
+	// Load the five chat styles; summaries have their own prompt.
 	chatSystemPrompts := server.LoadSystemPrompts("prompts")
 
-	// Every vendor call goes through Polza AI. Each user brings their own
-	// Polza key (Settings -> Account, sent per request as X-Provider-Key
-	// and attached via provider.WithAPIKey), so POLZA_API_KEY is only an
+	// Every vendor call goes through Poe. Each user brings their own
+	// Poe key (Settings -> Account, sent per request as X-Provider-Key
+	// and attached via provider.WithAPIKey), so POE_API_KEY is only an
 	// optional server-side fallback for calls made without one -- it is
 	// not required to start.
-	polzaClient := provider.NewPolzaClient(os.Getenv("POLZA_API_KEY"))
+	var liveModels *modelcatalog.Live
+	poeClient := provider.NewPoeClient(os.Getenv("POE_API_KEY"))
+	poeClient.BotAliases, err = provider.ParsePoeBotAliases(os.Getenv("POE_BOT_ALIASES"))
+	if err != nil {
+		log.Fatal(err)
+	}
+	poeClient.BotFallbacks, err = loadPoeBotFallbacks("configs/poe-bot-fallbacks.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	poeClient.ModelInfo = func(id string) provider.PoeModelInfo {
+		current := catalog
+		if liveModels != nil {
+			current = liveModels.Current().Catalog
+		}
+		for _, m := range current.Models {
+			if strings.EqualFold(m.ResolveAPIModelID(), id) {
+				native, responses, chat := false, false, false
+				for _, e := range m.PoeEndpoints {
+					switch e {
+					case "/v1/messages":
+						native = true
+					case "/v1/responses":
+						responses = true
+					case "/v1/chat/completions":
+						chat = true
+					}
+				}
+				return provider.PoeModelInfo{NativeMessages: native, UseResponses: responses && !chat, ReasoningParameter: m.PoeReasoningParameter, ReasoningValues: m.PoeReasoningValues, CacheReadPrice: m.CostCacheReadPerMTok, CacheWritePrice: m.CostCacheWritePerMTok}
+			}
+		}
+		return provider.PoeModelInfo{}
+	}
 
 	// Hard ceiling on output tokens for every generation call, regardless
 	// of which catalog model gets selected -- see
-	// provider.PolzaClient.MaxTokens's doc comment and audit.md finding #4.
+	// provider.PoeClient.MaxTokens's doc comment and audit.md finding #4.
 	// 16000 is comfortably above any real chat reply while staying well
 	// under the catalog models' own max_output_tokens. Override with
 	// MAX_OUTPUT_TOKENS in the range 1..16000. The reservation layer also
 	// enforces a per-model cap on every vendor call.
-	polzaClient.MaxTokens = getenvIntDefault("MAX_OUTPUT_TOKENS", 16000)
-	if polzaClient.MaxTokens <= 0 || polzaClient.MaxTokens > 16000 {
+	poeClient.BotQuery = os.Getenv("POE_TRANSPORT") != "compatibility"
+	poeClient.MaxTokens = getenvIntDefault("MAX_OUTPUT_TOKENS", 16000)
+	if poeClient.MaxTokens <= 0 || poeClient.MaxTokens > 16000 {
 		log.Fatal("MAX_OUTPUT_TOKENS must be between 1 and 16000")
 	}
 
-	// Every vendor call -- generation, classify, moderate, summarize --
+	// Every vendor call -- generation, summarize, titles and search --
 	// goes through the retry wrapper, which only resends refusals that are
 	// safe to resend (429s), since a chat completion is not idempotent --
 	// see provider.StatusError.Retryable.
-	retryingClient := provider.NewRetryClient(polzaClient)
+	retryingClient := provider.NewRetryClient(poeClient)
 
 	// Generation additionally goes through a circuit breaker so a model
 	// that starts failing en masse (README pre-launch checklist) gets
@@ -137,49 +160,16 @@ func main() {
 	// converting a recoverable blip into an outage.
 	generationClient := provider.NewCircuitBreakerClient(retryingClient, 5, 30*time.Second)
 
-	// google/gemini-3.5-flash-lite is the default: it's the model
-	// prompts/classifier_system_prompt.md was validated against (see
-	// docs/unit-economics.md's assumptions table). Override with
-	// CLASSIFIER_API_MODEL_ID for a different Polza model slug.
-	classifierModelID := os.Getenv("CLASSIFIER_API_MODEL_ID")
-	if classifierModelID == "" {
-		classifierModelID = "google/gemini-3.5-flash-lite"
-	}
-
-	// openai/gpt-oss-120b is the default: it's the model
-	// docs/unit-economics.md assumed for both moderation layers. Override
-	// with MODERATION_API_MODEL_ID for a different Polza model slug.
-	moderationModelID := os.Getenv("MODERATION_API_MODEL_ID")
-	if moderationModelID == "" {
-		moderationModelID = "openai/gpt-oss-120b"
-	}
-
-	// Per-Mtok rates for pricing classifier/moderation calls into cost_log
-	// (README pre-launch checklist item 7's "still not logged" gap,
-	// closed 2026-08-12) -- classifier.Classifier/moderation.Moderator
-	// have no catalog entry to price against the way a generation model
-	// does (moderation's default, gpt-oss-120b, was deliberately removed
-	// from configs/models.json entirely), so these are their own
-	// standalone rates. Defaults are docs/unit-economics.md's assumed
-	// figures for the *_API_MODEL_ID defaults just above
-	// (gemini-3.5-flash-lite $0.3/$2.5, gpt-oss-120b $0.03/$0.17); if you
-	// override either *_API_MODEL_ID, override its cost rates too, or
-	// logged cost will silently keep pricing the old model.
-	classifierCostInputPerMTok := getenvFloatDefault("CLASSIFIER_COST_INPUT_PER_MTOK", 0.3)
-	classifierCostOutputPerMTok := getenvFloatDefault("CLASSIFIER_COST_OUTPUT_PER_MTOK", 2.5)
-	moderationCostInputPerMTok := getenvFloatDefault("MODERATION_COST_INPUT_PER_MTOK", 0.03)
-	moderationCostOutputPerMTok := getenvFloatDefault("MODERATION_COST_OUTPUT_PER_MTOK", 0.17)
-
 	summarizerSystemPrompt, err := summarizer.LoadSystemPrompt("prompts/summarizer_system_prompt.md")
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	// Same cheap model as the classifier (SUMMARIZER_API_MODEL_ID
+	// Summary model (SUMMARIZER_API_MODEL_ID
 	// overrides independently) -- see summarizer package doc comment.
 	summarizerModelID := os.Getenv("SUMMARIZER_API_MODEL_ID")
 	if summarizerModelID == "" {
-		summarizerModelID = classifierModelID
+		summarizerModelID = "gpt-6-luna"
 	}
 
 	// SummaryTailMessages: how many of the most recent messages are
@@ -222,14 +212,6 @@ func main() {
 		idempotencyTTL = d
 	}
 
-	classifierWithCost := classifier.New(retryingClient, classifierModelID, systemPrompt)
-	classifierWithCost.CostInputPerMTok = classifierCostInputPerMTok
-	classifierWithCost.CostOutputPerMTok = classifierCostOutputPerMTok
-
-	moderatorWithCost := moderation.New(retryingClient, moderationModelID, moderationSystemPrompt)
-	moderatorWithCost.CostInputPerMTok = moderationCostInputPerMTok
-	moderatorWithCost.CostOutputPerMTok = moderationCostOutputPerMTok
-
 	// Two request throttles on POST /chat and /chat/stream, over different
 	// keys -- see server.Server.IPRateLimiter/UserRateLimiter and audit.md
 	// finding #2. The per-IP one catches a caller with no valid credential
@@ -263,19 +245,25 @@ func main() {
 		trustedProxies = append(trustedProxies, prefix)
 	}
 	summaryClient := summarizer.New(retryingClient, summarizerModelID, summarizerSystemPrompt)
-	summaryClient.CostInputPerMTok = getenvFloatDefault("SUMMARIZER_COST_INPUT_PER_MTOK", classifierCostInputPerMTok)
-	summaryClient.CostOutputPerMTok = getenvFloatDefault("SUMMARIZER_COST_OUTPUT_PER_MTOK", classifierCostOutputPerMTok)
+	// Use the selected model's catalog estimates, rather than Gemini's old
+	// defaults. Explicit operator pricing overrides still apply.
+	summaryInputRate, summaryOutputRate := 0.05, 0.25
+	if model, ok := catalog.FindModel(summarizerModelID); ok {
+		summaryInputRate, summaryOutputRate = model.CostInputPerMTok, model.CostOutputPerMTok
+	}
+	summaryClient.CostInputPerMTok = getenvFloatDefault("SUMMARIZER_COST_INPUT_PER_MTOK", summaryInputRate)
+	summaryClient.CostOutputPerMTok = getenvFloatDefault("SUMMARIZER_COST_OUTPUT_PER_MTOK", summaryOutputRate)
+	log.Printf("summarizer: model=%s (conversation and web evidence summaries)", summarizerModelID)
 	authStore := auth.NewPostgresStore(pgDB)
-	// The Manual picker follows Polza's releases (package modelcatalog):
+	// The Manual picker follows Poe's releases (package modelcatalog):
 	// fetched now, then again when someone opens the app and the list is
-	// over 10 minutes old. MODEL_CATALOG_LIVE=false keeps
-	// configs/models.json exactly as it is.
-	var liveModels *modelcatalog.Live
+	// over one hour old. MODEL_CATALOG_LIVE=false keeps
+	// the checked-in Poe snapshot.
 	if os.Getenv("MODEL_CATALOG_LIVE") != "false" {
-		liveModels = modelcatalog.New(catalog)
+		liveModels = modelcatalog.NewPoe(catalog)
 		go func() {
 			if _, err := liveModels.Refresh(context.Background(), false); err != nil {
-				log.Printf("server: model list from Polza: %v (serving configs/models.json until the next try)", err)
+				log.Printf("server: model list from Poe: %v (serving the Poe snapshot until the next try)", err)
 			}
 		}()
 	}
@@ -283,12 +271,6 @@ func main() {
 		TrustedProxies: trustedProxies,
 		RequireHTTPS:   os.Getenv("REQUIRE_HTTPS") == "true",
 		Router:         router.NewRouter(catalog, weights),
-		Classifier:     classifierWithCost,
-		Moderator:      moderatorWithCost,
-		// Postgres-backed, replacing InMemoryBlockLog -- see
-		// moderation.BlockLog's doc comment for the swap-in procedure this
-		// follows and README's "Current task" section.
-		ModerationLog: moderation.NewPostgresBlockLog(pgDB),
 		// Postgres-backed, replacing InMemoryStore -- see
 		// conversation.Store's doc comment.
 		Conversations: conversation.NewPostgresStore(pgDB),
@@ -307,9 +289,9 @@ func main() {
 		Summarizer:           summaryClient,
 		SummaryTriggerTokens: summaryTriggerTokens,
 		SummaryTailMessages:  summaryTailMessages,
-		// Every catalog provider tag routes through the same PolzaClient
-		// -- Polza serves all of them. Each catalog entry's api_model_id
-		// (configs/models.json) is a Polza model slug.
+		// Every catalog provider tag routes through the same PoeClient
+		// -- Poe serves all of them. Each catalog entry's api_model_id
+		// (configs/models.json) is a Poe model slug.
 		Generators: map[string]provider.Client{
 			"anthropic": generationClient,
 			"openai":    generationClient,
@@ -318,28 +300,27 @@ func main() {
 			"deepseek":  generationClient,
 			"spacexai":  generationClient,
 		},
-		// The auto-router (classify -> moderate -> route) is switched off
+		// Catalog tier routing is switched off
 		// by default: only Manual requests are served, straight to the
 		// chosen model on the user's own key. ROUTER_ENABLED=true restores
-		// the full pipeline once the router is ready to come back.
+		// catalog routing with a fixed local profile (no model classification).
 		RouterDisabled: os.Getenv("ROUTER_ENABLED") != "true",
 		// Postgres-backed file uploads (POST /files) -- see package
 		// attachment and db/migrations/0008_attachments.sql.
 		Attachments: attachment.NewPostgresStore(pgDB),
 		// Web access: pages the model reads are fetched by this server and
 		// kept per chat (db/migrations/0009_web_pages.sql); searches run on
-		// the SearXNG at SEARXNG_URL, or without one on Polza's web plugin
-		// (Yandex) through WEB_SEARCH_MODEL (a catalog model id; default:
-		// the cheapest current one).
-		Fetcher:  &webfetch.Fetcher{},
-		Searcher: webSearcher(os.Getenv("SEARXNG_URL")),
+		// Poe's Perplexity-Search bot, using the request's existing Poe key.
+		Fetcher:          &webfetch.Fetcher{},
+		PoeSearch:        nativeSearchClient(),
+		PoeSearchCostUSD: getenvFloatDefault("POE_SEARCH_COST_USD", 0.0061),
 		// A terminal on this machine for the models (server/terminal.go):
 		// on by default, TERMINAL_ENABLED=false turns it off. See
 		// terminalRunner.
 		Terminal: terminalRunner(),
 		// Image models (kind "image" in configs/models.json) make pictures
-		// through Polza's Media API on the user's own image key.
-		Images: &imagegen.Client{},
+		// through Poe's non-streaming media endpoints on the user's key.
+		Images: nativeMediaClient(),
 		// Preferences follow the user between devices
 		// (db/migrations/0012_user_settings.sql).
 		Settings:         settings.NewPostgresStore(pgDB),
@@ -446,12 +427,19 @@ func smallestContextWindow(catalog router.Catalog) int {
 	if len(catalog.Models) == 0 {
 		log.Fatal("smallestContextWindow: catalog has no models")
 	}
-	min := catalog.Models[0].ContextWindow
-	for _, m := range catalog.Models[1:] {
-		if m.ContextWindow < min {
+	min := 0
+	for _, m := range catalog.Models {
+		if m.Kind != "" || m.ManualOnly || m.Unavailable || m.ContextWindow <= 0 {
+			continue
+		}
+		if min == 0 || m.ContextWindow < min {
 			min = m.ContextWindow
 		}
 	}
+	if min == 0 {
+		min = 200000
+	}
+
 	return min
 }
 
@@ -503,7 +491,7 @@ func titleModelID(setting string) string {
 }
 
 // webSearcher is the SearXNG instance web_search runs on (SEARXNG_URL);
-// nil when unset, which leaves searches on Polza's web plugin.
+// nil when unset, which leaves searches on Poe's web plugin.
 func webSearcher(baseURL string) server.WebSearcher {
 	if strings.TrimSpace(baseURL) == "" {
 		return nil
@@ -556,4 +544,30 @@ func getenvDurationDefault(key string, def time.Duration) time.Duration {
 		log.Fatalf("%s must be positive", key)
 	}
 	return d
+}
+
+// Explicit environment aliases override the deployment's public-bot mapping.
+func loadPoeBotFallbacks(path string) (map[string]string, error) {
+	raw, configured := os.LookupEnv("POE_BOT_FALLBACKS")
+	if !configured {
+		data, err := os.ReadFile(path)
+		if err != nil {
+			return nil, fmt.Errorf("read Poe bot aliases: %w", err)
+		}
+		raw = string(data)
+	}
+	return provider.ParsePoeBotAliases(raw)
+}
+
+func nativeMediaClient() *imagegen.Client {
+	client := imagegen.NewPoeClient()
+	client.BotQuery = os.Getenv("POE_TRANSPORT") != "compatibility"
+	return client
+}
+
+func nativeSearchClient() *provider.PoeClient {
+	client := provider.NewPoeClient(os.Getenv("POE_API_KEY"))
+	client.BotQuery = true
+	client.MaxTokens = 16000
+	return client
 }

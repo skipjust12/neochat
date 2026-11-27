@@ -48,7 +48,8 @@ type Message struct {
 
 	// Quote is the part of an earlier answer a user message asks about
 	// (selected in the UI and sent with "Ask"); empty for most messages.
-	Quote string `json:"quote,omitempty"`
+	Quote      string `json:"quote,omitempty"`
+	SearchMode bool   `json:"search_mode,omitempty"`
 }
 
 // Attachment is the stored reference to one file sent with a message.
@@ -91,6 +92,9 @@ type ResponseVersion struct {
 	// (server/image.go, server/video.go).
 	Images []Attachment `json:"images,omitempty"`
 	Videos []Attachment `json:"videos,omitempty"`
+	// Files are what the model made on the server's terminal and sent to
+	// the user with the answer (send_file), kept with the chat's files.
+	Files []Attachment `json:"files,omitempty"`
 
 	// Reasoning is the model's thinking before and while it wrote this
 	// version, for models that share it; the client shows it on request.
@@ -150,6 +154,17 @@ type ToolActivity struct {
 	OutputChars int    `json:"output_chars,omitempty"`
 	TimedOut    bool   `json:"timed_out,omitempty"`
 	DurationMS  int64  `json:"duration_ms,omitempty"`
+	// Where is "computer" for a step that ran on the user's own computer
+	// (empty: on the server). Shell is the shell a command ran in, when
+	// chosen. Approval is "pending", "allowed" or "denied" when the user
+	// was asked first; ApprovalID, live only, is what they answer.
+	Where      string `json:"where,omitempty"`
+	Shell      string `json:"shell,omitempty"`
+	Approval   string `json:"approval,omitempty"`
+	ApprovalID string `json:"approval_id,omitempty"`
+	// Size is a sent file's size in bytes ("send_file", with its name as
+	// Title and its path as Command).
+	Size int64 `json:"size,omitempty"`
 
 	// Pending marks a step still running; only ever set in the live
 	// stream, never stored. Phase says what a pending terminal step is

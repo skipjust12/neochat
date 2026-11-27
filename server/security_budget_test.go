@@ -4,11 +4,9 @@ import (
 	"context"
 	"errors"
 	"math"
-	"neochat/classifier"
 	"neochat/conversation"
 	"neochat/costlog"
 	"neochat/limits"
-	"neochat/moderation"
 	"neochat/provider"
 	"neochat/router"
 	"neochat/summarizer"
@@ -20,16 +18,8 @@ func securityFixture() *Server {
 	model := router.Model{ID: "instant", Provider: "openai", APIModelID: "instant", Modes: []string{"instant"}, CostInputPerMTok: 1, CostOutputPerMTok: 2, ContextWindow: 50000, MaxOutputTokens: 1000, SupportsModality: []string{"text"}}
 	return &Server{
 		Router: router.NewRouter(router.Catalog{Models: []router.Model{model}}, router.Weights{}),
-		Classifier: classifier.New(&provider.FakeClient{PerModel: map[string]provider.GenerateResult{"classify": {Text: `{
-	"schema_version": "1.1", "task_category": "general", "task_intent": "answer", "language": "en",
-	"modality_input": ["text"], "modality_output_expected": ["text"],
-	"reasoning_depth": "high", "creativity_level": "low", "required_tools": [],
-	"expected_output_length": "medium", "estimated_output_tokens": 300,
-	"output_format": "", "complexity_score": 0.8, "context_dependency": "light",
-	"confidence": 0.9, "content_flags": [], "safety_risk_score": 0.0
-}`, InputTokens: 100, OutputTokens: 100}}}, "classify", "system"),
-		Moderator:     moderation.New(&provider.FakeClient{PerModel: map[string]provider.GenerateResult{"moderate": {Text: `{"flagged":false,"categories":[],"reason":""}`, InputTokens: 100, OutputTokens: 100}}}, "moderate", "system"),
-		ModerationLog: moderation.NewInMemoryBlockLog(), Conversations: conversation.NewInMemoryStore(), Store: limits.NewInMemorySpendStore(), CostLog: costlog.NewInMemoryStore(),
+
+		Conversations: conversation.NewInMemoryStore(), Store: limits.NewInMemorySpendStore(), CostLog: costlog.NewInMemoryStore(),
 		Generators: map[string]provider.Client{"openai": &provider.FakeClient{PerModel: map[string]provider.GenerateResult{"instant": {Text: "answer", InputTokens: 20, OutputTokens: 1000}}}},
 	}
 }
@@ -63,33 +53,7 @@ func TestSecurityInvalidModeDoesNotCallVendors(t *testing.T) {
 	if !errors.Is(err, errInvalidRequest) {
 		t.Fatalf("invalid mode: %v", err)
 	}
-	if len(s.Classifier.Client.(*provider.FakeClient).Requests) != 0 || len(s.Moderator.Client.(*provider.FakeClient).Requests) != 0 {
-		t.Fatal("paid calls before validation")
-	}
-}
 
-func TestSecurityModerationBlockStillConsumesBudget(t *testing.T) {
-	s := securityFixture()
-	ctx := context.Background()
-	s.Classifier.CostInputPerMTok = 1
-	s.Classifier.CostOutputPerMTok = 1
-	s.Moderator.CostInputPerMTok = 1
-	s.Moderator.CostOutputPerMTok = 1
-	s.Moderator.Client.(*provider.FakeClient).PerModel["moderate"] = provider.GenerateResult{Text: `{"flagged":true,"categories":[],"reason":"blocked"}`, InputTokens: 100, OutputTokens: 100}
-	plan := limits.PlanLimits{InstantExtraCapUSD: 0.1, ThinkingMaxCapUSD: 1}
-	req := chatRequest{UserID: "user", Message: "hello", RequestedMode: "instant"}
-	response, err := s.handle(ctx, req, plan)
-	if err != nil || !response.Blocked {
-		t.Fatalf("block: %+v %v", response, err)
-	}
-	spent, _ := s.Store.Sum(ctx, "user", limits.PoolInstant, 30*24*time.Hour)
-	if math.Abs(spent-0.0004) > 1e-12 {
-		t.Fatalf("missing auxiliary charges: %.9f", spent)
-	}
-	plan.InstantExtraCapUSD = spent
-	if _, err := s.handle(ctx, req, plan); !errors.Is(err, ErrInstantCapExceeded) {
-		t.Fatalf("block loop bypass: %v", err)
-	}
 }
 
 func TestSecurityCancellationKeepsReservation(t *testing.T) {
@@ -141,7 +105,7 @@ func TestSecuritySummaryConsumesBudget(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	_, _, err := s.prepare(ctx, chatRequest{UserID: "user", ConversationID: "conversation", Message: "hello", RequestedMode: "instant"}, limits.PlanLimits{InstantExtraCapUSD: 1, ThinkingMaxCapUSD: 1})
+	_, err := s.prepare(ctx, chatRequest{UserID: "user", ConversationID: "conversation", Message: "hello", RequestedMode: "instant"}, limits.PlanLimits{InstantExtraCapUSD: 1, ThinkingMaxCapUSD: 1})
 	if err != nil {
 		t.Fatal(err)
 	}

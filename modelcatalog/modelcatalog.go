@@ -87,6 +87,7 @@ type State struct {
 // Live is the catalog the server answers from: the curated one merged with
 // Polza's list as of the last refresh. Safe for concurrent use.
 type Live struct {
+	poe      bool
 	base     router.Catalog
 	url      string
 	client   *http.Client
@@ -173,6 +174,11 @@ func (l *Live) fresh() bool {
 }
 
 func (l *Live) fetchAndMerge(ctx context.Context, now time.Time) (*State, error) {
+	if l.poe {
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fetchTimeout)
+		defer cancel()
+		return l.fetchPoe(ctx, now)
+	}
 	// The fetch outlives a caller that stops waiting: the next one gets
 	// its result instead of starting over.
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), fetchTimeout)

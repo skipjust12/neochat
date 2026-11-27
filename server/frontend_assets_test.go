@@ -15,6 +15,9 @@ func TestFrontendAssetsAreEmbedded(t *testing.T) {
 		min  int
 	}{
 		{"/assets/fluid.css", "text/css", 1000},
+		{"/assets/markdown/markdown-it.min.js", "text/javascript", 10000},
+		{"/assets/markdown/texmath.js", "text/javascript", 1000},
+		{"/assets/markdown/chat-markdown.js", "text/javascript", 1000},
 		{"/assets/InterVariable.ttf", "font/ttf", 100000},
 		{"/assets/Charter-Regular.woff2", "font/woff2", 10000},
 		{"/assets/XCharter-Roman.woff2", "font/woff2", 10000},

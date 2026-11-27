@@ -13,11 +13,7 @@ func ComputeCostUSD(model Model, inputTokens, outputTokens int) float64 {
 
 // ComputeCostUSDRates is ComputeCostUSD's formula against raw per-Mtok
 // rates instead of a catalog Model -- for pricing a call that has no
-// catalog entry at all, e.g. classifier.Classifier/moderation.Moderator's
-// cost logging: their model is picked by CLASSIFIER_API_MODEL_ID/
-// MODERATION_API_MODEL_ID, an arbitrary OpenRouter slug that (see
-// moderation's default, gpt-oss-120b) may not be a chat-generation
-// catalog entry at all.
+// catalog entry at all, such as a separately configured summary model.
 func ComputeCostUSDRates(costInputPerMTok, costOutputPerMTok float64, inputTokens, outputTokens int) float64 {
 	return float64(inputTokens)/1_000_000*costInputPerMTok +
 		float64(outputTokens)/1_000_000*costOutputPerMTok

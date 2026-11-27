@@ -48,6 +48,12 @@ func validateKind(model Model) error {
 		}
 		return nil
 	case KindVideo:
+		if model.Poe {
+			if model.CostPerVideoUSD <= 0 || model.Video == nil {
+				return fmt.Errorf("router: Poe video needs choices and a reservation estimate")
+			}
+			return nil
+		}
 		v := model.Video
 		if v == nil || len(v.Durations) == 0 || len(v.Resolutions) == 0 || len(v.AspectRatios) == 0 {
 			return fmt.Errorf("router: video model %q needs video durations, resolutions and aspect_ratios", model.ID)

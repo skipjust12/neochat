@@ -32,6 +32,11 @@ jobs:
           # silently drift from it.
           go-version-file: go.mod
 
+      - name: Install video test dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
+
       - name: go build
         run: go build ./...
 
@@ -57,7 +62,7 @@ jobs:
           fi
 
       # -race because most of what has been added recently is concurrent
-      # (the classify/moderate goroutines, the streaming relays, the
+      # (the streaming relays, the
       # circuit breaker's shared state, the in-memory stores' mutexes).
       - name: go test -race
         run: go test -race ./...
@@ -71,6 +76,11 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: go.mod
+
+      - name: Install video test dependency
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y ffmpeg
 
       # The repo's own docker-compose.yml is used rather than GitHub
       # service containers so CI runs against the same Postgres/Redis
@@ -152,7 +162,7 @@ jobs:
         run: docker build -t neochat-ci-check .
 
   landing:
-    name: landing bundle is up to date
+    name: frontend timing and landing bundle
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -162,6 +172,9 @@ jobs:
           node-version: 22
           cache: npm
           cache-dependency-path: web/landing/package-lock.json
+
+      - name: Frontend state timing
+        run: node --test scripts/frontend-*.test.cjs
 
       # server/assets/landing is the committed build of web/landing, embedded
       # into the Go binary so neither `go build` nor the Dockerfile needs
@@ -173,6 +186,58 @@ jobs:
           npm ci --no-audit --no-fund
           npm run build
           git diff --exit-code -- ../../server/assets/landing
+
+  markdown:
+    name: Markdown, Poe, Sketch and Search browser regressions
+    # Playwright 1.57 does not support ubuntu-latest's Ubuntu 26.04 yet.
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: web/markdown-tests/package-lock.json
+      - run: npm ci --prefix web/markdown-tests --no-audit --no-fund
+      - run: web/markdown-tests/node_modules/.bin/playwright install --with-deps chromium
+      - run: node scripts/frontend-markdown.browser.cjs
+      - run: node scripts/frontend-poe.browser.cjs
+      - run: node scripts/frontend-sketch.browser.cjs
+      - run: node scripts/frontend-search.browser.cjs
+      - run: node scripts/frontend-slide-delete.browser.cjs
+
+  desktop:
+    name: desktop app (Windows build)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      # cmd/neochat-desktop and the packages it runs (terminal, device,
+      # mcp) have Windows-only files the Linux checks above never compile.
+      - name: go vet (windows)
+        env:
+          GOOS: windows
+          GOARCH: amd64
+        run: go vet ./cmd/neochat-desktop ./device ./mcp ./terminal
+
+      # A ready NeoChat.exe for the run's artifacts: download it from the
+      # run's summary page.
+      - name: Build NeoChat.exe
+        env:
+          GOOS: windows
+          GOARCH: amd64
+          CGO_ENABLED: "0"
+        run: go build -trimpath -ldflags "-s -w" -o NeoChat.exe ./cmd/neochat-desktop
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: NeoChat-windows-amd64
+          path: NeoChat.exe
+          retention-days: 30
 
   govulncheck:
     name: govulncheck
